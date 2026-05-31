@@ -110,10 +110,11 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           }
         })
 
-        // 注册 iframe 内部键盘事件
+        // 注册 iframe 内部键盘事件和滚轮事件
         rendition.hooks.content.register((contents) => {
           const doc = contents.document
           doc.addEventListener('keydown', handleKeyInsideIframe)
+          doc.addEventListener('wheel', handleWheelInsideIframe, { passive: false })
         })
 
         // 5. 首次显示：优先恢复进度
@@ -189,9 +190,41 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }
 
+  // 鼠标滚轮翻页（带 450ms 冷却锁）
+  const lastWheelTime = useRef(0)
+  const handleWheelInsideIframe = (e) => {
+    e.preventDefault()
+    const now = Date.now()
+    if (now - lastWheelTime.current < 450) return
+    
+    if (e.deltaY > 0) {
+      lastWheelTime.current = now
+      if (renditionRef.current) {
+        renditionRef.current.next().catch(err => console.error(err))
+      }
+    } else if (e.deltaY < 0) {
+      lastWheelTime.current = now
+      if (renditionRef.current) {
+        renditionRef.current.prev().catch(err => console.error(err))
+      }
+    }
+  }
+
   useEffect(() => {
     document.addEventListener('keydown', handleKeyInsideIframe)
-    return () => document.removeEventListener('keydown', handleKeyInsideIframe)
+    
+    // 给外部主容器也绑定一份滚轮，防止焦点在边缘时滚动无效
+    const outerEl = viewerRef.current
+    if (outerEl) {
+      outerEl.addEventListener('wheel', handleWheelInsideIframe, { passive: false })
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyInsideIframe)
+      if (outerEl) {
+        outerEl.removeEventListener('wheel', handleWheelInsideIframe)
+      }
+    }
   }, [])
 
   // 等待容器有物理尺寸的辅助函数

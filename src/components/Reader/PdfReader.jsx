@@ -101,6 +101,30 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
     return () => document.removeEventListener('keydown', handleKey)
   }, [totalPages])
 
+  // 鼠标滚轮翻页（带 450ms 冷却防抖锁）
+  const lastWheelTime = useRef(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleWheel = (e) => {
+      e.preventDefault()
+      const now = Date.now()
+      if (now - lastWheelTime.current < 450) return
+      
+      if (e.deltaY > 0) {
+        lastWheelTime.current = now
+        setCurrentPage(p => Math.min(p + 1, totalPages))
+      } else if (e.deltaY < 0) {
+        lastWheelTime.current = now
+        setCurrentPage(p => Math.max(p - 1, 1))
+      }
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [totalPages])
+
   const handleJump = (e) => {
     e.preventDefault()
     const n = parseInt(jumpPage)

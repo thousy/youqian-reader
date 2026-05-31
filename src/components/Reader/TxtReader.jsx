@@ -128,6 +128,30 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return () => window.removeEventListener('keydown', handleKey)
   }, [nextPage, prevPage])
 
+  // 鼠标滚轮翻页（带冷却锁，防止无极/物理滚轮产生连续滚动触发疯狂翻页）
+  const lastWheelTime = useRef(0)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const handleWheel = (e) => {
+      e.preventDefault()
+      const now = Date.now()
+      if (now - lastWheelTime.current < 400) return
+      
+      if (e.deltaY > 0) {
+        lastWheelTime.current = now
+        nextPage()
+      } else if (e.deltaY < 0) {
+        lastWheelTime.current = now
+        prevPage()
+      }
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [nextPage, prevPage])
+
   const fontStyle = {
     fontSize: `${settings.fontSize}px`,
     fontFamily: `"${settings.fontFamily}", Georgia, "Noto Serif SC", serif`,
