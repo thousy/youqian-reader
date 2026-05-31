@@ -69,22 +69,6 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         if (!mounted) return
         console.log('EPUB: Book ready')
 
-        // 异步安全高大步长生成位置以防止崩溃
-        epubBook.locations.generate(1024).then(() => {
-          if (mounted && epubBook.locations) {
-            setTotalPages(epubBook.locations.length)
-            try {
-              const curLoc = renditionRef.current?.currentLocation()
-              if (curLoc?.start?.cfi) {
-                const idx = epubBook.locations.locationFromCfi(curLoc.start.cfi)
-                if (idx !== -1 && idx != null) setPageIndex(idx)
-              }
-            } catch (err) {
-              console.warn('EPUB: Initial location index calculation failed:', err)
-            }
-          }
-        }).catch(err => console.warn('EPUB: locations generate failed:', err))
-
         // 3. 等待容器有物理尺寸（防止 0x0 分页崩溃）
         await waitForContainerSize(viewerRef.current)
         if (!mounted) return
@@ -151,19 +135,33 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             setCurrentChapterName('正文')
           }
 
-          // 安全检索虚拟绝对页码
-          if (epubBook.locations && epubBook.locations.length > 0) {
-            try {
-              const cfi = location.start.cfi
-              if (cfi) {
-                const idx = epubBook.locations.locationFromCfi(cfi)
-                if (idx !== -1 && idx != null) {
-                  setPageIndex(idx)
-                }
+          // 免 locations 绝对安全的物理章节内页码计算，完全杜绝黑屏死锁
+          try {
+            if (location.start.displayed) {
+              const page = location.start.displayed.page
+              const total = location.start.displayed.total
+              if (page != null && total != null) {
+                setPageIndex(page - 1)
+                setTotalPages(total)
               }
-            } catch (err) {
-              console.warn('EPUB: relocated index calculation failed:', err)
+            } else {
+              const rendition = renditionRef.current
+              const view = rendition?.manager?.current()
+              if (view && view.document) {
+                const doc = view.document
+                const htmlEl = doc.documentElement
+                const bodyEl = doc.body
+                const scrollWidth = htmlEl.scrollWidth || bodyEl.scrollWidth || 1
+                const offsetWidth = htmlEl.offsetWidth || bodyEl.offsetWidth || 1
+                const total = Math.max(1, Math.ceil(scrollWidth / offsetWidth))
+                const left = view.position()?.left || 0
+                const current = Math.max(1, Math.min(total, Math.ceil(Math.abs(left) / offsetWidth) + 1))
+                setPageIndex(current - 1)
+                setTotalPages(total)
+              }
             }
+          } catch (err) {
+            console.warn('EPUB: Physical page calculation failed:', err)
           }
         })
 
