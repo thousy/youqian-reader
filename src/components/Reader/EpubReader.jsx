@@ -14,6 +14,14 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [currentChapterName, setCurrentChapterName] = useState('正文')
   const { showToast } = useStore()
 
+  // 极速获取文件名用于解决 EPUB 章节路径 mismatch 难题
+  const getFilename = (path) => {
+    if (!path) return ''
+    const clean = path.split('#')[0]
+    const parts = clean.split('/')
+    return parts[parts.length - 1]
+  }
+
   // 将 savedProgress 存入 ref，避免闭包捕获旧值
   const savedProgressRef = useRef(savedProgress)
   savedProgressRef.current = savedProgress
@@ -99,10 +107,13 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const curLoc = renditionRef.current?.currentLocation()
           const href = curLoc?.start?.href
           if (href) {
-            const cleanHref = href.split('#')[0]
             const matched = flat.find(item => {
-              const itemClean = item.href.split('#')[0]
-              return itemClean === cleanHref || item.href === href
+              const clean1 = item.href.split('#')[0]
+              const clean2 = href.split('#')[0]
+              if (clean1 === clean2 || item.href === href) return true
+              const file1 = getFilename(item.href)
+              const file2 = getFilename(href)
+              return file1 && file2 && file1 === file2
             })
             if (matched && matched.label) {
               setCurrentChapterName(matched.label.trim())
@@ -119,12 +130,15 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const href = location.start.href
           setCurrentTocItem(href)
 
-          // 极速匹配章节名
+          // 极速模糊匹配章节名
           if (href && toc && toc.length > 0) {
-            const cleanHref = href.split('#')[0]
             const matched = toc.find(item => {
-              const itemClean = item.href.split('#')[0]
-              return itemClean === cleanHref || item.href === href
+              const clean1 = item.href.split('#')[0]
+              const clean2 = href.split('#')[0]
+              if (clean1 === clean2 || item.href === href) return true
+              const file1 = getFilename(item.href)
+              const file2 = getFilename(href)
+              return file1 && file2 && file1 === file2
             })
             if (matched && matched.label) {
               setCurrentChapterName(matched.label.trim())

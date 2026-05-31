@@ -23,7 +23,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   // 正则解析 TXT 目录章节
   const chapters = useMemo(() => {
     if (paragraphs.length === 0) return []
-    const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕])(.*)$/i
+    const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+)/i
     const list = []
     paragraphs.forEach((para, index) => {
       const text = para.trim()

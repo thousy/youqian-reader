@@ -108,7 +108,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     let closestOffset = -999999
 
     for (let item of toc) {
-      const headingEl = el.querySelector(`#${item.href}`)
+      const headingEl = document.getElementById(item.href)
       if (headingEl) {
         const offsetLeft = headingEl.offsetLeft
         if (offsetLeft <= scrollLeftVal + 10 && offsetLeft > closestOffset) {
