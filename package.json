@@ -1,0 +1,56 @@
+{
+  "name": "inkwell-reader",
+  "version": "1.0.0",
+  "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
+  "main": "out/main/index.js",
+  "author": "InkWell Reader",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.inkwell.reader",
+    "productName": "InkWell Reader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+        "to": "resources/pdf.worker.min.mjs"
+      }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "vite": "^5.3.1"
+  },
+  "dependencies": {
+    "chardet": "^2.0.0",
+    "electron-store": "^8.2.0",
+    "epubjs": "^0.3.93",
+    "iconv-lite": "^0.6.3",
+    "pdfjs-dist": "^4.4.168",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.2"
+  }
+}

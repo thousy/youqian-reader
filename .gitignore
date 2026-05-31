@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+.DS_Store
+*.log
+.gemini/
+.env
+.env.local
+.env.*.local
+appDataDir/
