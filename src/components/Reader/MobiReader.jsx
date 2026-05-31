@@ -8,6 +8,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const [rect, setRect] = useState({ width: 0, height: 0 })
   const [currentPage, setCurrentPage] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [currentChapterName, setCurrentChapterName] = useState('正文')
   
   // 目录相关 State
   const [toc, setToc] = useState([])
@@ -92,6 +93,38 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     return () => { mounted = false }
   }, [book.id])
 
+  // 物理章节名动态匹配，并安全驱动 TOC 左侧联动高亮
+  const updateChapterNameAndToc = useCallback((pageIdx) => {
+    if (toc.length === 0) {
+      setCurrentChapterName('正文')
+      return
+    }
+    const el = containerRef.current
+    if (!el || !rect.width) return
+
+    const scrollLeftVal = pageIdx * el.offsetWidth
+    let matchedChapter = '正文'
+    let matchedId = null
+    let closestOffset = -999999
+
+    for (let item of toc) {
+      const headingEl = el.querySelector(`#${item.href}`)
+      if (headingEl) {
+        const offsetLeft = headingEl.offsetLeft
+        if (offsetLeft <= scrollLeftVal + 10 && offsetLeft > closestOffset) {
+          closestOffset = offsetLeft
+          matchedChapter = item.label
+          matchedId = item.href
+        }
+      }
+    }
+
+    setCurrentChapterName(matchedChapter ? matchedChapter.trim() : '正文')
+    if (matchedId) {
+      setCurrentTocItem(matchedId)
+    }
+  }, [toc, rect.width])
+
   // 内容、尺寸、目录显示或设置改变时，重新计算分页并对齐 scrollLeft
   useEffect(() => {
     if (loading || !rect.width || !rect.height || !containerRef.current) return
@@ -109,19 +142,22 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
           const idx = Math.min(savedProgress.pageIndex, total - 1)
           setCurrentPage(idx)
           el.scrollLeft = idx * el.offsetWidth
+          updateChapterNameAndToc(idx)
         } else {
           setCurrentPage(0)
           el.scrollLeft = 0
+          updateChapterNameAndToc(0)
         }
       } else {
         const idx = Math.min(currentPage, total - 1)
         setCurrentPage(idx)
         el.scrollLeft = idx * el.offsetWidth
+        updateChapterNameAndToc(idx)
       }
     }, 120) // 给排版和可能的 DOM 变化多留一点渲染响应时间
 
     return () => clearTimeout(timer)
-  }, [loading, rect.width, rect.height, content, showToc, settings.fontSize, settings.fontFamily, settings.lineHeight])
+  }, [loading, rect.width, rect.height, content, showToc, settings.fontSize, settings.fontFamily, settings.lineHeight, updateChapterNameAndToc])
 
   // 注册进度读取器
   useEffect(() => {
@@ -143,7 +179,9 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     
     const percentage = total > 1 ? clamped / (total - 1) : 0
     onProgressChange({ pageIndex: clamped, percentage })
-  }, [rect.width, onProgressChange])
+
+    updateChapterNameAndToc(clamped)
+  }, [rect.width, onProgressChange, updateChapterNameAndToc])
 
   // 目录项跳转定位方法
   const jumpToToc = useCallback((targetId) => {
@@ -329,29 +367,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
               zIndex: 10,
               whiteSpace: 'nowrap'
             }}>
-              章节：{(() => {
-                if (toc.length === 0) return '正文'
-                const el = containerRef.current
-                if (!el || !rect.width) return '正文'
-                let matchedChapter = '正文'
-                let matchedId = null
-                let closestOffset = -999999
-                for (let item of toc) {
-                  const headingEl = el.querySelector(`#${item.href}`)
-                  if (headingEl) {
-                    const offsetLeft = headingEl.offsetLeft
-                    if (offsetLeft <= el.scrollLeft + 10 && offsetLeft > closestOffset) {
-                      closestOffset = offsetLeft
-                      matchedChapter = item.label
-                      matchedId = item.href
-                    }
-                  }
-                }
-                if (matchedId && currentTocItem !== matchedId) {
-                  setTimeout(() => setCurrentTocItem(matchedId), 0)
-                }
-                return matchedChapter.trim()
-              })()}    第{currentPage + 1}/{totalPages}页
+              章节：{currentChapterName}    第{currentPage + 1}/{totalPages}页
             </div>
           </>
         )}

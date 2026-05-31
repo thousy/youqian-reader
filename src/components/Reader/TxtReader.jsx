@@ -7,6 +7,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   const [rect, setRect] = useState({ width: 0, height: 0 })
   const [pageIndex, setPageIndex] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
+  const [currentChapterName, setCurrentChapterName] = useState('正文')
   
   const containerRef = useRef(null)
   const wrapperRef = useRef(null)
@@ -73,6 +74,38 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return () => { mounted = false }
   }, [book.id])
 
+  // 物理章节名动态匹配，完全规避 React JSX 渲染期副作用
+  const updateChapterName = useCallback((pageIdx) => {
+    if (chapters.length === 0) {
+      setCurrentChapterName('正文')
+      return
+    }
+    const el = containerRef.current
+    if (!el || !rect.width) return
+    const pElements = el.querySelectorAll('p')
+    if (pElements.length === 0) return
+
+    const scrollLeftVal = pageIdx * el.offsetWidth
+    let currentParaIdx = 0
+    for (let i = 0; i < pElements.length; i++) {
+      const p = pElements[i]
+      if (p.offsetLeft >= scrollLeftVal - 10) {
+        currentParaIdx = i
+        break
+      }
+    }
+
+    let matchedChapter = '正文'
+    for (let i = 0; i < chapters.length; i++) {
+      if (chapters[i].paraIndex <= currentParaIdx) {
+        matchedChapter = chapters[i].label
+      } else {
+        break
+      }
+    }
+    setCurrentChapterName(matchedChapter ? matchedChapter.trim() : '正文')
+  }, [chapters, rect.width])
+
   // 当内容、尺寸或设置改变时，重新计算分页并对齐 scrollLeft
   useEffect(() => {
     if (loading || !rect.width || !rect.height || !containerRef.current) return
@@ -90,19 +123,22 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
           const idx = Math.min(savedProgress.pageIndex, total - 1)
           setPageIndex(idx)
           el.scrollLeft = idx * el.offsetWidth
+          updateChapterName(idx)
         } else {
           setPageIndex(0)
           el.scrollLeft = 0
+          updateChapterName(0)
         }
       } else {
         const idx = Math.min(pageIndex, total - 1)
         setPageIndex(idx)
         el.scrollLeft = idx * el.offsetWidth
+        updateChapterName(idx)
       }
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [loading, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight])
+  }, [loading, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight, updateChapterName])
 
   // 注册进度读取器
   useEffect(() => {
@@ -124,7 +160,9 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     
     const percentage = total > 1 ? clamped / (total - 1) : 0
     onProgressChange({ pageIndex: clamped, percentage })
-  }, [rect.width, onProgressChange])
+    
+    updateChapterName(clamped)
+  }, [rect.width, onProgressChange, updateChapterName])
 
   const nextPage = useCallback(() => goToPage(pageIndex + 1), [pageIndex, goToPage])
   const prevPage = useCallback(() => goToPage(pageIndex - 1), [pageIndex, goToPage])
@@ -285,31 +323,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
             zIndex: 10,
             whiteSpace: 'nowrap'
           }}>
-            章节：{(() => {
-              if (chapters.length === 0) return '正文'
-              const el = containerRef.current
-              if (!el || !rect.width) return '正文'
-              const pElements = el.querySelectorAll('p')
-              if (pElements.length === 0) return '正文'
-              const scrollLeftVal = el.scrollLeft
-              let currentParaIdx = 0
-              for (let i = 0; i < pElements.length; i++) {
-                const p = pElements[i]
-                if (p.offsetLeft >= scrollLeftVal - 10) {
-                  currentParaIdx = i
-                  break
-                }
-              }
-              let matchedChapter = '正文'
-              for (let i = 0; i < chapters.length; i++) {
-                if (chapters[i].paraIndex <= currentParaIdx) {
-                  matchedChapter = chapters[i].label
-                } else {
-                  break
-                }
-              }
-              return matchedChapter.trim()
-            })()}    第{pageIndex + 1}/{totalPages}页
+            章节：{currentChapterName}    第{pageIndex + 1}/{totalPages}页
           </div>
         </>
       )}

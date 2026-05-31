@@ -11,6 +11,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [loading, setLoading] = useState(true)
   const [pageIndex, setPageIndex] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
+  const [currentChapterName, setCurrentChapterName] = useState('正文')
   const { showToast } = useStore()
 
   // 将 savedProgress 存入 ref，避免闭包捕获旧值
@@ -107,7 +108,22 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         // 加载目录
         epubBook.loaded.navigation.then(nav => {
           if (!mounted) return
-          setToc(flattenToc(nav.toc))
+          const flat = flattenToc(nav.toc)
+          setToc(flat)
+          
+          // 执行首次章节名字匹配
+          const curLoc = renditionRef.current?.currentLocation()
+          const href = curLoc?.start?.href
+          if (href) {
+            const cleanHref = href.split('#')[0]
+            const matched = flat.find(item => {
+              const itemClean = item.href.split('#')[0]
+              return itemClean === cleanHref || item.href === href
+            })
+            if (matched && matched.label) {
+              setCurrentChapterName(matched.label.trim())
+            }
+          }
         })
 
         // 进度追踪
@@ -115,7 +131,25 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           if (!mounted) return
           const progress = location.start.percentage || 0
           onProgressChange({ cfi: location.start.cfi, percentage: progress })
-          setCurrentTocItem(location.start.href)
+          
+          const href = location.start.href
+          setCurrentTocItem(href)
+
+          // 极速匹配章节名
+          if (href && toc && toc.length > 0) {
+            const cleanHref = href.split('#')[0]
+            const matched = toc.find(item => {
+              const itemClean = item.href.split('#')[0]
+              return itemClean === cleanHref || item.href === href
+            })
+            if (matched && matched.label) {
+              setCurrentChapterName(matched.label.trim())
+            } else {
+              setCurrentChapterName('正文')
+            }
+          } else {
+            setCurrentChapterName('正文')
+          }
 
           // 安全检索虚拟绝对页码
           if (epubBook.locations && epubBook.locations.length > 0) {
@@ -346,16 +380,6 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }
 
-  const getCurrentChapterName = () => {
-    if (!currentTocItem || toc.length === 0) return '正文'
-    const cleanHref = currentTocItem.split('#')[0]
-    const matched = toc.find(item => {
-      const itemClean = item.href.split('#')[0]
-      return itemClean === cleanHref || item.href === currentTocItem
-    })
-    return matched ? matched.label.trim() : '正文'
-  }
-
   return (
     <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
       {/* 目录面板 */}
@@ -430,7 +454,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           zIndex: 10,
           whiteSpace: 'nowrap'
         }}>
-          {totalPages > 0 ? `章节：${getCurrentChapterName()}    第${pageIndex + 1}/${totalPages}页` : `正在计算页数...`}
+          {totalPages > 0 ? `章节：${currentChapterName}    第${pageIndex + 1}/${totalPages}页` : `正在计算页数...`}
         </div>
       </div>
     </div>
