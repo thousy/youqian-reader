@@ -4,6 +4,8 @@ export const useStore = create((set, get) => ({
   // ===== 书库状态 =====
   books: [],
   filteredBooks: [],
+  categories: [],
+  selectedCategoryId: 'all',
   searchQuery: '',
   filterFormat: 'all',
   viewMode: 'grid', // 'grid' | 'list'
@@ -39,10 +41,15 @@ export const useStore = create((set, get) => ({
   },
 
   applyFilter: () => {
-    const { books, searchQuery, filterFormat } = get()
+    const { books, searchQuery, filterFormat, selectedCategoryId } = get()
     let filtered = [...books]
     if (filterFormat !== 'all') {
       filtered = filtered.filter(b => b.format === filterFormat)
+    }
+    if (selectedCategoryId === 'uncategorized') {
+      filtered = filtered.filter(b => !b.categoryId)
+    } else if (selectedCategoryId !== 'all') {
+      filtered = filtered.filter(b => b.categoryId === selectedCategoryId)
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
@@ -121,5 +128,12 @@ export const useStore = create((set, get) => ({
     const { confirm } = get()
     if (confirm?.resolve) confirm.resolve(result)
     set({ confirm: null })
+  },
+
+  // ===== 分类管理 =====
+  setCategories: (categories) => set({ categories }),
+  setSelectedCategoryId: (id) => {
+    set({ selectedCategoryId: id })
+    get().applyFilter()
   }
 }))

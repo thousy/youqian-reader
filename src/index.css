@@ -1215,3 +1215,333 @@ html, body, #root {
 .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 16px var(--accent-glow); }
 .btn-danger { background: #7f1d1d; color: #fca5a5; border-color: rgba(248,113,113,0.3); }
 .btn-danger:hover { background: #991b1b; }
+
+/* ===== 书籍分类样式 ===== */
+
+/* 侧边栏徽章（数量丸子） */
+.sidebar-badge {
+  margin-left: auto;
+  font-size: 11px;
+  background: var(--bg-hover);
+  padding: 1px 7px;
+  border-radius: 10px;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+.nav-item.active .sidebar-badge {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--accent-light);
+}
+
+/* 分类增加触发器 */
+.cat-add-trigger {
+  padding: 2px;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+.cat-add-trigger:hover {
+  background: var(--bg-hover);
+  color: var(--accent-light) !important;
+}
+
+/* 内联新建分类面板 */
+.cat-inline-add-panel {
+  background: var(--bg-layer2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: catIn 0.2s ease;
+}
+
+.cat-inline-input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 6px 8px;
+  outline: none;
+  transition: var(--transition);
+}
+.cat-inline-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.cat-inline-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.cat-inline-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+}
+.cat-inline-btn.confirm {
+  background: var(--accent);
+  color: white;
+}
+.cat-inline-btn.confirm:hover {
+  background: var(--accent-light);
+}
+.cat-inline-btn.cancel {
+  background: transparent;
+  color: var(--text-muted);
+}
+.cat-inline-btn.cancel:hover {
+  color: var(--text-secondary);
+}
+
+/* 分类树列表 */
+.sidebar-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.category-item {
+  position: relative;
+  transition: var(--transition);
+}
+.category-item-name {
+  margin-left: 0px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* 分类快捷操作（重命名，删除） */
+.category-item-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: var(--transition);
+  margin-left: auto;
+}
+.category-item:hover .category-item-actions {
+  opacity: 1;
+}
+.category-item:hover .sidebar-badge {
+  display: none; /* 悬停时隐藏徽章以显示操作按钮 */
+}
+
+.category-action-mini {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 4px;
+  transition: var(--transition);
+}
+.category-action-mini:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.category-action-mini.delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+/* 内联重命名输入框 */
+.cat-item-edit-input {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 2px 6px;
+  outline: none;
+  width: 100%;
+}
+
+/* ===== 分类气泡层 Popover ===== */
+.category-popover {
+  position: absolute;
+  bottom: 50px;
+  right: 12px;
+  width: 160px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 99;
+  animation: popoverIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.category-popover.list-mode {
+  bottom: auto;
+  animation: popoverInList 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes popoverIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes popoverInList {
+  from { opacity: 0; transform: translateY(-8px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.popover-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 8px;
+  margin-bottom: 2px;
+}
+
+.popover-list {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.popover-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.popover-item.active {
+  background: var(--accent-glow);
+  color: var(--accent-light);
+  font-weight: 600;
+}
+
+.popover-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.popover-item.active .popover-item-dot {
+  background: var(--accent-light);
+  box-shadow: 0 0 6px var(--accent-light);
+}
+
+.popover-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 4px;
+}
+
+.popover-add-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px;
+  border-radius: 6px;
+  transition: var(--transition);
+  width: 100%;
+}
+.popover-add-trigger:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Popover 新建分类内联面板 */
+.popover-new-cat-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+  animation: catIn 0.15s ease;
+}
+
+.popover-new-input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 4px 6px;
+  outline: none;
+  transition: var(--transition);
+}
+.popover-new-input:focus {
+  border-color: var(--accent);
+}
+
+.popover-new-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.popover-new-btn {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  transition: var(--transition);
+}
+.popover-new-btn.confirm {
+  background: var(--accent);
+  color: white;
+}
+.popover-new-btn.confirm:hover {
+  background: var(--accent-light);
+}
+.popover-new-btn.cancel {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+@keyframes catIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

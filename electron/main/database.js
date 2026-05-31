@@ -7,6 +7,7 @@ export function setupDatabase() {
     name: 'inkwell-data',
     defaults: {
       books: [],
+      categories: [],
       readingProgress: {},
       bookmarks: {},
       settings: {

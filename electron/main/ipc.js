@@ -5,7 +5,8 @@ import {
   getAllBooks, addBook, removeBook, updateBook, getBookById,
   getReadingProgress, saveReadingProgress,
   getBookmarks, addBookmark, removeBookmark,
-  getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook
+  getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook,
+  getStore
 } from './database'
 import { extractEpubMeta } from './parsers/epub'
 import { extractPdfMeta } from './parsers/pdf'
@@ -119,4 +120,8 @@ export function setupIpcHandlers() {
   ipcMain.handle('save-settings', (_, settings) => { saveSettings(settings); return true })
   ipcMain.handle('get-last-opened-book', () => getLastOpenedBook())
   ipcMain.handle('set-last-opened-book', (_, bookId) => { setLastOpenedBook(bookId); return true })
+
+  // ===== 分类管理 =====
+  ipcMain.handle('get-categories', () => getStore().get('categories', []))
+  ipcMain.handle('save-categories', (_, categories) => { getStore().set('categories', categories); return true })
 }

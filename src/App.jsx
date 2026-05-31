@@ -9,7 +9,7 @@ import { ConfirmModal } from './components/UI/ConfirmModal'
 import { DropOverlay } from './components/UI/DropOverlay'
 
 export default function App() {
-  const { currentView, toast, confirm, setBooks, openBook, showToast, settings, updateSettings } = useStore()
+  const { currentView, toast, confirm, setBooks, openBook, showToast, settings, updateSettings, setCategories } = useStore()
   const [dragging, setDragging] = useState(false)
 
   // 启动时加载数据
@@ -23,6 +23,10 @@ export default function App() {
         // 加载书库
         const books = await window.api.getAllBooks()
         setBooks(books)
+
+        // 加载分类
+        const categories = await window.api.getCategories()
+        if (categories) setCategories(categories)
 
         // 恢复上次阅读
         const lastBookId = await window.api.getLastOpenedBook()

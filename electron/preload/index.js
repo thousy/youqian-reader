@@ -46,6 +46,10 @@ const api = {
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
   getLastOpenedBook: () => ipcRenderer.invoke('get-last-opened-book'),
   setLastOpenedBook: (id) => ipcRenderer.invoke('set-last-opened-book', id),
+
+  // 分类管理
+  getCategories: () => ipcRenderer.invoke('get-categories'),
+  saveCategories: (cats) => ipcRenderer.invoke('save-categories', cats),
 }
 
 contextBridge.exposeInMainWorld('api', api)
