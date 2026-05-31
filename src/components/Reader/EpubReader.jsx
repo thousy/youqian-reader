@@ -9,6 +9,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [toc, setToc] = useState([])
   const [currentTocItem, setCurrentTocItem] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [pageIndex, setPageIndex] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
   const { showToast } = useStore()
 
   // 将 savedProgress 存入 ref，避免闭包捕获旧值
@@ -66,6 +68,22 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         if (!mounted) return
         console.log('EPUB: Book ready')
 
+        // 异步安全高大步长生成位置以防止崩溃
+        epubBook.locations.generate(1024).then(() => {
+          if (mounted && epubBook.locations) {
+            setTotalPages(epubBook.locations.length)
+            try {
+              const curLoc = renditionRef.current?.currentLocation()
+              if (curLoc?.start?.cfi) {
+                const idx = epubBook.locations.locationFromCfi(curLoc.start.cfi)
+                if (idx !== -1 && idx != null) setPageIndex(idx)
+              }
+            } catch (err) {
+              console.warn('EPUB: Initial location index calculation failed:', err)
+            }
+          }
+        }).catch(err => console.warn('EPUB: locations generate failed:', err))
+
         // 3. 等待容器有物理尺寸（防止 0x0 分页崩溃）
         await waitForContainerSize(viewerRef.current)
         if (!mounted) return
@@ -98,6 +116,21 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const progress = location.start.percentage || 0
           onProgressChange({ cfi: location.start.cfi, percentage: progress })
           setCurrentTocItem(location.start.href)
+
+          // 安全检索虚拟绝对页码
+          if (epubBook.locations && epubBook.locations.length > 0) {
+            try {
+              const cfi = location.start.cfi
+              if (cfi) {
+                const idx = epubBook.locations.locationFromCfi(cfi)
+                if (idx !== -1 && idx != null) {
+                  setPageIndex(idx)
+                }
+              }
+            } catch (err) {
+              console.warn('EPUB: relocated index calculation failed:', err)
+            }
+          }
         })
 
         // 注册获取当前位置的函数（用于书签）
@@ -313,6 +346,16 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }
 
+  const getCurrentChapterName = () => {
+    if (!currentTocItem || toc.length === 0) return '正文'
+    const cleanHref = currentTocItem.split('#')[0]
+    const matched = toc.find(item => {
+      const itemClean = item.href.split('#')[0]
+      return itemClean === cleanHref || item.href === currentTocItem
+    })
+    return matched ? matched.label.trim() : '正文'
+  }
+
   return (
     <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
       {/* 目录面板 */}
@@ -368,6 +411,27 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             <polyline points="9 18 15 12 9 6"/>
           </svg>
         </button>
+
+        {/* Page indicator */}
+        <div style={{
+          position: 'absolute',
+          bottom: '16px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '4px 16px',
+          borderRadius: '999px',
+          background: 'rgba(128,128,128,0.15)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          color: 'var(--text-muted)',
+          fontSize: '12px',
+          userSelect: 'none',
+          pointerEvents: 'none',
+          zIndex: 10,
+          whiteSpace: 'nowrap'
+        }}>
+          {totalPages > 0 ? `章节：${getCurrentChapterName()}    第${pageIndex + 1}/${totalPages}页` : `正在计算页数...`}
+        </div>
       </div>
     </div>
   )

@@ -329,7 +329,29 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
               zIndex: 10,
               whiteSpace: 'nowrap'
             }}>
-              第 {currentPage + 1} / {totalPages} 页
+              章节：{(() => {
+                if (toc.length === 0) return '正文'
+                const el = containerRef.current
+                if (!el || !rect.width) return '正文'
+                let matchedChapter = '正文'
+                let matchedId = null
+                let closestOffset = -999999
+                for (let item of toc) {
+                  const headingEl = el.querySelector(`#${item.href}`)
+                  if (headingEl) {
+                    const offsetLeft = headingEl.offsetLeft
+                    if (offsetLeft <= el.scrollLeft + 10 && offsetLeft > closestOffset) {
+                      closestOffset = offsetLeft
+                      matchedChapter = item.label
+                      matchedId = item.href
+                    }
+                  }
+                }
+                if (matchedId && currentTocItem !== matchedId) {
+                  setTimeout(() => setCurrentTocItem(matchedId), 0)
+                }
+                return matchedChapter.trim()
+              })()}    第{currentPage + 1}/{totalPages}页
             </div>
           </>
         )}

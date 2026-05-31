@@ -19,6 +19,23 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return content.split(/\r?\n/)
   }, [content])
 
+  // 正则解析 TXT 目录章节
+  const chapters = useMemo(() => {
+    if (paragraphs.length === 0) return []
+    const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕])(.*)$/i
+    const list = []
+    paragraphs.forEach((para, index) => {
+      const text = para.trim()
+      if (text.length > 0 && text.length < 50 && CHAPTER_REGEX.test(text)) {
+        list.push({
+          label: text,
+          paraIndex: index
+        })
+      }
+    })
+    return list
+  }, [paragraphs])
+
   // 监听外层容器的实际大小
   useEffect(() => {
     const el = wrapperRef.current
@@ -268,7 +285,31 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
             zIndex: 10,
             whiteSpace: 'nowrap'
           }}>
-            第 {pageIndex + 1} / {totalPages} 页
+            章节：{(() => {
+              if (chapters.length === 0) return '正文'
+              const el = containerRef.current
+              if (!el || !rect.width) return '正文'
+              const pElements = el.querySelectorAll('p')
+              if (pElements.length === 0) return '正文'
+              const scrollLeftVal = el.scrollLeft
+              let currentParaIdx = 0
+              for (let i = 0; i < pElements.length; i++) {
+                const p = pElements[i]
+                if (p.offsetLeft >= scrollLeftVal - 10) {
+                  currentParaIdx = i
+                  break
+                }
+              }
+              let matchedChapter = '正文'
+              for (let i = 0; i < chapters.length; i++) {
+                if (chapters[i].paraIndex <= currentParaIdx) {
+                  matchedChapter = chapters[i].label
+                } else {
+                  break
+                }
+              }
+              return matchedChapter.trim()
+            })()}    第{pageIndex + 1}/{totalPages}页
           </div>
         </>
       )}

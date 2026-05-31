@@ -159,6 +159,27 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
         <div ref={containerRef} className="pdf-container">
           <canvas ref={canvasRef} className="pdf-page-canvas" id="pdf-canvas"/>
         </div>
+        {!loading && totalPages > 0 && (
+          <div style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '4px 16px',
+            borderRadius: '999px',
+            background: 'rgba(128,128,128,0.15)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            color: 'var(--text-muted)',
+            fontSize: '12px',
+            userSelect: 'none',
+            pointerEvents: 'none',
+            zIndex: 10,
+            whiteSpace: 'nowrap'
+          }}>
+            章节：{book.title || '正文'}    第{currentPage}/{totalPages}页
+          </div>
+        )}
         {!loading && currentPage > 1 && (
           <button
             style={{...navButtonStyle, left: 0, paddingLeft: '12px', justifyContent: 'flex-start'}}
