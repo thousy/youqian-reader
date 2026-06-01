@@ -14,6 +14,9 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [currentChapterName, setCurrentChapterName] = useState('正文')
   const { showToast } = useStore()
 
+  // 用 ref 保存扁平化的目录列表，彻底解决 relocated 事件闭包捕获旧空数组问题
+  const tocRef = useRef([])
+
   // 极速获取文件名用于解决 EPUB 章节路径 mismatch 难题
   const getFilename = (path) => {
     if (!path) return ''
@@ -102,6 +105,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           if (!mounted) return
           const flat = flattenToc(nav.toc)
           setToc(flat)
+          tocRef.current = flat
           
           // 执行首次章节名字匹配
           const curLoc = renditionRef.current?.currentLocation()
@@ -130,9 +134,10 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const href = location.start.href
           setCurrentTocItem(href)
 
-          // 极速模糊匹配章节名
-          if (href && toc && toc.length > 0) {
-            const matched = toc.find(item => {
+          // 极速模糊匹配章节名 (使用 tocRef.current 规避捕获空数组)
+          const currentToc = tocRef.current
+          if (href && currentToc && currentToc.length > 0) {
+            const matched = currentToc.find(item => {
               const clean1 = item.href.split('#')[0]
               const clean2 = href.split('#')[0]
               if (clean1 === clean2 || item.href === href) return true
