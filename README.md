@@ -1,10 +1,10 @@
-# YouQian Reader (游潜阅读器) 📚
+# YouQian Reader 📚
 
 [![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
-**YouQian Reader (游潜阅读器)** 是一款专为极致阅读体验量身打造的桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流电子书格式，配备了豪华的学术级纸质排版系统 and 毫秒级响应的翻页动画，在保持 60Hz 帧率下带来实体书般的纯净与舒适。
+**YouQian Reader** 是一款专为极致阅读体验量身打造的桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流电子书格式，配备了豪华 of 学术级纸质排版系统 and 毫秒级响应的翻页动画，在保持 60Hz 帧率下带来实体书般的纯净与舒适。
 
 ---
 
