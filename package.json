@@ -1,9 +1,9 @@
 {
-  "name": "inkwell-reader",
+  "name": "youqian-reader",
   "version": "1.1.0",
   "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
   "main": "out/main/index.js",
-  "author": "InkWell Reader",
+  "author": "YouQian Reader",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -11,8 +11,8 @@
     "package": "npm run build && electron-builder"
   },
   "build": {
-    "appId": "com.inkwell.reader",
-    "productName": "InkWell Reader",
+    "appId": "com.youqian.reader",
+    "productName": "YouQian Reader",
     "directories": {
       "output": "release"
     },

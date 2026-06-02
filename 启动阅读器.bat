@@ -1,5 +1,5 @@
 @echo off
-title InkWell Reader
+title YouQian Reader
 cd /d "%~dp0"
 set PATH=%~dp0node;%PATH%
 set HTTPS_PROXY=http://127.0.0.1:1080

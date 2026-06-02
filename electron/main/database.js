@@ -4,7 +4,7 @@ let store = null
 
 export function setupDatabase() {
   store = new Store({
-    name: 'inkwell-data',
+    name: 'youqian-data',
     defaults: {
       books: [],
       categories: [],
