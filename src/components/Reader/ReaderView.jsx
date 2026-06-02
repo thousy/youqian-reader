@@ -93,18 +93,17 @@ export function ReaderView() {
           </svg>
           书库
         </button>
-
         <div 
-          className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3'].includes(format) ? 'clickable' : ''}`}
-          onClick={['EPUB', 'MOBI', 'AZW3'].includes(format) ? () => setShowToc(!showToc) : undefined}
-          title={['EPUB', 'MOBI', 'AZW3'].includes(format) ? "点击切换目录" : ""}
+          className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? 'clickable' : ''}`}
+          onClick={['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? () => setShowToc(!showToc) : undefined}
+          title={['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? "点击切换目录" : ""}
         >
           <div className="reader-book-title">{currentBook.title}</div>
           <div className="reader-book-author">{currentBook.author}</div>
         </div>
 
-        {/* 目录（仅 EPUB/MOBI/AZW3 支持） */}
-        {['EPUB', 'MOBI', 'AZW3'].includes(format) && (
+        {/* 目录 */}
+        {['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) && (
           <button
             className={`reader-toolbar-btn ${showToc ? 'active' : ''}`}
             onClick={() => setShowToc(!showToc)}

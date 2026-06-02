@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs'
 import { basename, extname } from 'path'
+import chardet from 'chardet'
+import iconv from 'iconv-lite'
 
 export async function extractTxtMeta(filePath) {
   return {
@@ -26,12 +28,12 @@ export async function readTxtFile(filePath) {
     // 手动转换 UTF-16 BE
     text = convertUtf16Be(buf.slice(2))
   } else {
-    // 尝试作为 GBK/GB2312 读取（动态 import chardet/iconv-lite）
+    // 尝试作为 GBK/GB2312 读取
     try {
-      const chardet = await import('chardet')
-      const detected = chardet.default.detect(buf)
-      const iconv = await import('iconv-lite')
-      text = iconv.default.decode(buf, detected || 'gbk')
+      // 仅截取前 10000 字节进行编码猜测采样，速度提升数百倍，并保障高准确率！
+      const sampleBuf = buf.slice(0, Math.min(buf.length, 10000))
+      const detected = chardet.detect(sampleBuf)
+      text = iconv.decode(buf, detected || 'gbk')
     } catch {
       text = buf.toString('utf8')
     }

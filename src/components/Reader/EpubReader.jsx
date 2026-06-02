@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import ePub from 'epubjs'
 import { useStore } from '../../store/useStore'
+import { StatusBar } from './StatusBar'
 
 export function EpubReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
   const viewerRef = useRef(null)
@@ -108,20 +109,24 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           tocRef.current = flat
           
           // 执行首次章节名字匹配
-          const curLoc = renditionRef.current?.currentLocation()
-          const href = curLoc?.start?.href
-          if (href) {
-            const matched = flat.find(item => {
-              const clean1 = item.href.split('#')[0]
-              const clean2 = href.split('#')[0]
-              if (clean1 === clean2 || item.href === href) return true
-              const file1 = getFilename(item.href)
-              const file2 = getFilename(href)
-              return file1 && file2 && file1 === file2
-            })
-            if (matched && matched.label) {
-              setCurrentChapterName(matched.label.trim())
+          try {
+            const curLoc = renditionRef.current?.currentLocation()
+            const href = curLoc?.start?.href
+            if (href) {
+              const matched = flat.find(item => {
+                const clean1 = item.href.split('#')[0]
+                const clean2 = href.split('#')[0]
+                if (clean1 === clean2 || item.href === href) return true
+                const file1 = getFilename(item.href)
+                const file2 = getFilename(href)
+                return file1 && file2 && file1 === file2
+              })
+              if (matched && matched.label) {
+                setCurrentChapterName(matched.label.trim())
+              }
             }
+          } catch (e) {
+            console.log('EPUB: Initial chapter match skipped (rendition not fully ready yet).')
           }
         })
 
@@ -453,26 +458,14 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           </svg>
         </button>
 
-        {/* Page indicator */}
-        <div style={{
-          position: 'absolute',
-          bottom: '16px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          padding: '4px 16px',
-          borderRadius: '999px',
-          background: 'rgba(128,128,128,0.15)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          color: 'var(--text-muted)',
-          fontSize: '12px',
-          userSelect: 'none',
-          pointerEvents: 'none',
-          zIndex: 10,
-          whiteSpace: 'nowrap'
-        }}>
-          {totalPages > 0 ? `章节：${currentChapterName}    第${pageIndex + 1}/${totalPages}页` : `正在计算页数...`}
-        </div>
+        {/* Status bar */}
+        {totalPages > 0 && (
+          <StatusBar
+            chapterName={currentChapterName}
+            currentPage={pageIndex + 1}
+            totalPages={totalPages}
+          />
+        )}
       </div>
     </div>
   )

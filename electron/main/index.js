@@ -3,6 +3,9 @@ import { join } from 'path'
 import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
 
+// 屏蔽开发环境下控制台堆积的黄色 Electron 安全警告，提供完美清爽的开发调试体验
+process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
+
 let mainWindow = null
 
 function createWindow() {

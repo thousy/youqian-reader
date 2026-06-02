@@ -317,6 +317,27 @@ export function Sidebar() {
           </div>
         </>
       )}
+
+      {/* 底部技术支持 */}
+      <div style={{
+        marginTop: 'auto',
+        padding: '16px',
+        borderTop: '1px solid var(--border-subtle)',
+      }}>
+        <div style={{
+          padding: '10px',
+          border: '1px solid var(--border)',
+          borderRadius: '8px',
+          color: 'var(--text-secondary)',
+          fontSize: '13px',
+          fontWeight: '600',
+          textAlign: 'center',
+          background: 'rgba(255, 255, 255, 0.02)',
+          userSelect: 'none'
+        }}>
+          YouQian Tech
+        </div>
+      </div>
     </div>
   )
 }

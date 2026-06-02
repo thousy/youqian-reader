@@ -25,7 +25,8 @@ export const useStore = create((set, get) => ({
     fontSize: 18,
     fontFamily: 'Georgia',
     theme: 'dark',
-    lineHeight: 1.8
+    lineHeight: 1.8,
+    globalTheme: 'dark'
   },
 
   // ===== Toast 通知 =====

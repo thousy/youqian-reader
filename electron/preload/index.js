@@ -50,6 +50,9 @@ const api = {
   // 分类管理
   getCategories: () => ipcRenderer.invoke('get-categories'),
   saveCategories: (cats) => ipcRenderer.invoke('save-categories', cats),
+
+  // 封面刷新
+  refreshBookCover: (bookId) => ipcRenderer.invoke('refresh-book-cover', bookId),
 }
 
 contextBridge.exposeInMainWorld('api', api)

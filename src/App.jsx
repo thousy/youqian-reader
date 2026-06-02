@@ -24,6 +24,23 @@ export default function App() {
         const books = await window.api.getAllBooks()
         setBooks(books)
 
+        // 自动刷新缺失封面的 MOBI/AZW3 书籍
+        const booksNeedingCover = books.filter(b => !b.cover && ['MOBI', 'AZW3'].includes(b.format))
+        if (booksNeedingCover.length > 0) {
+          Promise.all(booksNeedingCover.map(async (b) => {
+            try {
+              const result = await window.api.refreshBookCover(b.id)
+              if (result.success) return { id: b.id, cover: result.cover }
+            } catch {}
+            return null
+          })).then(results => {
+            const updated = results.filter(Boolean)
+            if (updated.length > 0) {
+              window.api.getAllBooks().then(refreshed => setBooks(refreshed))
+            }
+          })
+        }
+
         // 加载分类
         const categories = await window.api.getCategories()
         if (categories) setCategories(categories)
@@ -86,7 +103,7 @@ export default function App() {
   }
 
   return (
-    <div className="app" data-theme={settings.theme}>
+    <div className="app" data-theme={settings.theme} data-global-theme={settings.globalTheme || 'dark'}>
       <TitleBar />
       <div className="main-layout">
         <Sidebar />

@@ -1,6 +1,6 @@
 {
   "name": "inkwell-reader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
   "main": "out/main/index.js",
   "author": "InkWell Reader",

@@ -339,12 +339,59 @@ export async function extractMobiMeta(filePath) {
   try {
     const buf = readFileSync(filePath)
     const palm = readPalmHeader(buf)
-    const header = parseMobiHeader(buf, palm.records[0])
+    const record0Offset = palm.records[0]
+    const header = parseMobiHeader(buf, record0Offset)
+
+    // 提取封面图片
+    let cover = null
+    const firstImageIndex = safeReadUInt32BE(buf, record0Offset + 108)
+
+    if (firstImageIndex > 0 && firstImageIndex < palm.records.length) {
+      // 尝试从 EXTH 记录 201 (CoverOffset) 获取封面偏移
+      let coverOffset = 0
+      const exthFlag = safeReadUInt32BE(buf, record0Offset + 128)
+      const headerLen = safeReadUInt32BE(buf, record0Offset + 20)
+      if (exthFlag & 0x40) {
+        const exthStart = record0Offset + 16 + headerLen
+        if (exthStart + 12 <= buf.length &&
+            buf.slice(exthStart, exthStart + 4).toString('ascii') === 'EXTH') {
+          const numExth = safeReadUInt32BE(buf, exthStart + 8)
+          let pos = exthStart + 12
+          for (let i = 0; i < numExth && pos + 8 <= buf.length; i++) {
+            const recType = safeReadUInt32BE(buf, pos)
+            const recLen  = safeReadUInt32BE(buf, pos + 4)
+            if (recLen < 8 || pos + recLen > buf.length) break
+            if (recType === 201) {
+              coverOffset = safeReadUInt32BE(buf, pos + 8)
+            }
+            pos += recLen
+          }
+        }
+      }
+
+      const coverRecIdx = firstImageIndex + coverOffset
+      if (coverRecIdx < palm.records.length) {
+        const imgStart = palm.records[coverRecIdx]
+        const imgEnd = (coverRecIdx + 1 < palm.records.length) ? palm.records[coverRecIdx + 1] : buf.length
+        if (imgStart < buf.length && imgStart < imgEnd) {
+          const imgBuf = buf.slice(imgStart, Math.min(imgEnd, buf.length))
+          if (imgBuf.length >= 4) {
+            let mimeType = null
+            if (imgBuf[0] === 0xFF && imgBuf[1] === 0xD8) mimeType = 'image/jpeg'
+            else if (imgBuf[0] === 0x89 && imgBuf[1] === 0x50) mimeType = 'image/png'
+            else if (imgBuf[0] === 0x47 && imgBuf[1] === 0x49) mimeType = 'image/gif'
+            if (mimeType) {
+              cover = `data:${mimeType};base64,${imgBuf.toString('base64')}`
+            }
+          }
+        }
+      }
+    }
 
     return {
       title:       header?.title       || basename(filePath, extname(filePath)),
       author:      header?.author      || '未知',
-      cover:       null,
+      cover:       cover,
       description: header?.description || '',
       publisher:   header?.publisher   || ''
     }
@@ -417,17 +464,93 @@ export async function extractMobiContent(filePath) {
     }
 
     // 合并所有解压后的字节，再统一解码
-    const combined = Buffer.concat(buffers)
+    const rawCombined = Buffer.concat(buffers)
+    const tempText = decodeBuffer(rawCombined, encoding)
+
+    // ================== 【主进程字节级全量物理锚点植入引擎 🌟】 ==================
+    const fileposMap = new Map()
+    const fileposRegex = /filepos=["']?(\d+)["']?/gi
+    let fileposMatch
+    while ((fileposMatch = fileposRegex.exec(tempText)) !== null) {
+      const val = parseInt(fileposMatch[1])
+      if (!isNaN(val)) fileposMap.set(val, true)
+    }
+
+    const sortedFilepos = Array.from(fileposMap.keys()).sort((a, b) => b - a)
+
+    let combined = rawCombined
+    for (const offset of sortedFilepos) {
+      if (offset >= combined.length) continue
+      
+      const prefix = combined.slice(0, offset)
+      const suffix = combined.slice(offset)
+      const anchorBuf = Buffer.from(`<span id="filepos-${offset}" class="mobi-filepos-anchor"></span>`, 'utf8')
+      combined = Buffer.concat([prefix, anchorBuf, suffix])
+    }
+    // ============================================================================
+
     let text = decodeBuffer(combined, encoding)
 
     // 清理 null 字节
     text = text.replace(/\x00/g, '')
+
+    // ===== 提取嵌入式图片记录 =====
+    // MOBI/AZW3 中，firstImageIndex 字段位于 record0Offset + 108
+    const firstImageIndex = safeReadUInt32BE(buf, record0Offset + 108)
+    const images = {}
+
+    if (firstImageIndex > 0 && firstImageIndex < palm.records.length) {
+      for (let i = firstImageIndex; i < palm.records.length; i++) {
+        const imgStart = palm.records[i]
+        const imgEnd = (i + 1 < palm.records.length) ? palm.records[i + 1] : buf.length
+        if (imgStart >= buf.length || imgStart >= imgEnd) continue
+
+        const imgBuf = buf.slice(imgStart, Math.min(imgEnd, buf.length))
+        if (imgBuf.length < 4) continue
+
+        // 通过 magic bytes 检测图片格式
+        let mimeType = null
+        if (imgBuf[0] === 0xFF && imgBuf[1] === 0xD8) {
+          mimeType = 'image/jpeg'
+        } else if (imgBuf[0] === 0x89 && imgBuf[1] === 0x50 && imgBuf[2] === 0x4E && imgBuf[3] === 0x47) {
+          mimeType = 'image/png'
+        } else if (imgBuf[0] === 0x47 && imgBuf[1] === 0x49 && imgBuf[2] === 0x46) {
+          mimeType = 'image/gif'
+        } else if (imgBuf[0] === 0x42 && imgBuf[1] === 0x4D) {
+          mimeType = 'image/bmp'
+        }
+
+        if (mimeType) {
+          const recIndex = i - firstImageIndex + 1
+          const base64 = imgBuf.toString('base64')
+          images[recIndex] = `data:${mimeType};base64,${base64}`
+        }
+      }
+    }
 
     // 构建 HTML
     let html = text
       .replace(/<mbp:pagebreak\s*\/>/gi, '<hr class="page-break"/>')
       .replace(/<[^>]*mobi[^>]*>/gi, '')
       .replace(/&nbsp;/g, '\u00a0')
+
+    // 将 recindex 引用的图片替换为 base64 data URI
+    html = html.replace(/<img([^>]*)recindex\s*=\s*["']?(\d+)["']?([^>]*)>/gi, (match, before, idx, after) => {
+      const recIdx = parseInt(idx)
+      if (images[recIdx]) {
+        return `<img${before}src="${images[recIdx]}"${after} style="max-width:100%;height:auto;display:block;margin:8px auto;">`
+      }
+      return match
+    })
+
+    // 对于使用 src="kindle:embed:XXXX" 格式的图片也进行替换
+    html = html.replace(/<img([^>]*)src\s*=\s*["']kindle:embed:([0-9A-Fa-f]+)(\?[^"']*)?["']([^>]*)>/gi, (match, before, hexIdx, query, after) => {
+      const recIdx = parseInt(hexIdx, 16)
+      if (images[recIdx]) {
+        return `<img${before}src="${images[recIdx]}"${after} style="max-width:100%;height:auto;display:block;margin:8px auto;">`
+      }
+      return match
+    })
 
     // 判断是否已是 HTML
     const isHtml = /<(p|div|html|body|h[1-6]|br)\b/i.test(html)

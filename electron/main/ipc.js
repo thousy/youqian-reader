@@ -124,4 +124,31 @@ export function setupIpcHandlers() {
   // ===== 分类管理 =====
   ipcMain.handle('get-categories', () => getStore().get('categories', []))
   ipcMain.handle('save-categories', (_, categories) => { getStore().set('categories', categories); return true })
+
+  // ===== 封面刷新 =====
+  ipcMain.handle('refresh-book-cover', async (_, bookId) => {
+    const book = getBookById(bookId)
+    if (!book) return { success: false, error: '书籍不存在' }
+    const ext = extname(book.filePath).toLowerCase().slice(1)
+    let cover = null
+    try {
+      if (ext === 'epub') {
+        const meta = await extractEpubMeta(book.filePath)
+        cover = meta.cover
+      } else if (ext === 'mobi' || ext === 'azw3') {
+        const meta = await extractMobiMeta(book.filePath)
+        cover = meta.cover
+      } else if (ext === 'pdf') {
+        const meta = await extractPdfMeta(book.filePath)
+        cover = meta.cover
+      }
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+    if (cover) {
+      updateBook(bookId, { cover })
+      return { success: true, cover }
+    }
+    return { success: false, error: '未找到封面图片' }
+  })
 }

@@ -44,6 +44,31 @@
   --blur: blur(12px);
 }
 
+/* ===== 全局明亮主题 ===== */
+[data-global-theme="light"] {
+  /* 背景层次 */
+  --bg-base: #f4f4fa;
+  --bg-layer1: #ffffff;
+  --bg-layer2: #fcfcfd;
+  --bg-layer3: #eaeaf2;
+  --bg-hover: #f0effc;
+
+  /* 文字 */
+  --text-primary: #1f1f38;
+  --text-secondary: #5c5c8a;
+  --text-muted: #8a8aaf;
+  --text-accent: #6d28d9;
+
+  /* 边框 */
+  --border: rgba(139, 92, 246, 0.12);
+  --border-hover: rgba(139, 92, 246, 0.25);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+
+  /* 玻璃态 */
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(139, 92, 246, 0.15);
+}
+
 /* ===== 阅读主题 ===== */
 [data-theme="sepia"] {
   --reader-bg: #f4ede0;
@@ -87,6 +112,8 @@ html, body, #root {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: var(--bg-base);
+  color: var(--text-primary);
 }
 
 /* ===== 标题栏 ===== */
@@ -394,8 +421,9 @@ html, body, #root {
   overflow-y: auto;
   padding: 20px 24px;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, 148px);
+  gap: 24px 20px;
+  justify-content: center;
   align-content: start;
 }
 
@@ -410,6 +438,9 @@ html, body, #root {
 
 /* ===== 书籍卡片（网格） ===== */
 .book-card {
+  width: 148px;
+  height: 290px;
+  flex-shrink: 0;
   cursor: pointer;
   border-radius: 10px;
   overflow: hidden;
@@ -426,25 +457,37 @@ html, body, #root {
 
 .book-cover {
   width: 100%;
-  aspect-ratio: 2/3;
-  background: linear-gradient(135deg, var(--bg-layer3), var(--bg-hover));
-  overflow: hidden;
+  height: 222px;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: linear-gradient(135deg, var(--bg-layer2), var(--bg-layer3));
+  overflow: hidden;
+  border-radius: 8px 8px 0 0;
 }
-.book-cover img { width: 100%; height: 100%; object-fit: cover; }
+.book-cover img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
 
 .book-cover-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  width: 100%;
-  height: 100%;
   padding: 16px;
+  background: linear-gradient(135deg, var(--bg-layer3), var(--bg-hover));
 }
 
 .book-format-badge {
@@ -561,7 +604,7 @@ html, body, #root {
   align-items: center;
   justify-content: center;
 }
-.book-list-cover img { width: 100%; height: 100%; object-fit: cover; }
+.book-list-cover img { width: 100%; height: 100%; object-fit: contain; }
 
 .book-list-info { flex: 1; overflow: hidden; }
 .book-list-title {
@@ -875,6 +918,19 @@ html, body, #root {
   color: var(--reader-text) !important;
   font-weight: bold !important;
 }
+
+/* 强行压制并还原嵌套在 sup 或是 a 标签内被错误强加块级自适应排版的行内脚注小图标图片 */
+.mobi-content sup img,
+.mobi-content a img,
+.mobi-content a[filepos] img {
+  display: inline !important;             /* 强行降为行内元素，拒绝独占一行换行 */
+  margin: 0 2px !important;               /* 清空居中的 margin */
+  max-width: 1.2em !important;            /* 尺寸严格锁死为跟随字体大小的 1.2 倍字高 */
+  max-height: 1.2em !important;           /* 高度严格锁死，回归精致上标比例 */
+  vertical-align: middle !important;      /* 完美贴紧行内文本 */
+  cursor: pointer !important;             /* 鼠标悬浮赋予点击指针 */
+}
+
 
 /* ===== 书签面板 ===== */
 .bookmark-panel {
