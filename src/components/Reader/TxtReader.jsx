@@ -454,6 +454,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
               chapterName={currentChapterName}
               currentPage={pageIndex + 1}
               totalPages={totalPages}
+              onPageChange={(page) => goToPage(page - 1)}
             />
           </>
         )}

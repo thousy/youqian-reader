@@ -165,6 +165,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
             chapterName={book.title || '正文'}
             currentPage={currentPage}
             totalPages={totalPages}
+            onPageChange={setCurrentPage}
           />
         )}
         {!loading && currentPage > 1 && (

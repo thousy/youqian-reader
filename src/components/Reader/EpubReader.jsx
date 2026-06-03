@@ -402,6 +402,29 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }
 
+  const handlePageChange = (page) => {
+    if (!renditionRef.current) return
+    const view = renditionRef.current.manager?.current()
+    if (view) {
+      const htmlEl = view.document?.documentElement || view.element
+      const bodyEl = view.document?.body
+      if (htmlEl) {
+        const offsetWidth = htmlEl.offsetWidth || (bodyEl && bodyEl.offsetWidth) || 1
+        const targetLeft = (page - 1) * offsetWidth
+        if (typeof view.scrollTo === 'function') {
+          view.scrollTo(targetLeft, 0)
+        } else if (view.iframe && view.iframe.contentWindow) {
+          view.iframe.contentWindow.scrollTo(targetLeft, 0)
+        } else if (view.container) {
+          view.container.scrollLeft = targetLeft
+        } else if (view.element) {
+          view.element.scrollLeft = targetLeft
+        }
+        setPageIndex(page - 1)
+      }
+    }
+  }
+
   return (
     <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
       {/* 目录面板 */}
@@ -464,6 +487,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             chapterName={currentChapterName}
             currentPage={pageIndex + 1}
             totalPages={totalPages}
+            onPageChange={handlePageChange}
           />
         )}
       </div>

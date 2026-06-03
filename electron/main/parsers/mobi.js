@@ -469,7 +469,8 @@ export async function extractMobiContent(filePath) {
 
     // ================== 【主进程字节级全量物理锚点植入引擎 🌟】 ==================
     const fileposMap = new Map()
-    const fileposRegex = /filepos=["']?(\d+)["']?/gi
+    // 增强型 filepos 提取正则，兼容 filepos="12345", #filepos12345, filepos:12345 等多种变体
+    const fileposRegex = /\bfilepos[-:=#"'/\\]*(\d+)\b/gi
     let fileposMatch
     while ((fileposMatch = fileposRegex.exec(tempText)) !== null) {
       const val = parseInt(fileposMatch[1])
@@ -478,15 +479,67 @@ export async function extractMobiContent(filePath) {
 
     const sortedFilepos = Array.from(fileposMap.keys()).sort((a, b) => b - a)
 
-    let combined = rawCombined
-    for (const offset of sortedFilepos) {
-      if (offset >= combined.length) continue
-      
-      const prefix = combined.slice(0, offset)
-      const suffix = combined.slice(offset)
-      const anchorBuf = Buffer.from(`<span id="filepos-${offset}" class="mobi-filepos-anchor"></span>`, 'utf8')
-      combined = Buffer.concat([prefix, anchorBuf, suffix])
+    // 智能避开 HTML 标签内部的辅助函数，如果偏移落在 < 和 > 之间，则移动到 > 后面
+    function adjustOffsetToAvoidTags(buf, offset) {
+      let inTag = false
+      for (let i = offset - 1; i >= 0; i--) {
+        const byte = buf[i]
+        if (byte === 0x3C) { // '<'
+          inTag = true
+          break
+        }
+        if (byte === 0x3E) { // '>'
+          break
+        }
+      }
+      if (inTag) {
+        for (let i = offset; i < buf.length; i++) {
+          if (buf[i] === 0x3E) { // '>'
+            return i + 1
+          }
+        }
+      }
+      return offset
     }
+
+    let combined = rawCombined
+    // 使用 Map 归纳相同 adjustedOffset 位置需要插入的锚点，解决哈希碰撞并实现单次拼接
+    const insertMap = new Map()
+
+    for (const offset of sortedFilepos) {
+      if (offset >= rawCombined.length) continue
+      const adjustedOffset = adjustOffsetToAvoidTags(rawCombined, offset)
+      if (adjustedOffset >= rawCombined.length) continue
+
+      if (!insertMap.has(adjustedOffset)) {
+        insertMap.set(adjustedOffset, [])
+      }
+      insertMap.get(adjustedOffset).push(
+        Buffer.from(`<span id="filepos-${offset}" class="reader-filepos-anchor"></span>`, 'utf8')
+      )
+    }
+
+    const sortedInsertOffsets = Array.from(insertMap.keys()).sort((a, b) => a - b)
+    const chunks = []
+    let lastIndex = 0
+
+    for (const adjustedOffset of sortedInsertOffsets) {
+      // 使用 subarray 做物理切片（零内存拷贝开销）
+      chunks.push(rawCombined.subarray(lastIndex, adjustedOffset))
+      
+      const anchors = insertMap.get(adjustedOffset)
+      for (const anchor of anchors) {
+        chunks.push(anchor)
+      }
+      
+      lastIndex = adjustedOffset
+    }
+
+    if (lastIndex < rawCombined.length) {
+      chunks.push(rawCombined.subarray(lastIndex))
+    }
+
+    combined = Buffer.concat(chunks)
     // ============================================================================
 
     let text = decodeBuffer(combined, encoding)
