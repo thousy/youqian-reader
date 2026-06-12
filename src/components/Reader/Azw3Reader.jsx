@@ -78,6 +78,13 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
     totalPagesRef.current = totalPages
   }, [totalPages])
 
+  const chapterUpdateTimeoutRef = useRef(null)
+  useEffect(() => {
+    return () => {
+      if (chapterUpdateTimeoutRef.current) clearTimeout(chapterUpdateTimeoutRef.current)
+    }
+  }, [])
+
   const settingsRef = useRef(settings)
   useEffect(() => {
     settingsRef.current = settings
@@ -727,67 +734,77 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
 
   // 物理章节名动态高亮联动
   const updateChapterNameAndToc = useCallback((pageIdx) => {
-    if (pageIdx === 0 && book.cover) {
-      setCurrentChapterName('封面')
-      setCurrentTocItem(null)
-      return
+    if (chapterUpdateTimeoutRef.current) {
+      clearTimeout(chapterUpdateTimeoutRef.current)
     }
-    if (toc.length === 0) {
-      setCurrentChapterName('正文')
-      return
-    }
-    const queryBase = document.getElementById('mobi-scroll-content') || containerRef.current
-    if (!queryBase || !rect.width) return
 
-    if (toc[0].isVirtual) {
-      let matchedIdx = 0
-      for (let i = 0; i < toc.length; i++) {
-        if (toc[i].pageIndex <= pageIdx) {
-          matchedIdx = i
-        } else {
-          break
-        }
+    chapterUpdateTimeoutRef.current = setTimeout(() => {
+      if (pageIdx === 0 && book.cover) {
+        setCurrentChapterName('封面')
+        setCurrentTocItem(null)
+        return
       }
-      setCurrentChapterName(toc[matchedIdx].label)
-      setCurrentTocItem(toc[matchedIdx].href)
-      return
-    }
+      if (toc.length === 0) {
+        setCurrentChapterName('正文')
+        return
+      }
+      const queryBase = document.getElementById('mobi-scroll-content') || containerRef.current
+      if (!queryBase || !rect.width) return
 
-    const scrollVal = pageIdx * stepW
-    let matchedChapter = '正文'
-    let matchedId = null
-    let closestOffset = -999999
-
-    for (let item of toc) {
-      let headingEl = headingMapRef.current.get(item.href)
-      if (!headingEl) {
-        if (item.href.startsWith('filepos-')) {
-          const fileposVal = item.href.substring(8)
-          try {
-            const matches = queryBase.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
-            if (matches.length > 0) {
-              headingEl = matches[matches.length - 1]
-            }
-          } catch {}
-        } else {
-          headingEl = document.getElementById(item.href)
+      if (toc[0].isVirtual) {
+        let matchedIdx = 0
+        for (let i = 0; i < toc.length; i++) {
+          if (toc[i].pageIndex <= pageIdx) {
+            matchedIdx = i
+          } else {
+            break
+          }
         }
+        setCurrentChapterName(toc[matchedIdx].label)
+        setCurrentTocItem(toc[matchedIdx].href)
+        return
       }
 
-      if (headingEl) {
-        const offsetVal = headingEl.offsetLeft
-        if (offsetVal <= scrollVal + 40 && offsetVal > closestOffset) {
-          closestOffset = offsetVal
-          matchedChapter = item.label
-          matchedId = item.href
+      const scrollVal = pageIdx * stepW
+      let matchedChapter = '正文'
+      let matchedId = null
+      let closestOffset = -999999
+
+      for (let item of toc) {
+        let headingEl = headingMapRef.current.get(item.href)
+        if (!headingEl) {
+          if (item.href.startsWith('filepos-')) {
+            const fileposVal = item.href.substring(8)
+            try {
+              const matches = queryBase.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
+              if (matches.length > 0) {
+                headingEl = matches[matches.length - 1]
+              }
+            } catch {}
+          } else {
+            headingEl = document.getElementById(item.href)
+          }
+
+          if (headingEl) {
+            headingMapRef.current.set(item.href, headingEl)
+          }
+        }
+
+        if (headingEl) {
+          const offsetVal = headingEl.offsetLeft
+          if (offsetVal <= scrollVal + 40 && offsetVal > closestOffset) {
+            closestOffset = offsetVal
+            matchedChapter = item.label
+            matchedId = item.href
+          }
         }
       }
-    }
 
-    setCurrentChapterName(matchedChapter ? matchedChapter.trim() : '正文')
-    if (matchedId) {
-      setCurrentTocItem(matchedId)
-    }
+      setCurrentChapterName(matchedChapter ? matchedChapter.trim() : '正文')
+      if (matchedId) {
+        setCurrentTocItem(matchedId)
+      }
+    }, 100)
   }, [toc, rect.width, book.cover, stepW])
 
   // 进度跳转逻辑
