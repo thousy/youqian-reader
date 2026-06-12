@@ -34,12 +34,24 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   const [isTransitionActive, setIsTransitionActive] = useState(false)
   const animationTimeoutRef = useRef(null)
 
+  const totalPagesRef = useRef(totalPages)
+  useEffect(() => {
+    totalPagesRef.current = totalPages
+  }, [totalPages])
+
   const settingsRef = useRef(settings)
   useEffect(() => {
     settingsRef.current = settings
   }, [settings])
 
   const triggerPageTransition = useCallback((direction, changePageFn) => {
+    const isHugeBook = totalPagesRef.current > 350
+    if (isHugeBook) {
+      // 针对超大章节瞬间切页，避免淡入淡出动画引起的卡顿
+      changePageFn()
+      return
+    }
+
     if (animationTimeoutRef.current) return
     
     const layoutMode = settingsRef.current.layoutMode
@@ -957,7 +969,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                       willChange: 'transform',
                       background: 'transparent',
                       ...fontStyle,
-                      transition: 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
+                      transition: totalPages > 350 ? 'none' : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
                     }}
                   >
                     {currentChapterParas.map((para, idx) => (

@@ -63,12 +63,24 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const [isTransitionActive, setIsTransitionActive] = useState(false)
   const animationTimeoutRef = useRef(null)
 
+  const totalPagesRef = useRef(totalPages)
+  useEffect(() => {
+    totalPagesRef.current = totalPages
+  }, [totalPages])
+
   const settingsRef = useRef(settings)
   useEffect(() => {
     settingsRef.current = settings
   }, [settings])
 
   const triggerPageTransition = useCallback((direction, changePageFn) => {
+    const isHugeBook = totalPagesRef.current > 350 || (content && content.length > 600000)
+    if (isHugeBook) {
+      // 针对大书瞬间切页，免除重绘大 DOM 淡入淡出动画引起的卡顿
+      changePageFn()
+      return
+    }
+
     if (animationTimeoutRef.current) return
     
     const layoutMode = settingsRef.current.layoutMode
@@ -106,7 +118,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
         }, 150)
       }, 30)
     }, 150)
-  }, [])
+  }, [content])
 
   const triggerPageTransitionRef = useRef(null)
   triggerPageTransitionRef.current = triggerPageTransition
@@ -1765,7 +1777,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                       willChange: 'transform',
                       background: 'transparent',
                       ...fontStyle,
-                      transition: 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
+                      transition: (totalPages > 350 || (content && content.length > 600000)) ? 'none' : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
                     }}
                     dangerouslySetInnerHTML={{ __html: content }}
                   />

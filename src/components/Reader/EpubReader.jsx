@@ -48,7 +48,19 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [isTransitionActive, setIsTransitionActive] = useState(false)
   const animationTimeoutRef = useRef(null)
 
+  const globalTotalPagesRef = useRef(globalTotalPages)
+  useEffect(() => {
+    globalTotalPagesRef.current = globalTotalPages
+  }, [globalTotalPages])
+
   const triggerPageTransition = useCallback((direction, changePageFn) => {
+    const isHugeBook = globalTotalPagesRef.current > 350
+    if (isHugeBook) {
+      // 针对大书瞬间切页，免除重绘 iframe 淡入淡出动画引起的卡顿
+      changePageFn()
+      return
+    }
+
     if (animationTimeoutRef.current) return
     
     const layoutMode = settingsRef.current.layoutMode
