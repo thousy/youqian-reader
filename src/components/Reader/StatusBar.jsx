@@ -9,7 +9,7 @@ function formatDateTime(date) {
   return `${y}-${mo}-${d} ${h}:${mi}`
 }
 
-export function StatusBar({ chapterName, currentPage, totalPages, percentage, onPageChange }) {
+export function StatusBar({ chapterName, currentPage, totalPages, percentage, onPageChange, isReady = true }) {
   const [now, setNow] = useState(new Date())
   const [inputPage, setInputPage] = useState(String(currentPage))
 
@@ -93,11 +93,11 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
         
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
           <button 
-            onClick={() => onPageChange?.(1)}
-            disabled={currentPage <= 1}
-            style={navBtnStyle(currentPage <= 1)}
-            onMouseEnter={e => { if(currentPage > 1) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
-            onMouseLeave={e => { if(currentPage > 1) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
+            onClick={() => onPageChange?.('home')}
+            disabled={isReady && currentPage <= 1}
+            style={navBtnStyle(isReady && currentPage <= 1)}
+            onMouseEnter={e => { if(!isReady || currentPage > 1) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
+            onMouseLeave={e => { if(!isReady || currentPage > 1) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
           >
             首页
           </button>
@@ -105,53 +105,59 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
           <span style={{ opacity: 0.4 }}>|</span>
           
           <button 
-            onClick={() => onPageChange?.(Math.max(1, currentPage - 1))}
-            disabled={currentPage <= 1}
-            style={navBtnStyle(currentPage <= 1)}
-            onMouseEnter={e => { if(currentPage > 1) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
-            onMouseLeave={e => { if(currentPage > 1) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
+            onClick={() => onPageChange?.('prev')}
+            disabled={isReady && currentPage <= 1}
+            style={navBtnStyle(isReady && currentPage <= 1)}
+            onMouseEnter={e => { if(!isReady || currentPage > 1) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
+            onMouseLeave={e => { if(!isReady || currentPage > 1) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
           >
             &lt;
           </button>
           
-          <span style={{ margin: '0 8px', display: 'inline-flex', alignItems: 'center', color: 'var(--text-primary)' }}>
-            第
-            <input
-              type="text"
-              value={inputPage}
-              onChange={(e) => setInputPage(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              onFocus={e => { 
-                e.target.select()
-                e.currentTarget.style.borderBottom = '1px solid var(--accent, #6d28d9)'
-                e.currentTarget.style.background = 'rgba(128,128,128,0.15)'
-              }}
-              style={{
-                width: '40px',
-                textAlign: 'center',
-                background: 'rgba(128,128,128,0.06)',
-                border: 'none',
-                borderBottom: '1px solid rgba(128,128,128,0.3)',
-                borderRadius: '3px',
-                color: 'var(--text-primary)',
-                fontSize: '12px',
-                margin: '0 4px',
-                padding: '2px 0',
-                outline: 'none',
-                transition: 'all 0.2s',
-                fontWeight: 'bold'
-              }}
-            />
-            页/共{totalPages}页
-          </span>
+          {isReady ? (
+            <span style={{ margin: '0 8px', display: 'inline-flex', alignItems: 'center', color: 'var(--text-primary)' }}>
+              第
+              <input
+                type="text"
+                value={inputPage}
+                onChange={(e) => setInputPage(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                onFocus={e => { 
+                  e.target.select()
+                  e.currentTarget.style.borderBottom = '1px solid var(--accent, #6d28d9)'
+                  e.currentTarget.style.background = 'rgba(128,128,128,0.15)'
+                }}
+                style={{
+                  width: '40px',
+                  textAlign: 'center',
+                  background: 'rgba(128,128,128,0.06)',
+                  border: 'none',
+                  borderBottom: '1px solid rgba(128,128,128,0.3)',
+                  borderRadius: '3px',
+                  color: 'var(--text-primary)',
+                  fontSize: '12px',
+                  margin: '0 4px',
+                  padding: '2px 0',
+                  outline: 'none',
+                  transition: 'all 0.2s',
+                  fontWeight: 'bold'
+                }}
+              />
+              页/共{totalPages}页
+            </span>
+          ) : (
+            <span style={{ margin: '0 12px', color: 'var(--text-muted)', fontSize: '12px', fontStyle: 'italic' }}>
+              页码测算中...
+            </span>
+          )}
           
           <button 
-            onClick={() => onPageChange?.(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage >= totalPages}
-            style={navBtnStyle(currentPage >= totalPages)}
-            onMouseEnter={e => { if(currentPage < totalPages) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
-            onMouseLeave={e => { if(currentPage < totalPages) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
+            onClick={() => onPageChange?.('next')}
+            disabled={isReady && currentPage >= totalPages}
+            style={navBtnStyle(isReady && currentPage >= totalPages)}
+            onMouseEnter={e => { if(!isReady || currentPage < totalPages) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
+            onMouseLeave={e => { if(!isReady || currentPage < totalPages) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
           >
             &gt;
           </button>
@@ -159,11 +165,11 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
           <span style={{ opacity: 0.4 }}>|</span>
           
           <button 
-            onClick={() => onPageChange?.(totalPages)}
-            disabled={currentPage >= totalPages}
-            style={navBtnStyle(currentPage >= totalPages)}
-            onMouseEnter={e => { if(currentPage < totalPages) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
-            onMouseLeave={e => { if(currentPage < totalPages) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
+            onClick={() => onPageChange?.('end')}
+            disabled={!isReady || (isReady && currentPage >= totalPages)}
+            style={navBtnStyle(!isReady || (isReady && currentPage >= totalPages))}
+            onMouseEnter={e => { if(isReady && currentPage < totalPages) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(128,128,128,0.1)' } }}
+            onMouseLeave={e => { if(isReady && currentPage < totalPages) { e.currentTarget.style.opacity = '0.8'; e.currentTarget.style.background = 'none' } }}
           >
             末页
           </button>
@@ -172,8 +178,8 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
 
       {/* Right: page fraction + percentage */}
       <span style={{ minWidth: '120px', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0 }}>
-        <span>{currentPage}/{totalPages}</span>
-        <span style={{ margin: '0 10px', opacity: 0.4 }}>|</span>
+        {isReady && <span>{currentPage}/{totalPages}</span>}
+        {isReady && <span style={{ margin: '0 10px', opacity: 0.4 }}>|</span>}
         <span>{pctText}</span>
       </span>
     </div>

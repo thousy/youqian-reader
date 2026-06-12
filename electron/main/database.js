@@ -60,13 +60,16 @@ export function updateBook(id, updates) {
 export function removeBook(id) {
   const books = getAllBooks().filter(b => b.id !== id)
   store.set('books', books)
-  // 清理对应的阅读进度和书签
+  // 清理对应的阅读进度、书签和 locations
   const progress = store.get('readingProgress', {})
   const bookmarks = store.get('bookmarks', {})
+  const epubLocations = store.get('epubLocations', {})
   delete progress[id]
   delete bookmarks[id]
+  delete epubLocations[id]
   store.set('readingProgress', progress)
   store.set('bookmarks', bookmarks)
+  store.set('epubLocations', epubLocations)
   return true
 }
 
@@ -129,4 +132,14 @@ export function getLastOpenedBook() {
 
 export function setLastOpenedBook(bookId) {
   store.set('settings.lastOpenedBook', bookId)
+}
+
+// ===== EPUB locations 独立存储 =====
+
+export function getEpubLocations(bookId) {
+  return store.get(`epubLocations.${bookId}`, null)
+}
+
+export function saveEpubLocations(bookId, locations) {
+  store.set(`epubLocations.${bookId}`, locations)
 }

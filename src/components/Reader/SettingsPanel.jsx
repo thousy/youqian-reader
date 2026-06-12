@@ -1,7 +1,27 @@
 import React from 'react'
 import { useStore } from '../../store/useStore'
 
-const FONT_OPTIONS = ['Georgia', 'Noto Serif SC', 'Arial', 'Times New Roman']
+const DEFAULT_SETTINGS = {
+  fontSize: 18,
+  fontFamily: 'Noto Serif SC',
+  theme: 'dark',
+  lineHeight: 1.8,
+  globalTheme: 'dark'
+}
+
+const FONT_MAP = {
+  'BookDefault': '内嵌字体',
+  'Microsoft YaHei': '微软雅黑',
+  'YouYuan': '幼圆',
+  'KaiTi': '楷体',
+  'SimSun': '宋体',
+  'Noto Serif SC': '思源宋体',
+  'Georgia': 'Georgia',
+  'Arial': 'Arial',
+  'Times New Roman': '新罗马'
+}
+
+const FONT_OPTIONS = Object.keys(FONT_MAP)
 
 export function SettingsPanel() {
   const { settings, updateSettings, setShowSettings } = useStore()
@@ -72,6 +92,70 @@ export function SettingsPanel() {
         />
       </div>
 
+      {/* 排版模式 */}
+      <div className="settings-group">
+        <div className="settings-label">排版模式</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+          <button
+            className={`theme-btn ${settings.layoutMode === 'horizontal' ? 'active' : ''}`}
+            style={{
+              padding: '6px 2px',
+              borderRadius: '6px',
+              border: '1px solid transparent',
+              cursor: 'pointer',
+              fontSize: '10.5px',
+              fontWeight: '600',
+              textAlign: 'center',
+              backgroundColor: 'var(--bg-layer3)',
+              color: 'var(--text-secondary)',
+              borderColor: settings.layoutMode === 'horizontal' ? 'var(--accent)' : 'transparent'
+            }}
+            onClick={() => updateSettings({ layoutMode: 'horizontal' })}
+            id="layout-horizontal-btn"
+          >
+            全窗口显示
+          </button>
+          <button
+            className={`theme-btn ${settings.layoutMode === 'horizontal-scroll' ? 'active' : ''}`}
+            style={{
+              padding: '6px 2px',
+              borderRadius: '6px',
+              border: '1px solid transparent',
+              cursor: 'pointer',
+              fontSize: '10.5px',
+              fontWeight: '600',
+              textAlign: 'center',
+              backgroundColor: 'var(--bg-layer3)',
+              color: 'var(--text-secondary)',
+              borderColor: settings.layoutMode === 'horizontal-scroll' ? 'var(--accent)' : 'transparent'
+            }}
+            onClick={() => updateSettings({ layoutMode: 'horizontal-scroll' })}
+            id="layout-horizontal-scroll-btn"
+          >
+            左右滚动
+          </button>
+          <button
+            className={`theme-btn ${settings.layoutMode === 'vertical' ? 'active' : ''}`}
+            style={{
+              padding: '6px 2px',
+              borderRadius: '6px',
+              border: '1px solid transparent',
+              cursor: 'pointer',
+              fontSize: '10.5px',
+              fontWeight: '600',
+              textAlign: 'center',
+              backgroundColor: 'var(--bg-layer3)',
+              color: 'var(--text-secondary)',
+              borderColor: settings.layoutMode === 'vertical' ? 'var(--accent)' : 'transparent'
+            }}
+            onClick={() => updateSettings({ layoutMode: 'vertical' })}
+            id="layout-vertical-btn"
+          >
+            上下滚动
+          </button>
+        </div>
+      </div>
+
       {/* 字体 */}
       <div className="settings-group">
         <div className="settings-label">字体</div>
@@ -84,11 +168,26 @@ export function SettingsPanel() {
               style={{fontFamily: f}}
               id={`font-${f.replace(/\s/g, '-')}`}
             >
-              {f === 'Georgia' ? 'Georgia' : f === 'Noto Serif SC' ? '宋体' : f === 'Arial' ? 'Arial' : '新罗马'}
+              {FONT_MAP[f] || f}
             </button>
           ))}
         </div>
       </div>
+
+      {/* 恢复默认设置 */}
+      <button 
+        className="settings-restore-btn"
+        onClick={() => updateSettings(DEFAULT_SETTINGS)}
+        id="btn-restore-default-settings"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M16 3h5v5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 21H3v-5"/>
+        </svg>
+        恢复默认设置
+      </button>
     </div>
   )
 }

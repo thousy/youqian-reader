@@ -19,6 +19,74 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   const renderTaskRef = useRef(null)
   const canvasRef = useRef(null)
   const { showToast } = useStore()
+  const [rect, setRect] = useState({ width: 0, height: 0 })
+  const wrapperRef = useRef(null)
+
+  const isCardStyle = settings.layoutMode === 'vertical' || settings.layoutMode === 'horizontal-scroll'
+  const desktopBg = settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
+  const readerBg = {
+    light: '#fafafa',
+    sepia: '#f4ede0',
+    dark: '#12121c',
+    night: '#05050a'
+  }[settings.theme] || '#12121c'
+
+  const layoutWidth = isCardStyle ? Math.min(840, rect.width - 40) : rect.width
+  const pageW = isCardStyle && layoutWidth ? Math.min(800, layoutWidth - 40) : 800
+  const realStartPadding = (rect.width - pageW) / 2
+
+  // 卡片滑动位移过渡动画状态 (垂直/水平翻页)
+  const [animState, setAnimState] = useState('idle') // 'idle', 'out-up', 'out-down', 'in-up', 'in-down', 'out-left', 'out-right', 'in-left', 'in-right'
+  const [isTransitionActive, setIsTransitionActive] = useState(false)
+  const animationTimeoutRef = useRef(null)
+
+  const settingsRef = useRef(settings)
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
+  const triggerPageTransition = useCallback((direction, changePageFn) => {
+    if (animationTimeoutRef.current) return
+    
+    const layoutMode = settingsRef.current.layoutMode
+    const isVertical = layoutMode === 'vertical'
+    const isHorizontal = layoutMode === 'horizontal-scroll'
+    
+    setIsTransitionActive(true)
+    if (isVertical) {
+      setAnimState(direction === 'next' ? 'out-up' : 'out-down')
+    } else if (isHorizontal) {
+      setAnimState(direction === 'next' ? 'out-left' : 'out-right')
+    }
+
+    animationTimeoutRef.current = setTimeout(() => {
+      try {
+        changePageFn()
+      } catch (err) {
+        console.error(err)
+      }
+
+      setIsTransitionActive(false)
+      if (isVertical) {
+        setAnimState(direction === 'next' ? 'in-up' : 'in-down')
+      } else if (isHorizontal) {
+        setAnimState(direction === 'next' ? 'in-right' : 'in-left')
+      }
+
+      setTimeout(() => {
+        setIsTransitionActive(true)
+        setAnimState('idle')
+
+        animationTimeoutRef.current = setTimeout(() => {
+          setIsTransitionActive(false)
+          animationTimeoutRef.current = null
+        }, 150)
+      }, 30)
+    }, 150)
+  }, [])
+
+  const triggerPageTransitionRef = useRef(null)
+  triggerPageTransitionRef.current = triggerPageTransition
 
   useEffect(() => {
     let mounted = true
@@ -93,14 +161,42 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
     }
   }
 
+  const goNext = useCallback(() => {
+    if (isCardStyle) {
+      if (currentPage >= totalPages) return
+      triggerPageTransitionRef.current?.('next', () => {
+        setCurrentPage(p => Math.min(p + 1, totalPages))
+      })
+    } else {
+      setCurrentPage(p => Math.min(p + 1, totalPages))
+    }
+  }, [isCardStyle, currentPage, totalPages])
+
+  const goPrev = useCallback(() => {
+    if (isCardStyle) {
+      if (currentPage <= 1) return
+      triggerPageTransitionRef.current?.('prev', () => {
+        setCurrentPage(p => Math.max(p - 1, 1))
+      })
+    } else {
+      setCurrentPage(p => Math.max(p - 1, 1))
+    }
+  }, [isCardStyle, currentPage, totalPages])
+
   useEffect(() => {
     const handleKey = (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') setCurrentPage(p => Math.min(p + 1, totalPages))
-      if (e.key === 'ArrowLeft' || e.key === 'PageUp') setCurrentPage(p => Math.max(p - 1, 1))
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault()
+        goNext()
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault()
+        goPrev()
+      }
     }
     document.addEventListener('keydown', handleKey)
     return () => document.removeEventListener('keydown', handleKey)
-  }, [totalPages])
+  }, [goNext, goPrev])
 
   // 鼠标滚轮翻页（带 450ms 冷却防抖锁）
   const lastWheelTime = useRef(0)
@@ -111,20 +207,20 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
     const handleWheel = (e) => {
       e.preventDefault()
       const now = Date.now()
-      if (now - lastWheelTime.current < 450) return
+      if (now - lastWheelTime.current < 350) return
       
       if (e.deltaY > 0) {
         lastWheelTime.current = now
-        setCurrentPage(p => Math.min(p + 1, totalPages))
+        goNext()
       } else if (e.deltaY < 0) {
         lastWheelTime.current = now
-        setCurrentPage(p => Math.max(p - 1, 1))
+        goPrev()
       }
     }
 
     el.addEventListener('wheel', handleWheel, { passive: false })
     return () => el.removeEventListener('wheel', handleWheel)
-  }, [totalPages])
+  }, [goNext, goPrev, containerRef.current])
 
   const handleJump = (e) => {
     e.preventDefault()
@@ -132,24 +228,69 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
     if (n >= 1 && n <= totalPages) { setCurrentPage(n); setJumpPage('') }
   }
 
-  const navButtonStyle = {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: '80px',
-    display: 'flex',
-    alignItems: 'center',
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--text-muted)',
-    cursor: 'pointer',
-    zIndex: 10,
-    opacity: 0,
-    transition: 'opacity 0.2s',
+  // 监听外层容器的实际大小
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    const observer = new ResizeObserver(entries => {
+      for (let entry of entries) {
+        const { width, height } = entry.contentRect
+        if (width > 100 && height > 100) {
+          setRect({ width, height })
+        }
+      }
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // 统一圆形悬浮按钮样式
+  const navButtonStyle = (side) => {
+    const isCard = settingsRef.current.layoutMode === 'vertical' || settingsRef.current.layoutMode === 'horizontal-scroll'
+    const isWide = rect.width > 920
+    let offset = '20px'
+    if (isCard) {
+      offset = isWide ? `${realStartPadding - 54}px` : '16px'
+    }
+    return {
+      position: 'absolute',
+      top: '50%',
+      [side]: offset,
+      transform: 'translateY(-50%) scale(1)',
+      width: '44px',
+      height: '44px',
+      borderRadius: '50%',
+      backgroundColor: settingsRef.current.theme === 'light' || settingsRef.current.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
+      border: settingsRef.current.theme === 'light' || settingsRef.current.theme === 'sepia' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+      boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+      color: 'var(--text-primary)',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 100,
+      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+      opacity: 0.5,
+      outline: 'none'
+    }
+  }
+
+  const handleBtnMouseEnter = (e) => {
+    e.currentTarget.style.opacity = '1'
+    e.currentTarget.style.transform = 'translateY(-50%) scale(1.12)'
+    e.currentTarget.style.backgroundColor = settingsRef.current.theme === 'light' || settingsRef.current.theme === 'sepia' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
+  }
+
+  const handleBtnMouseLeave = (e) => {
+    e.currentTarget.style.opacity = '0.5'
+    e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
+    e.currentTarget.style.backgroundColor = settingsRef.current.theme === 'light' || settingsRef.current.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
 
   return (
-    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg-base)'}}>
+    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: isCardStyle ? desktopBg : 'var(--bg-base)'}}>
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"/>
@@ -157,8 +298,46 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
         </div>
       )}
       <div style={{position:'relative',flex:1,overflow:'hidden'}}>
-        <div ref={containerRef} className="pdf-container">
-          <canvas ref={canvasRef} className="pdf-page-canvas" id="pdf-canvas"/>
+        <div 
+          ref={containerRef} 
+          className="pdf-container"
+          style={{
+            width: isCardStyle ? 'calc(100% - 40px)' : '100%',
+            maxWidth: isCardStyle ? `${pageW}px` : 'none',
+            margin: isCardStyle ? '0 auto 20px' : '0 auto',
+            backgroundColor: isCardStyle ? readerBg : 'transparent',
+            borderRadius: isCardStyle ? '0 0 8px 8px' : '0',
+            boxShadow: isCardStyle ? '0 10px 40px rgba(0, 0, 0, 0.3)' : 'none',
+            boxSizing: 'border-box',
+            overflow: 'hidden',
+            position: 'relative',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: isCardStyle ? 'calc(100% - 20px)' : '100%',
+            outline: 'none',
+            transition: isTransitionActive ? 'transform 0.15s ease-in-out, opacity 0.15s ease-in-out' : 'none',
+            transform: 
+              animState === 'out-up' ? 'translateY(-60px)' :
+              animState === 'out-down' ? 'translateY(60px)' :
+              animState === 'in-up' ? 'translateY(60px)' :
+              animState === 'in-down' ? 'translateY(-60px)' :
+              animState === 'out-left' ? 'translateX(-60px)' :
+              animState === 'out-right' ? 'translateX(60px)' :
+              animState === 'in-right' ? 'translateX(60px)' :
+              animState === 'in-left' ? 'translateX(-60px)' : 'translateY(0)',
+            opacity: (
+              animState === 'out-up' || animState === 'out-down' || animState === 'in-up' || animState === 'in-down' ||
+              animState === 'out-left' || animState === 'out-right' || animState === 'in-left' || animState === 'in-right'
+            ) ? 0 : 1
+          }}
+        >
+          <canvas ref={canvasRef} className="pdf-page-canvas" id="pdf-canvas" style={{
+            maxWidth: '100%',
+            maxHeight: '100%',
+            objectFit: 'contain',
+            display: 'block'
+          }}/>
         </div>
         {!loading && totalPages > 0 && (
           <StatusBar
@@ -170,26 +349,26 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
         )}
         {!loading && currentPage > 1 && (
           <button
-            style={{...navButtonStyle, left: 0, paddingLeft: '12px', justifyContent: 'flex-start'}}
-            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-            onMouseEnter={e => e.currentTarget.style.opacity = 1}
-            onMouseLeave={e => e.currentTarget.style.opacity = 0}
+            style={navButtonStyle('left')}
+            onClick={goPrev}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             aria-label="上一页"
           >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
         )}
         {!loading && currentPage < totalPages && (
           <button
-            style={{...navButtonStyle, right: 0, paddingRight: '12px', justifyContent: 'flex-end'}}
-            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-            onMouseEnter={e => e.currentTarget.style.opacity = 1}
-            onMouseLeave={e => e.currentTarget.style.opacity = 0}
+            style={navButtonStyle('right')}
+            onClick={goNext}
+            onMouseEnter={handleBtnMouseEnter}
+            onMouseLeave={handleBtnMouseLeave}
             aria-label="下一页"
           >
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 18 15 12 9 6"/>
             </svg>
           </button>
@@ -198,7 +377,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
       {!loading && (
         <div className="pdf-controls">
           <button className="pdf-page-btn" id="pdf-prev-btn"
-            onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+            onClick={goPrev}
             disabled={currentPage <= 1}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="15 18 9 12 15 6"/>
@@ -219,7 +398,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
             <span className="pdf-page-info">/ {totalPages}</span>
           </form>
           <button className="pdf-page-btn" id="pdf-next-btn"
-            onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+            onClick={goNext}
             disabled={currentPage >= totalPages}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <polyline points="9 18 15 12 9 6"/>

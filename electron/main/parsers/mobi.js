@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs'
 import { basename, extname } from 'path'
 import { createRequire } from 'module'
+import { performance } from 'perf_hooks'
 
 // 使用 require 加载 iconv-lite（CommonJS 模块）
 const require = createRequire(import.meta.url)
@@ -243,13 +244,16 @@ function initHuffmanDecoder(buf, palm, huffcdicIndex, numHuffcdic) {
   
   const read32Bits = (byteArray, fromBit) => {
     const startByte = fromBit >> 3
-    const end = fromBit + 32
-    const endByte = end >> 3
-    let bits = 0n
-    for (let i = startByte; i <= endByte; i++) {
-      bits = (bits << 8n) | BigInt(byteArray[i] !== undefined ? byteArray[i] : 0)
-    }
-    return Number((bits >> (8n - BigInt(end & 7))) & 0xffffffffn)
+    const shift = 8 - (fromBit & 7)
+    
+    const b0 = byteArray[startByte] !== undefined ? byteArray[startByte] : 0
+    const b1 = byteArray[startByte + 1] !== undefined ? byteArray[startByte + 1] : 0
+    const b2 = byteArray[startByte + 2] !== undefined ? byteArray[startByte + 2] : 0
+    const b3 = byteArray[startByte + 3] !== undefined ? byteArray[startByte + 3] : 0
+    const b4 = byteArray[startByte + 4] !== undefined ? byteArray[startByte + 4] : 0
+    
+    const bits = (b0 * 4294967296) + (b1 * 16777216) + (b2 * 65536) + (b3 * 256) + b4
+    return Math.floor(bits / (1 << shift)) >>> 0
   }
   
   const decompress = (byteArray) => {
@@ -402,6 +406,7 @@ export async function extractMobiMeta(filePath) {
 }
 
 export async function extractMobiContent(filePath) {
+  const tStart = performance.now()
   try {
     const buf = readFileSync(filePath)
     const palm = readPalmHeader(buf)
@@ -422,8 +427,11 @@ export async function extractMobiContent(filePath) {
       author: header?.author || '未知'
     }
 
+    const tInit = performance.now()
+
     // 初始化 Huffman 解密器
     let decompress = null
+    const tHuffInitStart = performance.now()
     if (compression === 17480) {
       if (huffcdicIndex !== undefined && numHuffcdic !== undefined && numHuffcdic > 0) {
         try {
@@ -433,9 +441,11 @@ export async function extractMobiContent(filePath) {
         }
       }
     }
+    const tHuffInitEnd = performance.now()
 
     // 拼接所有文本记录（record 1 到 numTextRecords），结果为 Buffer
     const buffers = []
+    const tDecompressStart = performance.now()
     for (let i = 1; i <= numTextRecords && i < palm.records.length; i++) {
       const start = palm.records[i]
       const end   = (i + 1 < palm.records.length) ? palm.records[i + 1] : buf.length
@@ -462,12 +472,14 @@ export async function extractMobiContent(filePath) {
         buffers.push(recBuf)
       }
     }
+    const tDecompressEnd = performance.now()
 
     // 合并所有解压后的字节，再统一解码
     const rawCombined = Buffer.concat(buffers)
     const tempText = decodeBuffer(rawCombined, encoding)
 
     // ================== 【主进程字节级全量物理锚点植入引擎 🌟】 ==================
+    const tAnchorStart = performance.now()
     const fileposMap = new Map()
     // 增强型 filepos 提取正则，兼容 filepos="12345", #filepos12345, filepos:12345 等多种变体
     const fileposRegex = /\bfilepos[-:=#"'/\\]*(\d+)\b/gi
@@ -540,6 +552,7 @@ export async function extractMobiContent(filePath) {
     }
 
     combined = Buffer.concat(chunks)
+    const tAnchorEnd = performance.now()
     // ============================================================================
 
     let text = decodeBuffer(combined, encoding)
@@ -548,6 +561,7 @@ export async function extractMobiContent(filePath) {
     text = text.replace(/\x00/g, '')
 
     // ===== 提取嵌入式图片记录 =====
+    const tImageStart = performance.now()
     // MOBI/AZW3 中，firstImageIndex 字段位于 record0Offset + 108
     const firstImageIndex = safeReadUInt32BE(buf, record0Offset + 108)
     const images = {}
@@ -580,8 +594,10 @@ export async function extractMobiContent(filePath) {
         }
       }
     }
+    const tImageEnd = performance.now()
 
     // 构建 HTML
+    const tHtmlStart = performance.now()
     let html = text
       .replace(/<mbp:pagebreak\s*\/>/gi, '<hr class="page-break"/>')
       .replace(/<[^>]*mobi[^>]*>/gi, '')
@@ -614,6 +630,17 @@ export async function extractMobiContent(filePath) {
         .map(p => `<p>${p.replace(/\n/g, '<br/>')}</p>`)
         .join('\n')
     }
+    const tHtmlEnd = performance.now()
+
+    const tTotal = performance.now()
+    console.log(`[MOBI Parser] 解析书籍 "${filePath}" 耗时统计:
+  - 读取与头部解析: ${(tInit - tStart).toFixed(2)}ms
+  - Huffman 解密器初始化: ${(tHuffInitEnd - tHuffInitStart).toFixed(2)}ms
+  - 文本解压与解密: ${(tDecompressEnd - tDecompressStart).toFixed(2)}ms
+  - 锚点物理植入: ${(tAnchorEnd - tAnchorStart).toFixed(2)}ms
+  - 嵌入图片提取: ${(tImageEnd - tImageStart).toFixed(2)}ms
+  - HTML正则转换: ${(tHtmlEnd - tHtmlStart).toFixed(2)}ms
+  - 总耗时: ${(tTotal - tStart).toFixed(2)}ms`)
 
     return { html: `<div class="mobi-content">${html}</div>`, ...meta }
   } catch (e) {

@@ -9,11 +9,17 @@ import { ConfirmModal } from './components/UI/ConfirmModal'
 import { DropOverlay } from './components/UI/DropOverlay'
 
 export default function App() {
-  const { currentView, toast, confirm, setBooks, openBook, showToast, settings, updateSettings, setCategories } = useStore()
+  const { currentView, currentBook, toast, confirm, setBooks, openBook, showToast, settings, updateSettings, setCategories } = useStore()
   const [dragging, setDragging] = useState(false)
+
+  const params = new URLSearchParams(window.location.search)
+  const isReaderWindow = params.get('windowType') === 'reader'
+  const bookIdParam = params.get('bookId')
 
   // 启动时加载数据
   useEffect(() => {
+    let mounted = true
+
     async function init() {
       try {
         // 加载设置
@@ -22,36 +28,21 @@ export default function App() {
 
         // 加载书库
         const books = await window.api.getAllBooks()
+        if (!mounted) return
         setBooks(books)
-
-        // 自动刷新缺失封面的 MOBI/AZW3 书籍
-        const booksNeedingCover = books.filter(b => !b.cover && ['MOBI', 'AZW3'].includes(b.format))
-        if (booksNeedingCover.length > 0) {
-          Promise.all(booksNeedingCover.map(async (b) => {
-            try {
-              const result = await window.api.refreshBookCover(b.id)
-              if (result.success) return { id: b.id, cover: result.cover }
-            } catch {}
-            return null
-          })).then(results => {
-            const updated = results.filter(Boolean)
-            if (updated.length > 0) {
-              window.api.getAllBooks().then(refreshed => setBooks(refreshed))
-            }
-          })
-        }
-
         // 加载分类
         const categories = await window.api.getCategories()
+        if (!mounted) return
         if (categories) setCategories(categories)
 
-        // 恢复上次阅读
-        const lastBookId = await window.api.getLastOpenedBook()
-        if (lastBookId) {
-          const lastBook = books.find(b => b.id === lastBookId)
-          if (lastBook) {
-            const exists = await window.api.fileExists(lastBook.filePath)
-            if (exists) openBook(lastBook)
+        if (isReaderWindow) {
+          // 如果是阅读窗口，自动定位并打开特定图书
+          if (bookIdParam) {
+            const targetBook = books.find(b => String(b.id) === String(bookIdParam))
+            if (targetBook) {
+              const exists = await window.api.fileExists(targetBook.filePath)
+              if (exists) openBook(targetBook)
+            }
           }
         }
       } catch (e) {
@@ -59,6 +50,10 @@ export default function App() {
       }
     }
     init()
+
+    return () => {
+      mounted = false
+    }
   }, [])
 
   // 拖拽导入
@@ -100,6 +95,21 @@ export default function App() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  if (isReaderWindow) {
+    return (
+      <div className="app" data-theme={settings.theme} data-global-theme={settings.globalTheme || 'dark'}>
+        <TitleBar windowTitle={currentBook ? currentBook.title : '阅读器'} />
+        <div className="main-layout" style={{ height: 'calc(100vh - var(--titlebar-height))' }}>
+          <div className="main-content" style={{ width: '100%', height: '100%' }}>
+            <ReaderView />
+          </div>
+        </div>
+        {toast && <Toast {...toast} />}
+        {confirm && <ConfirmModal {...confirm} />}
+      </div>
+    )
   }
 
   return (

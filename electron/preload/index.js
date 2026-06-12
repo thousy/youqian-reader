@@ -7,6 +7,7 @@ const api = {
   close: () => ipcRenderer.send('window-close'),
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   onMaximized: (cb) => ipcRenderer.on('window-maximized', (_, v) => cb(v)),
+  openBookWindow: (bookId) => ipcRenderer.invoke('open-book-window', bookId),
 
   // 文件选择
   selectBooks: () => ipcRenderer.invoke('select-books'),
@@ -51,8 +52,15 @@ const api = {
   getCategories: () => ipcRenderer.invoke('get-categories'),
   saveCategories: (cats) => ipcRenderer.invoke('save-categories', cats),
 
+  // EPUB locations 独立存储
+  getEpubLocations: (bookId) => ipcRenderer.invoke('get-epub-locations', bookId),
+  saveEpubLocations: (bookId, locations) => ipcRenderer.invoke('save-epub-locations', bookId, locations),
+
   // 封面刷新
   refreshBookCover: (bookId) => ipcRenderer.invoke('refresh-book-cover', bookId),
+
+  // 调试日志
+  logToServer: (type, ...args) => ipcRenderer.invoke('log-to-server', type, ...args),
 }
 
 contextBridge.exposeInMainWorld('api', api)

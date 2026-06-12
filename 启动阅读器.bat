@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 title YouQian Reader
 cd /d "%~dp0"
 set PATH=%~dp0node;%PATH%

@@ -4,6 +4,7 @@ import { EpubReader } from './EpubReader'
 import { PdfReader } from './PdfReader'
 import { TxtReader } from './TxtReader'
 import { MobiReader } from './MobiReader'
+import { Azw3Reader } from './Azw3Reader'
 import { BookmarkPanel } from './BookmarkPanel'
 import { SettingsPanel } from './SettingsPanel'
 
@@ -20,13 +21,29 @@ export function ReaderView() {
 
   const [progress, setProgress] = useState(0)
   const getPositionRef = useRef(null)
+  const saveProgressTimeoutRef = useRef(null)
+
+  // 卸载时清理防抖定时器
+  useEffect(() => {
+    return () => {
+      if (saveProgressTimeoutRef.current) {
+        clearTimeout(saveProgressTimeoutRef.current)
+      }
+    }
+  }, [])
 
   // 加载书签和进度
   useEffect(() => {
     if (!currentBook) return
     window.api.getBookmarks(currentBook.id).then(setBookmarks)
     window.api.getReadingProgress(currentBook.id).then(p => {
-      if (p) setReadingProgress(p)
+      if (p) {
+        setReadingProgress(p)
+        setProgress(p.percentage || 0)
+      } else {
+        setReadingProgress(null)
+        setProgress(0)
+      }
     })
   }, [currentBook?.id])
 
@@ -61,8 +78,15 @@ export function ReaderView() {
       settings,
       onProgressChange: (p) => {
         setProgress(p?.percentage || 0)
-        window.api.saveReadingProgress(currentBook.id, p)
         setReadingProgress(p)
+
+        // 引入 200ms 防抖保存，防止高频滚动期间密集触发 IPC 磁盘 I/O
+        if (saveProgressTimeoutRef.current) {
+          clearTimeout(saveProgressTimeoutRef.current)
+        }
+        saveProgressTimeoutRef.current = setTimeout(() => {
+          window.api.saveReadingProgress(currentBook.id, p)
+        }, 200)
       },
       registerGetPosition: (fn) => { getPositionRef.current = fn },
       showToc,
@@ -72,8 +96,8 @@ export function ReaderView() {
       case 'EPUB': return <EpubReader {...props} />
       case 'PDF': return <PdfReader {...props} />
       case 'TXT': return <TxtReader {...props} />
-      case 'MOBI':
-      case 'AZW3': return <MobiReader {...props} />
+      case 'MOBI': return <MobiReader {...props} />
+      case 'AZW3': return <Azw3Reader {...props} />
       default: return <div style={{padding:'40px',color:'var(--text-muted)'}}>不支持的格式: {format}</div>
     }
   }

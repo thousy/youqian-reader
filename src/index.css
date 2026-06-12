@@ -1116,6 +1116,129 @@ html, body, #root {
 }
 .font-btn.active, .font-btn:hover { border-color: var(--accent); color: var(--accent-light); background: var(--accent-glow); }
 
+.settings-restore-btn {
+  width: 100%;
+  margin-top: 14px;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.settings-restore-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+.settings-restore-btn svg {
+  opacity: 0.8;
+  transition: transform 0.3s ease;
+}
+.settings-restore-btn:hover svg {
+  transform: rotate(-180deg);
+  color: var(--accent-light);
+}
+
+/* ===== 垂直滚动（Word纸张模式）样式 ===== */
+.reader-scroll-container {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  background: var(--bg-base); /* 外层深色背景桌面 */
+  padding: 30px 10px;
+  box-sizing: border-box;
+}
+
+/* 垂直滚动下的醒目滚动条提示 */
+.reader-scroll-container::-webkit-scrollbar {
+  width: 10px !important;
+}
+.reader-scroll-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-radius: 5px !important;
+}
+.reader-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45) !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  border-radius: 5px !important;
+}
+.reader-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent, #8b5cf6) !important;
+}
+
+/* ===== 左右滚动（水平滚动）样式 ===== */
+.reader-horizontal-scroll-container {
+  width: 100%;
+  height: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  background: var(--bg-base); /* 外层桌面 */
+  box-sizing: border-box;
+}
+
+/* 左右滚动下的醒目滚动条提示 */
+.reader-horizontal-scroll-container::-webkit-scrollbar {
+  height: 10px !important;
+}
+.reader-horizontal-scroll-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-radius: 5px !important;
+}
+.reader-horizontal-scroll-container::-webkit-scrollbar-thumb {
+  background: rgba(139, 92, 246, 0.45) !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  border-radius: 5px !important;
+}
+.reader-horizontal-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--accent, #8b5cf6) !important;
+}
+
+.reader-scroll-paper {
+  max-width: 800px;
+  width: calc(100% - 20px);
+  margin: 0 auto;
+  min-height: 100%;
+  background: var(--reader-bg); /* 纸张背景 */
+  color: var(--reader-text);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3); /* 纸张立体阴影 */
+  border-radius: 8px;
+  padding: 48px 64px;
+  box-sizing: border-box;
+  break-inside: avoid;
+}
+
+[data-global-theme="light"] .reader-scroll-container,
+[data-global-theme="light"] .reader-horizontal-scroll-container {
+  background: #eaeaf2; /* 明亮模式下的浅灰色桌面 */
+}
+
+/* 在垂直模式下，MOBI和TXT的封面也要做出对应排版优化 */
+.mobi-cover-container-vertical {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 40px;
+}
+.mobi-cover-img-vertical {
+  max-width: 280px;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+  margin: 0 auto;
+}
+
 /* ===== 进度条 ===== */
 .reading-progress-bar {
   height: 2px;

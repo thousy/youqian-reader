@@ -23,10 +23,11 @@ export const useStore = create((set, get) => ({
   // ===== 阅读设置 =====
   settings: {
     fontSize: 18,
-    fontFamily: 'Georgia',
+    fontFamily: 'Noto Serif SC',
     theme: 'dark',
     lineHeight: 1.8,
-    globalTheme: 'dark'
+    globalTheme: 'dark',
+    layoutMode: 'horizontal' // 'horizontal' | 'vertical'
   },
 
   // ===== Toast 通知 =====
@@ -83,11 +84,27 @@ export const useStore = create((set, get) => ({
 
   // ===== 阅读操作 =====
   openBook: (book) => {
+    const params = new URLSearchParams(window.location.search)
+    const isReaderWindow = params.get('windowType') === 'reader'
+    
+    if (!isReaderWindow) {
+      window.api?.openBookWindow(book.id)
+      return
+    }
+    
     set({ currentBook: book, currentView: 'reader', showToc: false, showBookmarks: false, showSettings: false })
     window.api?.setLastOpenedBook(book.id)
   },
 
   closeBook: () => {
+    const params = new URLSearchParams(window.location.search)
+    const isReaderWindow = params.get('windowType') === 'reader'
+    
+    if (isReaderWindow) {
+      window.api?.close()
+      return
+    }
+    
     set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [] })
   },
 

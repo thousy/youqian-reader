@@ -6,7 +6,7 @@ import {
   getReadingProgress, saveReadingProgress,
   getBookmarks, addBookmark, removeBookmark,
   getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook,
-  getStore
+  getStore, getEpubLocations, saveEpubLocations
 } from './database'
 import { extractEpubMeta } from './parsers/epub'
 import { extractPdfMeta } from './parsers/pdf'
@@ -124,6 +124,23 @@ export function setupIpcHandlers() {
   // ===== 分类管理 =====
   ipcMain.handle('get-categories', () => getStore().get('categories', []))
   ipcMain.handle('save-categories', (_, categories) => { getStore().set('categories', categories); return true })
+
+  // ===== EPUB locations 独立存储 =====
+  ipcMain.handle('get-epub-locations', (_, bookId) => getEpubLocations(bookId))
+  ipcMain.handle('save-epub-locations', (_, bookId, locations) => {
+    saveEpubLocations(bookId, locations)
+    return true
+  })
+
+  // ===== 调试日志输出 =====
+  ipcMain.handle('log-to-server', (_, type, ...args) => {
+    if (type === 'error') {
+      console.error('[RENDERER ERROR]', ...args)
+    } else {
+      console.log('[RENDERER LOG]', ...args)
+    }
+    return true
+  })
 
   // ===== 封面刷新 =====
   ipcMain.handle('refresh-book-cover', async (_, bookId) => {
