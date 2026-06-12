@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
+
 
 const colors = {
   reset: '\x1b[0m',
@@ -43,6 +44,15 @@ function getOwnerRepo() {
   }
   return { owner: 'thousy', repo: 'youqian-reader' };
 }
+
+function getGitProxy() {
+  try {
+    return execSync('git config --get http.proxy', { encoding: 'utf8' }).trim();
+  } catch (e) {
+    return '';
+  }
+}
+
 
 function fixWinCodeSign() {
   log('正在检测并修复 winCodeSign 缓存...', colors.cyan);
@@ -326,7 +336,7 @@ async function main() {
     const stat = fs.statSync(filePath);
     if (stat.isFile()) {
       const ext = path.extname(file).toLowerCase();
-      if ((ext === '.exe' || ext === '.zip') && file !== 'builder-debug.yml') {
+      if ((ext === '.exe' || ext === '.zip') && file !== 'builder-debug.yml' && file.includes(version)) {
         assetsToUpload.push({
           name: file,
           path: filePath,
@@ -444,25 +454,32 @@ async function main() {
     log(`正在上传 ${asset.name} (${(asset.size / 1024 / 1024).toFixed(2)} MB)...`, colors.cyan);
     
     try {
-      const fileBuffer = fs.readFileSync(asset.path);
       const uploadUrl = `${uploadBaseUrl}?name=${encodeURIComponent(asset.name)}`;
+      const proxy = getGitProxy();
       
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          ...apiHeaders,
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': asset.size.toString()
-        },
-        body: fileBuffer
-      });
-
-      if (uploadRes.status === 201) {
-        log(`资产 ${asset.name} 上传成功！`, colors.green + colors.bright);
-      } else {
-        const errMsg = await uploadRes.text();
-        throw new Error(`上传失败 (${uploadRes.status}): ${errMsg}`);
+      const curlArgs = [
+        '-X', 'POST',
+        '-H', `Authorization: Bearer ${githubToken}`,
+        '-H', 'Content-Type: application/octet-stream',
+        '-H', 'Accept: application/vnd.github+json',
+        '-H', 'X-GitHub-Api-Version: 2022-11-28',
+        '--data-binary', `@${asset.path}`,
+        uploadUrl,
+        '--fail',
+        '--show-error',
+        '--progress-bar'
+      ];
+      
+      if (proxy) {
+        curlArgs.unshift('-x', proxy);
       }
+
+      log(`正在通过 curl.exe 上传...`, colors.cyan);
+      const res = spawnSync('curl.exe', curlArgs, { stdio: 'inherit' });
+      if (res.status !== 0) {
+        throw new Error(`curl 退出码为 ${res.status}`);
+      }
+      log(`资产 ${asset.name} 上传成功！`, colors.green + colors.bright);
     } catch (error) {
       log(`上传资产 ${asset.name} 失败: ${error.message}`, colors.red + colors.bright);
       process.exit(1);
