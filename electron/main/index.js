@@ -9,6 +9,12 @@ process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 let mainWindow = null
 const readerWindows = new Set()
 
+const getIconPath = () => {
+  return app.isPackaged 
+    ? join(process.resourcesPath, 'icon.ico') 
+    : join(app.getAppPath(), 'resources/icon.ico')
+}
+
 // ===== 全局多窗口控制 IPC 处理器 =====
 ipcMain.on('window-minimize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -46,7 +52,7 @@ function createWindow() {
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
     show: false,
-    icon: join(app.getAppPath(), 'resources/icon.ico'),
+    icon: getIconPath(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
@@ -104,7 +110,7 @@ function createReaderWindow(bookId) {
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
     show: false,
-    icon: join(app.getAppPath(), 'resources/icon.ico'),
+    icon: getIconPath(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,

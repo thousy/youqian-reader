@@ -1,6 +1,6 @@
 {
   "name": "youqian-reader",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
   "main": "out/main/index.js",
   "author": "YouQian Reader",
@@ -25,6 +25,12 @@
       {
         "from": "node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
         "to": "resources/pdf.worker.min.mjs"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
       }
     ],
     "win": {
