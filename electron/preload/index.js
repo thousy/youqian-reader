@@ -48,6 +48,11 @@ const api = {
   getLastOpenedBook: () => ipcRenderer.invoke('get-last-opened-book'),
   setLastOpenedBook: (id) => ipcRenderer.invoke('set-last-opened-book', id),
 
+  // 备份与恢复
+  exportBackup: () => ipcRenderer.invoke('export-backup'),
+  importBackup: () => ipcRenderer.invoke('import-backup'),
+  resetDatabase: () => ipcRenderer.invoke('reset-database'),
+
   // 分类管理
   getCategories: () => ipcRenderer.invoke('get-categories'),
   saveCategories: (cats) => ipcRenderer.invoke('save-categories', cats),

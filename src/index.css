@@ -1866,3 +1866,122 @@ html, body, #root {
   user-select: text;
 }
 
+/* ===== 备份恢复按钮微交互 ===== */
+.sidebar-backup-btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sidebar-backup-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.15) !important;
+  transform: translateY(-1px);
+}
+
+.sidebar-backup-btn:active {
+  transform: translateY(0) scale(0.98) !important;
+}
+
+[data-global-theme="light"] .sidebar-backup-btn {
+  background: rgba(0, 0, 0, 0.02) !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-global-theme="light"] .sidebar-backup-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.1) !important;
+}
+
+/* ===== 头部设置下拉菜单样式 ===== */
+.settings-menu-container {
+  position: relative;
+  margin-left: 12px;
+}
+
+.settings-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.settings-menu-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.settings-menu-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.settings-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1000;
+  width: 170px;
+  background: var(--bg-layer2);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.settings-dropdown-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-dropdown-item.danger {
+  color: #ef4444;
+}
+
+.settings-dropdown-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+}
+
+.settings-dropdown-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 4px 2px;
+}
+
+
+

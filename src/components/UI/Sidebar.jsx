@@ -57,6 +57,7 @@ export function Sidebar() {
     }
   }
 
+
   // 新建分类保存
   const handleAddCategory = async () => {
     const name = newCatName.trim()
@@ -319,23 +320,22 @@ export function Sidebar() {
       )}
 
       {/* 底部技术支持 */}
-      <div style={{
+      <div className="sidebar-footer" style={{
         marginTop: 'auto',
         padding: '16px',
         borderTop: '1px solid var(--border-subtle)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px'
       }}>
         <div style={{
-          padding: '10px',
-          border: '1px solid var(--border)',
-          borderRadius: '8px',
-          color: 'var(--text-secondary)',
-          fontSize: '13px',
-          fontWeight: '600',
+          color: 'var(--text-muted)',
+          fontSize: '12px',
           textAlign: 'center',
-          background: 'rgba(255, 255, 255, 0.02)',
-          userSelect: 'none'
+          userSelect: 'none',
+          padding: '4px 0'
         }}>
-          YouQian Tech
+          © YouQian Tech
         </div>
       </div>
     </div>

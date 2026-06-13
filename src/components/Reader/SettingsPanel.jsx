@@ -24,7 +24,11 @@ const FONT_MAP = {
 const FONT_OPTIONS = Object.keys(FONT_MAP)
 
 export function SettingsPanel() {
-  const { settings, updateSettings, setShowSettings } = useStore()
+  const {
+    settings, updateSettings, setShowSettings,
+    setCategories, setBooks, showToast
+  } = useStore()
+
 
   return (
     <div className="settings-panel" id="settings-panel">
@@ -188,6 +192,8 @@ export function SettingsPanel() {
         </svg>
         恢复默认设置
       </button>
+
+
     </div>
   )
 }

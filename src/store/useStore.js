@@ -137,9 +137,9 @@ export const useStore = create((set, get) => ({
   },
 
   // ===== Confirm =====
-  showConfirm: (title, message) => {
+  showConfirm: (title, message, options = {}) => {
     return new Promise(resolve => {
-      set({ confirm: { title, message, resolve } })
+      set({ confirm: { title, message, resolve, ...options } })
     })
   },
   closeConfirm: (result) => {

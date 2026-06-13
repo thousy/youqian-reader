@@ -494,7 +494,8 @@ export async function extractMobiContent(filePath) {
     // 智能避开 HTML 标签内部的辅助函数，如果偏移落在 < 和 > 之间，则移动到 > 后面
     function adjustOffsetToAvoidTags(buf, offset) {
       let inTag = false
-      for (let i = offset - 1; i >= 0; i--) {
+      const minSearch = Math.max(0, offset - 1024)
+      for (let i = offset - 1; i >= minSearch; i--) {
         const byte = buf[i]
         if (byte === 0x3C) { // '<'
           inTag = true
@@ -505,7 +506,8 @@ export async function extractMobiContent(filePath) {
         }
       }
       if (inTag) {
-        for (let i = offset; i < buf.length; i++) {
+        const maxSearch = Math.min(buf.length, offset + 1024)
+        for (let i = offset; i < maxSearch; i++) {
           if (buf[i] === 0x3E) { // '>'
             return i + 1
           }
@@ -567,30 +569,39 @@ export async function extractMobiContent(filePath) {
     const images = {}
 
     if (firstImageIndex > 0 && firstImageIndex < palm.records.length) {
-      for (let i = firstImageIndex; i < palm.records.length; i++) {
-        const imgStart = palm.records[i]
-        const imgEnd = (i + 1 < palm.records.length) ? palm.records[i + 1] : buf.length
-        if (imgStart >= buf.length || imgStart >= imgEnd) continue
+      // 扫描 HTML 中实际引用的图片索引，避免无用全量转换
+      const referencedIndices = new Set()
+      const recindexRegex = /recindex\s*=\s*["']?(\d+)["']?/gi
+      let match
+      while ((match = recindexRegex.exec(text)) !== null) {
+        referencedIndices.add(parseInt(match[1]))
+      }
 
-        const imgBuf = buf.slice(imgStart, Math.min(imgEnd, buf.length))
-        if (imgBuf.length < 4) continue
+      const embedRegex = /kindle:embed:([0-9A-Fa-f]+)/gi
+      while ((match = embedRegex.exec(text)) !== null) {
+        referencedIndices.add(parseInt(match[1], 16))
+      }
 
-        // 通过 magic bytes 检测图片格式
-        let mimeType = null
-        if (imgBuf[0] === 0xFF && imgBuf[1] === 0xD8) {
-          mimeType = 'image/jpeg'
-        } else if (imgBuf[0] === 0x89 && imgBuf[1] === 0x50 && imgBuf[2] === 0x4E && imgBuf[3] === 0x47) {
-          mimeType = 'image/png'
-        } else if (imgBuf[0] === 0x47 && imgBuf[1] === 0x49 && imgBuf[2] === 0x46) {
-          mimeType = 'image/gif'
-        } else if (imgBuf[0] === 0x42 && imgBuf[1] === 0x4D) {
-          mimeType = 'image/bmp'
-        }
+      for (const recIdx of referencedIndices) {
+        const i = firstImageIndex + recIdx - 1
+        if (i >= firstImageIndex && i < palm.records.length) {
+          const imgStart = palm.records[i]
+          const imgEnd = (i + 1 < palm.records.length) ? palm.records[i + 1] : buf.length
+          if (imgStart >= buf.length || imgStart >= imgEnd) continue
 
-        if (mimeType) {
-          const recIndex = i - firstImageIndex + 1
-          const base64 = imgBuf.toString('base64')
-          images[recIndex] = `data:${mimeType};base64,${base64}`
+          const imgBuf = buf.slice(imgStart, Math.min(imgEnd, buf.length))
+          if (imgBuf.length < 4) continue
+
+          let mimeType = null
+          if (imgBuf[0] === 0xFF && imgBuf[1] === 0xD8) mimeType = 'image/jpeg'
+          else if (imgBuf[0] === 0x89 && imgBuf[1] === 0x50 && imgBuf[2] === 0x4E && imgBuf[3] === 0x47) mimeType = 'image/png'
+          else if (imgBuf[0] === 0x47 && imgBuf[1] === 0x49 && imgBuf[2] === 0x46) mimeType = 'image/gif'
+          else if (imgBuf[0] === 0x42 && imgBuf[1] === 0x4D) mimeType = 'image/bmp'
+
+          if (mimeType) {
+            const base64 = imgBuf.toString('base64')
+            images[recIdx] = `data:${mimeType};base64,${base64}`
+          }
         }
       }
     }

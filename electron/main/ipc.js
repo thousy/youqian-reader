@@ -1,12 +1,13 @@
 import { ipcMain, dialog, shell } from 'electron'
-import { existsSync, readFileSync, statSync } from 'fs'
+import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { extname, basename } from 'path'
 import {
   getAllBooks, addBook, removeBook, updateBook, getBookById,
   getReadingProgress, saveReadingProgress,
   getBookmarks, addBookmark, removeBookmark,
   getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook,
-  getStore, getEpubLocations, saveEpubLocations
+  getStore, getEpubLocations, saveEpubLocations,
+  exportBackupData, importBackupData, resetDatabase
 } from './database'
 import { extractEpubMeta } from './parsers/epub'
 import { extractPdfMeta } from './parsers/pdf'
@@ -168,4 +169,88 @@ export function setupIpcHandlers() {
     }
     return { success: false, error: '未找到封面图片' }
   })
+
+  // ===== 备份与恢复 =====
+  ipcMain.handle('export-backup', async () => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    const result = await dialog.showSaveDialog({
+      title: '导出备份数据',
+      defaultPath: `youqian_backup_${dateStr}.json`,
+      filters: [
+        { name: 'Backup Files', extensions: ['json'] }
+      ]
+    })
+    
+    if (result.canceled || !result.filePath) {
+      return { success: false, error: '用户取消了导出' }
+    }
+
+    try {
+      const backupData = exportBackupData()
+      writeFileSync(result.filePath, JSON.stringify(backupData, null, 2), 'utf-8')
+      return { success: true, filePath: result.filePath }
+    } catch (err) {
+      return { success: false, error: `写入备份文件失败: ${err.message}` }
+    }
+  })
+
+  ipcMain.handle('import-backup', async () => {
+    const result = await dialog.showOpenDialog({
+      title: '导入备份数据',
+      filters: [
+        { name: 'Backup Files', extensions: ['json'] }
+      ],
+      properties: ['openFile']
+    })
+
+    if (result.canceled || !result.filePaths || result.filePaths.length === 0) {
+      return { success: false, error: '用户取消了导入' }
+    }
+
+    try {
+      const content = readFileSync(result.filePaths[0], 'utf-8')
+      const backupData = JSON.parse(content)
+      
+      const importResult = importBackupData(backupData)
+      if (importResult.success) {
+        if (importResult.restoredBookIds && importResult.restoredBookIds.length > 0) {
+          for (const bookId of importResult.restoredBookIds) {
+            try {
+              const book = getBookById(bookId)
+              if (book && existsSync(book.filePath)) {
+                const ext = extname(book.filePath).toLowerCase().slice(1)
+                let meta = {}
+                if (ext === 'epub') meta = await extractEpubMeta(book.filePath)
+                else if (ext === 'pdf') meta = await extractPdfMeta(book.filePath)
+                else if (ext === 'mobi' || ext === 'azw3') meta = await extractMobiMeta(book.filePath)
+                else if (ext === 'txt') meta = await extractTxtMeta(book.filePath)
+
+                updateBook(bookId, {
+                  author: meta.author || '未知',
+                  cover: meta.cover || null,
+                  description: meta.description || '',
+                  publisher: meta.publisher || '',
+                  language: meta.language || ''
+                })
+              }
+            } catch (e) {
+              console.error(`恢复书籍元数据失败 ${bookId}:`, e)
+            }
+          }
+        }
+        return {
+          success: true,
+          settings: getSettings(),
+          categories: getStore().get('categories', [])
+        }
+      } else {
+        return { success: false, error: importResult.error }
+      }
+    } catch (err) {
+      return { success: false, error: `导入失败: ${err.message}` }
+    }
+  })
+
+  ipcMain.handle('reset-database', () => resetDatabase())
 }
+
