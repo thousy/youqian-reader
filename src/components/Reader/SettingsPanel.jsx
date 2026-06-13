@@ -12,6 +12,7 @@ const DEFAULT_SETTINGS = {
 
 const FONT_MAP = {
   'BookDefault': '内嵌字体',
+  'ZTE Zhengyuan': '中兴正圆',
   'Microsoft YaHei': '微软雅黑',
   'YouYuan': '幼圆',
   'KaiTi': '楷体',

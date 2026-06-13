@@ -1440,6 +1440,10 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
             {/* 精准双 ID 精准选择器样式绑定，保障两容器排版字号高度一致，且绝对不影响无关层级 */}
             {/* 精准双 ID 选择器样式绑定，废除低效通配符（*），采用继承与常见文本元素以提升巨量 DOM 下的渲染性能 */}
             <style dangerouslySetInnerHTML={{ __html: `
+              @font-face {
+                font-family: 'ZTE Zhengyuan';
+                src: url('${new URL('/ZTEZhengyuan.ttf', window.location.href).href}') format('truetype');
+              }
               #mobi-scroll-content, #mobi-measure-content {
                 ${settings.fontFamily !== 'BookDefault' ? `font-family: "${settings.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
                 line-height: ${settings.lineHeight} !important;

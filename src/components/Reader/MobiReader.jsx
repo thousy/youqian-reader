@@ -1716,6 +1716,10 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
         {(!isActuallyLoading || content) && (
           <>
             <style dangerouslySetInnerHTML={{ __html: `
+              @font-face {
+                font-family: 'ZTE Zhengyuan';
+                src: url('${new URL('/ZTEZhengyuan.ttf', window.location.href).href}') format('truetype');
+              }
               #mobi-scroll-content, #mobi-content,
               #mobi-scroll-content p, #mobi-content p, 
               #mobi-scroll-content div, #mobi-content div, 

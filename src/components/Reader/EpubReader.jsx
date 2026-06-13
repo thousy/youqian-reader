@@ -464,7 +464,12 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const activeTheme = themes[settingsRef.current.theme] || themes.dark
           const fg = activeTheme.body.color
 
+          const fontUrl = new URL('/ZTEZhengyuan.ttf', window.location.href).href
           styleEl.innerHTML = `
+            @font-face {
+              font-family: 'ZTE Zhengyuan';
+              src: url('${fontUrl}') format('truetype');
+            }
             body, p, div, span, li, a, td {
               ${settingsRef.current.fontFamily !== 'BookDefault' ? `font-family: "${settingsRef.current.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
               line-height: ${settingsRef.current.lineHeight} !important;
@@ -726,7 +731,12 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         const fg = activeTheme.body.color
         const isHorizontalScroll = s.layoutMode === 'horizontal-scroll'
 
+        const fontUrl = new URL('/ZTEZhengyuan.ttf', window.location.href).href
         styleEl.innerHTML = `
+          @font-face {
+            font-family: 'ZTE Zhengyuan';
+            src: url('${fontUrl}') format('truetype');
+          }
           body, p, div, span, li, a, td {
             ${s.fontFamily !== 'BookDefault' ? `font-family: "${s.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
             line-height: ${s.lineHeight} !important;
