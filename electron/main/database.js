@@ -156,7 +156,7 @@ export function exportBackupData() {
   const settings = store.get('settings', {})
 
   return {
-    version: '1.4.3',
+    version: '1.4.4',
     exportedAt: new Date().toISOString(),
     settings,
     categories,

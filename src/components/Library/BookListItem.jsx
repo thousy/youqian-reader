@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
+import defaultBookCover from '../../../resources/icon.png'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
@@ -85,7 +86,7 @@ export function BookListItem({ book, onClick, onDelete }) {
       <div className="book-list-cover">
         {book.cover
           ? <img src={book.cover} alt={book.title} />
-          : <span style={{ fontSize: '20px' }}>📚</span>
+          : <img src={defaultBookCover} alt={book.title} />
         }
       </div>
       <div className="book-list-info">

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
+import logoIcon from '../../../resources/icon.png'
 import { BookCard } from './BookCard'
 import { BookListItem } from './BookListItem'
 
@@ -245,10 +246,7 @@ export function LibraryView({ onImport }) {
       {filteredBooks.length === 0 ? (
         <div className="empty-library">
           <div className="empty-icon">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
+            <img src={logoIcon} alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
           </div>
           {books.length === 0 ? (
             <>
