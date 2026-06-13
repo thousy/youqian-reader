@@ -1,0 +1,537 @@
+{
+  "version": "1.4.1",
+  "exportedAt": "2026-06-13T03:40:54.412Z",
+  "settings": {
+    "fontSize": 18,
+    "fontFamily": "BookDefault",
+    "theme": "sepia",
+    "lineHeight": 1.8,
+    "lastOpenedBook": "1780496552232d8tnu0g68",
+    "globalTheme": "light",
+    "layoutMode": "horizontal-scroll",
+    "debugLog": "scrollWidth=499320, pageW=760, rect={\"width\":1200,\"height\":710}, maxLeft=498600, finalPages=657, traditionalTotal=657, isMeasured=false"
+  },
+  "categories": [],
+  "books": [
+    {
+      "id": "1780486686403j19116jc2",
+      "title": "罗茜效应（比尔•盖茨年度书单推荐;澳大利亚不容错过的幽默小说家！学会生活;学会去爱！） (博集外国文学书榜系列)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\（澳大利亚）格雷姆·辛浦生-罗茜效应.mobi"
+    },
+    {
+      "id": "1780486686429tfgdujrwm",
+      "title": "快乐的知识",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\（德）尼采-著-快乐的知识.mobi"
+    },
+    {
+      "id": "1780486686483lory6zzch",
+      "title": "比较的幽灵：民族主义、东南亚与世界",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\（美）本尼迪克特·安德森-比较的幽灵.mobi"
+    },
+    {
+      "id": "1780486686516xicyg8eph",
+      "title": "希区柯克悬念故事全集(全八册)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\（美）希区柯克-希区柯克悬念故事集.mobi"
+    },
+    {
+      "id": "1780486686537ulio60sr9",
+      "title": "失明症漫记",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\(葡)若泽·萨拉马戈-失明症漫记.mobi"
+    },
+    {
+      "id": "1780488679593gqen559s3",
+      "title": "纵乐的困惑：明代的商业与文化",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\纵乐的困惑：明代的商业与文化.mobi"
+    },
+    {
+      "id": "1780488679634sxi32h52v",
+      "title": "走出唯一真理观【豆瓣评分9.0！“中国最接近哲学家称呼的人”、《十三邀》嘉宾陈嘉映继《何为良好生活》后重磅新作！我们之所求，首先不是让别人明白，而是求自己明白。】",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走出唯一真理观.mobi"
+    },
+    {
+      "id": "1780488679676gh0281a96",
+      "title": "走出自我认知的黑箱【豆瓣9.2高分心理学作者周小宽最新力作！壹心理、喜马拉雅心理课程TOP3作者！改变认知，才能改变你的一生！】",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走出自我认知的黑箱.mobi"
+    },
+    {
+      "id": "17804886797089sokyx8nn",
+      "title": "走红：如何打造个人品牌，成为下一个斜杠青年！",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走红：如何打造个人品牌，成为下一个斜杠青年！.mobi"
+    },
+    {
+      "id": "17804886797493vrhsuyxy",
+      "title": "走红思维：12条个人品牌突围法则，掌控人生的不二利器【个人品牌升级与能力变现指南，通用、微软、肯德基等全球高管实现财务自由的隐藏奥秘！】",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走红思维.mobi"
+    },
+    {
+      "id": "1780488679796h5onhlbua",
+      "title": "走进奇妙的元素周期表",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走进奇妙的元素周期表.mobi"
+    },
+    {
+      "id": "1780488679901r73q5bhuq",
+      "title": "走近费曼丛书（套装共6册，硅谷天才们的偶像、诺贝尔物理学奖得主费曼，关于物理及其“逗逼”人生的解说）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走近费曼丛书（套装共6册，硅谷天才们的偶像、诺贝尔物理学奖得主费.mobi"
+    },
+    {
+      "id": "1780488679948znq6wglmm",
+      "title": "走向共和",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\走向共和.mobi"
+    },
+    {
+      "id": "17804886800344amqqnf58",
+      "title": "最寒冷的冬天：美国人眼中的朝鲜战争（全新版）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最寒冷的冬天：美国人眼中的朝鲜战争（全新版）美_大卫·哈伯斯塔姆.mobi"
+    },
+    {
+      "id": "1780488680096txf520745",
+      "title": "最寒冷的冬天：美国人眼中的朝鲜战争",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最寒冷的冬天：美国人眼中的朝鲜战争【mebook_cc】.mobi"
+    },
+    {
+      "id": "17804886801635tufun2k2",
+      "title": "最好的告别：关于衰老与死亡，你必须知道的常识 (亚马逊年度好书、《纽约时报》畅销书!)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最好的告别：关于衰老与死亡，你必须知道的常识.mobi"
+    },
+    {
+      "id": "1780488680234gi2frmo8i",
+      "title": "湛庐文化医学人文系列：最好的告别+最好的抉择（套装共2册）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最好的告别+最好的抉择_湛庐文化医学人文系列.mobi"
+    },
+    {
+      "id": "17804886803001cwm1l9r7",
+      "title": "最好的决定",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最好的决定.mobi"
+    },
+    {
+      "id": "1780488680428k7xq9kgor",
+      "title": "最后的中华帝国：大清",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最后的中华帝国：大清 (2).mobi"
+    },
+    {
+      "id": "1780488680542zhtkauyla",
+      "title": "最后的中华帝国：大清",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最后的中华帝国：大清.mobi"
+    },
+    {
+      "id": "1780488680628x0udrafmk",
+      "title": "最温柔的教养【130则实用亲子用语范例，登顶韩国YES24、Aladin畅销榜，韩国国民育儿导师吴恩英重磅力作】",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\最温柔的教养：做温和而坚定的父母，让爱在对话中流动.mobi"
+    },
+    {
+      "id": "1780488680725wqfp6ubpa",
+      "title": "罪案迷城：消失的女高中生（读客熊猫君出品。口碑媲美《少年的你》！“反校园欺凌”泣血之作，讲述一场校园欺凌引发的连环血案。）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\罪案迷城.mobi"
+    },
+    {
+      "id": "1780488680909j3zx6sysq",
+      "title": "昨天堂（侯登科奖得主、摄影家严明2021蕞新力作（2007-2021）；贾樟柯、胡歌、五条人、汪涵喜爱的摄影家严明，暌违六年诚挚之作）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\昨天堂 - 严明.mobi"
+    },
+    {
+      "id": "1780488681037qz46n132i",
+      "title": "左传上下册--传世经典 文白对照",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\左传（套装上下册）（传世经典文白对照）.mobi"
+    },
+    {
+      "id": "178048868117479xap3q3z",
+      "title": "作家、水手、士兵、间谍：欧内斯特·海明威的秘密历险记，1935-1961（索恩）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作家、水手、士兵、间谍：欧内斯特·海明威的秘密历险记，1935.mobi"
+    },
+    {
+      "id": "17804886812910uqxmpg8y",
+      "title": "三言二拍典藏版套装（大星文化出品，作家大冰强烈推荐版，精选权威底本校勘，完整收录200篇经典短篇小说，写透人间百态！） (作家榜经典文库)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作家榜经典：三言二拍200篇经典小说，写透奇人奇事奇遇！堪称小说版《清明上河图》，作家大冰推荐版_大星作家榜经典文库.mobi"
+    },
+    {
+      "id": "1780488681428k2k766yw1",
+      "title": "作家榜经典：自卑与超越（樊登博士力荐！超越自卑就能内心强大！心理学封神之作，2020全新未删节珍藏版） (大星作家榜经典文库)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作家榜经典：自卑与超越.mobi"
+    },
+    {
+      "id": "1780488681648gdt8yhb6k",
+      "title": "作家榜经典：唐诗三百首（马未都推荐版！让读诗成为一种生活方式，发现日常生活诗意之美！） (大星文化出品)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作家榜经典文库：唐诗三百首.mobi"
+    },
+    {
+      "id": "17804886817596l6ce4m9c",
+      "title": "作家的灵感宝库(轻松捕捉故事创意,拥有“奇思妙想”，才能“点石成金”。）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作家的灵感宝库.mobi"
+    },
+    {
+      "id": "1780488681882gu8ig9pnb",
+      "title": "作文四书：《讲理》《作文七巧》《作文十九问》《文学种子》 (套装共4册 散文大家王鼎钧撰写的“作文小书”)",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\作文四书 套装共4册 .mobi"
+    },
+    {
+      "id": "1780488681988au9rwlp8r",
+      "title": "做对选择：如何在变化中持续保持领先【纽约大学斯特恩商学院副院长，《纽约时报》《福布斯》专栏作家全新作品，为你揭秘企业和个人的成长秘诀！聪明人在关键环节，四两拨千斤的腾挪之道】",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\做对选择：如何在变化中持续保持领先.mobi"
+    },
+    {
+      "id": "17804886821192xzby6eyy",
+      "title": "做二休五： 钱少事少的都市生活指南（年轻人，决不能就这样为房东和老板而活；社畜自救，先让自己闲下来）",
+      "format": "MOBI",
+      "filePath": "F:\\书籍\\MOBI\\做二休五： 钱少事少的都市生活指南.mobi"
+    },
+    {
+      "id": "17804965520675wwohoxhv",
+      "title": "快乐的知识",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\（德）尼采-著-快乐的知识.epub"
+    },
+    {
+      "id": "17804965542366qjod8hs6",
+      "title": "阿鼻劍 - 第01卷",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\[阿鼻劍]第01卷.epub"
+    },
+    {
+      "id": "1780571623399q1fqlpzmh",
+      "title": "《打造娱乐帝国(明星潜规则之皇)》（未删节1-2080章）作者：梦九重_e0353",
+      "format": "TXT",
+      "filePath": "F:\\书籍\\TXT\\《打造娱乐帝国(明星潜规则之皇)》（未删节1-2080章）作者：梦九重_e0353.txt"
+    },
+    {
+      "id": "1780571681573u43a77zkg",
+      "title": "《网游之纵横四海》（1-386章）作者：君莫笑",
+      "format": "TXT",
+      "filePath": "F:\\书籍\\TXT\\《网游之纵横四海》（1-386章）作者：君莫笑.txt"
+    },
+    {
+      "id": "1780571705948xrwpz54dc",
+      "title": "被误解的盐：你可能需要吃咸点【美亚排名榜首，以健康和幸福之名，让盐成为餐桌上的主角】 (方寸系列)",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\被误解的盐：你可能需要吃咸点.azw3"
+    },
+    {
+      "id": "1780571797403847jmhjkg",
+      "title": "《晚熟的人》",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\《晚熟的人》.azw3"
+    },
+    {
+      "id": "1780571853389n4gu9nf62",
+      "title": "活着",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\《活着》余华.azw3"
+    },
+    {
+      "id": "17805718714909eo876kjq",
+      "title": "Python编程三剑客（套装全3册）",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\Python编程三剑客（套装全3册）.azw3"
+    },
+    {
+      "id": "1780573421330tzozhnv15",
+      "title": "被拒绝的勇气【百万畅销书《被讨厌的勇气》作者、阿德勒心理学研究领军者岸见一郎写给年轻人的阿德勒的心理学课！】",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\被拒绝的勇气.azw3"
+    },
+    {
+      "id": "1780573600699dntdwr9zb",
+      "title": "不管教的勇气（樊登读书倾力推荐，百万畅销书作家岸见一郎著作，哪有什么万无一失的人生呢 豆瓣评分8.3）",
+      "format": "AZW3",
+      "filePath": "F:\\书籍\\AZW3\\不管教的勇气.azw3"
+    },
+    {
+      "id": "1780573750940a1mrdi4eh",
+      "title": "[日]黑泽明-蛤蟆的油",
+      "format": "PDF",
+      "filePath": "F:\\书籍\\PDF\\[日]黑泽明-蛤蟆的油.pdf"
+    },
+    {
+      "id": "1780573782421uhv1sz5rn",
+      "title": "《金枝》(全两册)：跨越万年的人性进化故事",
+      "format": "PDF",
+      "filePath": "F:\\书籍\\PDF\\《金枝》(全两册)：跨越万年的人性进化故事.pdf"
+    },
+    {
+      "id": "17805738174088sp0zy4n1",
+      "title": "日本文化丛书 (套装共八册), 2019",
+      "format": "PDF",
+      "filePath": "F:\\书籍\\PDF\\日本文化丛书 (套装共八册), 2019.pdf"
+    },
+    {
+      "id": "17805738473992dvwsk1f3",
+      "title": "内向者优势：内向的你，该如何爆发潜在能量，展现自己的竞争力",
+      "format": "PDF",
+      "filePath": "F:\\书籍\\PDF\\内向者优势：内向的你，该如何爆发潜在能量，展现自己的竞争力.pdf"
+    },
+    {
+      "id": "1780496551891sem71mxdi",
+      "title": "罗茜效应（比尔•盖茨年度书单推荐;澳大利亚不容错过的幽默小说家！学会生活;学会去爱！） (博集外国文学书榜系列)",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\（澳大利亚）格雷姆·辛浦生-罗茜效应.epub"
+    },
+    {
+      "id": "1780496552232d8tnu0g68",
+      "title": "比较的幽灵：民族主义、东南亚与世界",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\（美）本尼迪克特·安德森-比较的幽灵.epub"
+    },
+    {
+      "id": "1780496552374dpdp5ez7d",
+      "title": "失明症漫记",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\(葡)若泽·萨拉马戈-失明症漫记.epub"
+    },
+    {
+      "id": "1780496552514al5zoz4wt",
+      "title": "致命的自負",
+      "format": "EPUB",
+      "filePath": "F:\\书籍\\EPUB\\（英）哈耶克-致命的自负.epub"
+    }
+  ],
+  "readingProgress": {
+    "1780486686429tfgdujrwm": {
+      "pageIndex": 717,
+      "percentage": 0.9637096774193549,
+      "updatedAt": "2026-06-03T12:08:18.896Z"
+    },
+    "1780486686537ulio60sr9": {
+      "pageIndex": 60,
+      "percentage": 0.1477832512315271,
+      "updatedAt": "2026-06-03T12:08:25.402Z"
+    },
+    "1780486686403j19116jc2": {
+      "pageIndex": 0,
+      "percentage": 0,
+      "updatedAt": "2026-06-03T12:09:35.808Z"
+    },
+    "1780486686483lory6zzch": {
+      "pageIndex": 13,
+      "percentage": 0.042483660130718956,
+      "updatedAt": "2026-06-03T12:09:55.310Z"
+    },
+    "1780486686516xicyg8eph": {
+      "pageIndex": 1184,
+      "percentage": 0.9974726200505476,
+      "updatedAt": "2026-06-03T12:10:53.544Z"
+    },
+    "178048868117479xap3q3z": {
+      "pageIndex": 298,
+      "percentage": 1,
+      "updatedAt": "2026-06-03T12:11:47.666Z"
+    },
+    "1780488681648gdt8yhb6k": {
+      "pageIndex": 40,
+      "percentage": 0.04499437570303712,
+      "updatedAt": "2026-06-03T12:12:20.644Z"
+    },
+    "17804886803001cwm1l9r7": {
+      "pageIndex": 2,
+      "percentage": 0.0078125,
+      "updatedAt": "2026-06-11T12:40:59.622Z"
+    },
+    "1780488681882gu8ig9pnb": {
+      "pageIndex": 22,
+      "percentage": 0.05238095238095238,
+      "updatedAt": "2026-06-03T12:54:43.971Z"
+    },
+    "17804886821192xzby6eyy": {
+      "pageIndex": 67,
+      "percentage": 0.40119760479041916,
+      "updatedAt": "2026-06-03T12:38:56.835Z"
+    },
+    "1780488681037qz46n132i": {
+      "pageIndex": 0,
+      "percentage": 0,
+      "updatedAt": "2026-06-04T11:57:24.857Z"
+    },
+    "1780488681428k2k766yw1": {
+      "pageIndex": 182,
+      "percentage": 0.6476868327402135,
+      "updatedAt": "2026-06-03T13:51:48.017Z"
+    },
+    "17804886797089sokyx8nn": {
+      "pageIndex": 66,
+      "percentage": 0.4714285714285714,
+      "updatedAt": "2026-06-03T13:50:45.618Z"
+    },
+    "1780488681988au9rwlp8r": {
+      "pageIndex": 37,
+      "percentage": 0.14453125,
+      "updatedAt": "2026-06-04T12:37:47.665Z"
+    },
+    "17804886801635tufun2k2": {
+      "pageIndex": 330,
+      "percentage": 0.9850746268656716,
+      "updatedAt": "2026-06-10T15:20:43.388Z"
+    },
+    "1780488680725wqfp6ubpa": {
+      "pageIndex": 235,
+      "percentage": 0.35823170731707316,
+      "updatedAt": "2026-06-10T15:13:19.841Z"
+    },
+    "1780488679593gqen559s3": {
+      "pageIndex": 299,
+      "percentage": 0.6052631578947368,
+      "updatedAt": "2026-06-11T14:31:24.061Z"
+    },
+    "1780488680628x0udrafmk": {
+      "pageIndex": 31,
+      "percentage": 0.11610486891385768,
+      "updatedAt": "2026-06-03T14:21:34.188Z"
+    },
+    "17804886797493vrhsuyxy": {
+      "pageIndex": 2,
+      "percentage": 0.011363636363636364,
+      "updatedAt": "2026-06-11T14:05:45.716Z"
+    },
+    "1780571623399q1fqlpzmh": {
+      "chapterIndex": 2,
+      "pageIndex": 0,
+      "percentage": 0.0003742409924871121,
+      "updatedAt": "2026-06-11T14:06:08.865Z"
+    },
+    "1780571705948xrwpz54dc": {
+      "pageIndex": 302,
+      "percentage": 0.9617834394904459,
+      "updatedAt": "2026-06-06T14:12:25.899Z"
+    },
+    "1780571797403847jmhjkg": {
+      "pageIndex": 259,
+      "percentage": 0.7095890410958904,
+      "updatedAt": "2026-06-11T14:31:01.973Z"
+    },
+    "1780571853389n4gu9nf62": {
+      "pageIndex": 193,
+      "percentage": 0.965,
+      "updatedAt": "2026-06-06T14:12:49.885Z"
+    },
+    "17805718714909eo876kjq": {
+      "pageIndex": 211,
+      "percentage": 0.1,
+      "updatedAt": "2026-06-12T15:59:12.291Z"
+    },
+    "1780573421330tzozhnv15": {
+      "pageIndex": 2,
+      "percentage": 0.018691588785046728,
+      "updatedAt": "2026-06-11T14:05:32.375Z"
+    },
+    "1780573600699dntdwr9zb": {
+      "pageIndex": 65,
+      "percentage": 0.9701492537313433,
+      "updatedAt": "2026-06-06T14:19:51.321Z"
+    },
+    "1780488680909j3zx6sysq": {
+      "pageIndex": 2,
+      "percentage": 0.014184397163120567,
+      "updatedAt": "2026-06-04T11:48:26.482Z"
+    },
+    "1780573750940a1mrdi4eh": {
+      "page": 1,
+      "percentage": 0.006944444444444444,
+      "updatedAt": "2026-06-06T03:49:13.616Z"
+    },
+    "1780573782421uhv1sz5rn": {
+      "page": 107,
+      "percentage": 0.12298850574712644,
+      "updatedAt": "2026-06-06T04:11:31.711Z"
+    },
+    "17805738174088sp0zy4n1": {
+      "page": 7,
+      "percentage": 0.0036213140196585617,
+      "updatedAt": "2026-06-05T16:48:04.426Z"
+    },
+    "17805738473992dvwsk1f3": {
+      "page": 5,
+      "percentage": 0.03816793893129771,
+      "updatedAt": "2026-06-06T05:10:31.925Z"
+    },
+    "17804965542366qjod8hs6": {
+      "cfi": "epubcfi(/6/12!/4/1:0)",
+      "percentage": 0,
+      "updatedAt": "2026-06-11T15:15:55.998Z"
+    },
+    "17804886800344amqqnf58": {
+      "pageIndex": 90,
+      "percentage": 0.11406844106463879,
+      "updatedAt": "2026-06-10T14:01:27.984Z"
+    },
+    "17804886817596l6ce4m9c": {
+      "pageIndex": 19,
+      "percentage": 0.06120600414078675,
+      "updatedAt": "2026-06-04T13:38:36.382Z"
+    },
+    "17804965520675wwohoxhv": {
+      "cfi": "epubcfi(/6/36!/4[F8900-14ac9aea5cc84181aea1d33f32c3163a]/2[calibre_pb_0]/1:0)",
+      "percentage": 0,
+      "updatedAt": "2026-06-12T16:18:58.033Z"
+    },
+    "1780488680234gi2frmo8i": {
+      "pageIndex": 2,
+      "percentage": 0.0029069767441860465,
+      "updatedAt": "2026-06-10T15:09:31.818Z"
+    },
+    "1780571681573u43a77zkg": {
+      "chapterIndex": 10,
+      "pageIndex": 0,
+      "percentage": 0.015813637136541405,
+      "updatedAt": "2026-06-11T14:04:18.145Z"
+    },
+    "1780496552514al5zoz4wt": {
+      "cfi": "epubcfi(/6/14!/4/14/1:0)",
+      "percentage": 0,
+      "updatedAt": "2026-06-13T03:30:46.878Z"
+    },
+    "1780496552232d8tnu0g68": {
+      "cfi": "epubcfi(/6/16!/4[5N3C0-f004c984864449d4a12ef7001cc07e5a]/50/1:0)",
+      "percentage": 0,
+      "updatedAt": "2026-06-11T15:06:27.531Z"
+    },
+    "1780496552374dpdp5ez7d": {
+      "cfi": "epubcfi(/6/4!/4/38/1:324)",
+      "percentage": 0,
+      "updatedAt": "2026-06-12T13:41:44.093Z"
+    },
+    "1780496551891sem71mxdi": {
+      "cfi": "epubcfi(/6/18!/4[6LJU0-177a5814559b4a7e900588225162d8a0]/50/1:0)",
+      "percentage": 0,
+      "updatedAt": "2026-06-11T15:33:57.859Z"
+    }
+  },
+  "bookmarks": {
+    "1780573600699dntdwr9zb": [
+      {
+        "id": "1780573680960",
+        "createdAt": "2026-06-04T11:48:00.960Z",
+        "label": "第 7 / 69 页",
+        "pageIndex": 6,
+        "percentage": 0.08823529411764706
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # YouQian书籍阅读器 📚
 
-[![Version](https://img.shields.io/badge/version-1.4.2-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.4.3-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 

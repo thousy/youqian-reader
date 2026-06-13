@@ -46,7 +46,7 @@ function createWindow() {
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
     show: false,
-    icon: join(__dirname, '../../resources/icon.ico'),
+    icon: join(app.getAppPath(), 'resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
@@ -104,7 +104,7 @@ function createReaderWindow(bookId) {
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
     show: false,
-    icon: join(__dirname, '../../resources/icon.ico'),
+    icon: join(app.getAppPath(), 'resources/icon.ico'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
