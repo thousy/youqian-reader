@@ -573,6 +573,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   }, [loading, chapters, savedProgress, paragraphs, totalPages, settings.layoutMode])
 
   const goToPageCard = useCallback((idx, targetChapIdx = currentChapterIndex) => {
+    if (isNaN(idx) && idx !== 'last') return
     const safeChapIdx = Math.min(Math.max(0, targetChapIdx), chapters.length - 1)
     if (safeChapIdx !== currentChapterIndex) {
       pendingPageRef.current = idx === 999999 ? 'last' : idx
@@ -601,6 +602,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   // 统一进度跳转与上报逻辑
   const goToPage = useCallback((idx, targetChapIdx = currentChapterIndex) => {
+    if (isNaN(idx)) return
     if (isCardStyle) {
       goToPageCard(idx, targetChapIdx)
       return
@@ -1070,7 +1072,29 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
               currentPage={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalCurrentPage : pageIndex + 1}
               totalPages={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalTotalPages : totalPages}
               percentage={currentProgressPercentage}
-              onPageChange={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? goToGlobalPage : (page) => goToPage(page - 1)}
+              onPageChange={(page) => {
+                const isGlobal = chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length
+                const total = isGlobal ? globalTotalPages : totalPages
+                const current = isGlobal ? globalCurrentPage : pageIndex + 1
+                
+                let targetPageNum
+                if (page === 'home') targetPageNum = 1
+                else if (page === 'end') targetPageNum = total
+                else if (page === 'prev') targetPageNum = Math.max(1, current - 1)
+                else if (page === 'next') targetPageNum = Math.min(total, current + 1)
+                else {
+                  const num = parseInt(page)
+                  if (!isNaN(num)) targetPageNum = num
+                }
+                
+                if (targetPageNum !== undefined) {
+                  if (isGlobal) {
+                    goToGlobalPage(targetPageNum)
+                  } else {
+                    goToPage(targetPageNum - 1)
+                  }
+                }
+              }}
             />
           </>
         )}

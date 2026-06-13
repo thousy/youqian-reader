@@ -873,6 +873,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   }, [toc, rect.width, book.cover, stepW])
 
   const goToPageCard = useCallback((idx) => {
+    if (isNaN(idx)) return
     if (totalPages <= 0) return
     const safeIdx = Math.max(0, Math.min(idx, totalPages - 1))
     setPageIndex(safeIdx)
@@ -890,6 +891,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
 
   // 统一进度跳转与进度上报逻辑
   const goToPage = useCallback((idx) => {
+    if (isNaN(idx)) return
     if (isCardStyle) {
       goToPageCard(idx)
       return
@@ -1024,106 +1026,111 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     return () => clearTimeout(timer)
   }, [loading, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.layoutMode, cycleW, totalPages, toc, measureTrigger])
 
-  // 当内容完成渲染或 TOC 发生变化时，瞬时抓取各章节 DOM 指针并填入 headingMapRef 缓存，打通极速高亮与跳转通道
+  // 当内容完成渲染或 TOC 发生变化时，在后台静默异步抓取各章节 DOM 指针并填入 headingMapRef 缓存
   useEffect(() => {
     if (loading || toc.length === 0) return
-    headingMapRef.current.clear()
-    const container = document.getElementById('mobi-scroll-content') || containerRef.current
-    if (!container) return
 
-    const paras = container.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6')
-    const dehydrateText = (str) => {
-      return str.replace(/[\s\-\=\_\*～~]/g, '')
-    }
+    const timer = setTimeout(() => {
+      headingMapRef.current.clear()
+      const container = document.getElementById('mobi-scroll-content') || containerRef.current
+      if (!container) return
 
-    // 预先建立高性能脱水文本哈希映射表，将 O(M*N) 的检索复杂度暴降为 O(M+N)
-    const textToElMap = new Map()
-    for (let i = 0; i < paras.length; i++) {
-      const pEl = paras[i]
-      if (pEl.tagName.toLowerCase() === 'a') continue
-      
-      const text = pEl.textContent
-      if (!text) continue
-      const len = text.length
-      if (len > 0 && len < 100) {
-        const dry = dehydrateText(text)
-        if (dry) {
-          textToElMap.set(dry, { el: pEl, index: i })
-        }
-      }
-    }
-
-    toc.forEach((item, tocIndex) => {
-      if (item.isVirtual) return
-      let el = null
-
-      // 1. 优先根据 ID 或 Name 定位
-      if (item.href.startsWith('filepos-')) {
-        const fileposVal = item.href.substring(8)
-        try {
-          const matches = container.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
-          if (matches.length > 0) {
-            el = matches[matches.length - 1]
-          }
-        } catch {}
-      } else {
-        el = document.getElementById(item.href)
+      const paras = container.querySelectorAll('p, div, h1, h2, h3, h4, h5, h6')
+      const dehydrateText = (str) => {
+        return str.replace(/[\s\-\=\_\*～~]/g, '')
       }
 
-      // 2. 如果没找到，进行文本匹配检索（使用 Map 哈希匹配）
-      if (!el) {
-        const cleanLabel = item.label.trim()
-        const coreLabel = cleanLabel.replace(/^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+|\d+[\.、\s]+)/i, '').trim()
-        const dryCleanLabel = dehydrateText(cleanLabel)
-        const dryCoreLabel = dehydrateText(coreLabel)
-        const tocRatio = toc.length > 0 ? tocIndex / toc.length : 0
-
-        // 优先精确匹配
-        let matchedData = textToElMap.get(dryCleanLabel) || textToElMap.get(dryCoreLabel)
+      // 预先建立高性能脱水文本哈希映射表，将 O(M*N) 的检索复杂度暴降为 O(M+N)
+      const textToElMap = new Map()
+      for (let i = 0; i < paras.length; i++) {
+        const pEl = paras[i]
+        if (pEl.tagName.toLowerCase() === 'a') continue
         
-        // 兜底：如果精确匹配不到且 dryCoreLabel 比较长，尝试 Map 的键模糊扫描
-        if (!matchedData && dryCoreLabel.length > 3) {
-          for (let [dryKey, data] of textToElMap.entries()) {
-            if (dryKey.includes(dryCoreLabel)) {
-              matchedData = data
-              break
-            }
+        const text = pEl.textContent
+        if (!text) continue
+        const len = text.length
+        if (len > 0 && len < 100) {
+          const dry = dehydrateText(text)
+          if (dry) {
+            textToElMap.set(dry, { el: pEl, index: i })
           }
         }
+      }
 
-        if (matchedData) {
-          const { el: pEl, index: i } = matchedData
-          
-          let isExcluded = false
-          const hasJumpLink = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
-          if (hasJumpLink) {
-            const linkEl = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
-            const hrefAttr = linkEl.getAttribute('href') || ''
-            const fileposAttr = linkEl.getAttribute('filepos') || ''
-            if (fileposAttr || (hrefAttr && hrefAttr.startsWith('#'))) {
-              isExcluded = true
+      toc.forEach((item, tocIndex) => {
+        if (item.isVirtual) return
+        let el = null
+
+        // 1. 优先根据 ID 或 Name 定位
+        if (item.href.startsWith('filepos-')) {
+          const fileposVal = item.href.substring(8)
+          try {
+            const matches = container.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
+            if (matches.length > 0) {
+              el = matches[matches.length - 1]
             }
-          }
+          } catch {}
+        } else {
+          el = document.getElementById(item.href)
+        }
 
-          if (!isExcluded) {
-            const paraRatio = paras.length > 0 ? i / paras.length : 0
-            let isRatioOk = true
-            if (toc.length > 3 && !/^(版权|序|译者|前言|引言|序言|目录|Contents|TOC)/i.test(cleanLabel)) {
-              if (Math.abs(tocRatio - paraRatio) > 0.35) {
-                isRatioOk = false
+        // 2. 如果没找到，进行文本匹配检索（使用 Map 哈希匹配）
+        if (!el) {
+          const cleanLabel = item.label.trim()
+          const coreLabel = cleanLabel.replace(/^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+|\d+[\.、\s]+)/i, '').trim()
+          const dryCleanLabel = dehydrateText(cleanLabel)
+          const dryCoreLabel = dehydrateText(coreLabel)
+          const tocRatio = toc.length > 0 ? tocIndex / toc.length : 0
+
+          // 优先精确匹配
+          let matchedData = textToElMap.get(dryCleanLabel) || textToElMap.get(dryCoreLabel)
+          
+          // 兜底：如果精确匹配不到且 dryCoreLabel 比较长，尝试 Map 的键模糊扫描
+          if (!matchedData && dryCoreLabel.length > 3) {
+            for (let [dryKey, data] of textToElMap.entries()) {
+              if (dryKey.includes(dryCoreLabel)) {
+                matchedData = data
+                break
               }
             }
-            if (isRatioOk) {
-              el = pEl
+          }
+
+          if (matchedData) {
+            const { el: pEl, index: i } = matchedData
+            
+            let isExcluded = false
+            const hasJumpLink = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
+            if (hasJumpLink) {
+              const linkEl = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
+              const hrefAttr = linkEl.getAttribute('href') || ''
+              const fileposAttr = linkEl.getAttribute('filepos') || ''
+              if (fileposAttr || (hrefAttr && hrefAttr.startsWith('#'))) {
+                isExcluded = true
+              }
+            }
+
+            if (!isExcluded) {
+              const paraRatio = paras.length > 0 ? i / paras.length : 0
+              let isRatioOk = true
+              if (toc.length > 3 && !/^(版权|序|译者|前言|引言|序言|目录|Contents|TOC)/i.test(cleanLabel)) {
+                if (Math.abs(tocRatio - paraRatio) > 0.35) {
+                  isRatioOk = false
+                }
+              }
+              if (isRatioOk) {
+                el = pEl
+              }
             }
           }
         }
-      }
 
-      if (el) {
-        headingMapRef.current.set(item.href, el)
-      }
-    })
+        if (el) {
+          headingMapRef.current.set(item.href, el)
+        }
+      })
+    }, 1000)
+
+    return () => clearTimeout(timer)
   }, [loading, toc, content])
   // 注册获取当前精确定位的回调函数
   useEffect(() => {
@@ -1988,7 +1995,16 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                   chapterName={currentChapterName}
                   currentPage={pageIndex + 1}
                   totalPages={totalPages}
-                  onPageChange={(page) => goToPage(page - 1)}
+                  onPageChange={(page) => {
+                    if (page === 'home') goToPage(0)
+                    else if (page === 'end') goToPage(totalPages - 1)
+                    else if (page === 'prev') goToPage(pageIndex - 1)
+                    else if (page === 'next') goToPage(pageIndex + 1)
+                    else {
+                      const num = parseInt(page)
+                      if (!isNaN(num)) goToPage(num - 1)
+                    }
+                  }}
                 />
               </>
             )}
@@ -2061,21 +2077,25 @@ function processNotesInDoc(doc, toc) {
 
   for (let i = 0; i < paras.length; i++) {
     const p = paras[i]
-    const text = p.textContent
-    if (!text) continue
-    
-    // 快速前置字符过滤：如果开头不包含数字或常用括号，则绝非注释段落，直接跳过以大幅提升速度
-    const firstChar = text[0] === ' ' ? text.trim()[0] : text[0]
+    // 快速前置条件：仅对以数字或特定注释符号开头的文本节点执行 textContent 获取，跳过 99.9% 冗余段落，极大提高大书打开速度
+    const firstChild = p.firstChild
+    if (!firstChild || firstChild.nodeType !== 3) continue
+    const val = firstChild.nodeValue
+    if (!val) continue
+    const firstChar = val[0] === ' ' ? val.trim()[0] : val[0]
     if (!firstChar) continue
     if (firstChar !== '[' && firstChar !== '(' && firstChar !== '（' && !(firstChar >= '0' && firstChar <= '9')) {
       continue
     }
 
+    const text = p.textContent
+    if (!text) continue
+
     const match = text.trim().match(NOTE_REGEX)
     if (match) {
       const noteNum = parseInt(match[1])
       const noteText = match[2].trim()
-      // 过滤年份等大数字和极短非注释段落，注号限制在合理范围内
+      // 过滤年份等大数字 and 极短非注释段落，注号限制在合理范围内
       if (noteText.length > 2 && noteNum > 0 && noteNum < 1500) {
         if (!/^[年\-]/i.test(noteText)) {
           noteMap.set(noteNum, noteText)

@@ -344,7 +344,16 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
             chapterName={book.title || '正文'}
             currentPage={currentPage}
             totalPages={totalPages}
-            onPageChange={setCurrentPage}
+            onPageChange={(page) => {
+              if (page === 'home') setCurrentPage(1)
+              else if (page === 'end') setCurrentPage(totalPages)
+              else if (page === 'prev') setCurrentPage(prev => Math.max(1, prev - 1))
+              else if (page === 'next') setCurrentPage(prev => Math.min(totalPages, prev + 1))
+              else {
+                const num = parseInt(page)
+                if (!isNaN(num)) setCurrentPage(num)
+              }
+            }}
           />
         )}
         {!loading && currentPage > 1 && (

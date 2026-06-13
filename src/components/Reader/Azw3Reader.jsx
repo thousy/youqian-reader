@@ -809,6 +809,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
 
   // 进度跳转逻辑
   const goToPageCard = useCallback((idx) => {
+    if (isNaN(idx)) return
     if (totalPages <= 0) return
     const safeIdx = Math.max(0, Math.min(idx, totalPages - 1))
     setPageIndex(safeIdx)
@@ -821,6 +822,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
   }, [totalPages, onProgressChange, updateChapterNameAndToc])
 
   const goToPage = useCallback((idx) => {
+    if (isNaN(idx)) return
     if (isCardStyle) {
       goToPageCard(idx)
       return
@@ -905,127 +907,132 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
   // 内容与目录缓存指针映射绑定
   useEffect(() => {
     if (loading || toc.length === 0) return
-    headingMapRef.current.clear()
-    const container = document.getElementById('mobi-scroll-content') || containerRef.current
-    if (!container) return
 
-    // 优先提取标题标签、章节专属类名，仅对符合章节首字符特征的 p/div 进行提取，避免庞大段落库引起检索卡死
-    const paras = []
-    const rawElements = container.querySelectorAll('h1, h2, h3, h4, h5, h6, .chapter, .chaptertitle, .chapter-title, .heading, .header, .title, p, div')
-    for (let i = 0; i < rawElements.length; i++) {
-      const el = rawElements[i]
-      const tagName = el.tagName.toLowerCase()
-      if (
-        tagName.startsWith('h') || 
-        el.classList.contains('chapter') || 
-        el.classList.contains('chaptertitle') || 
-        el.classList.contains('chapter-title') || 
-        el.classList.contains('heading') || 
-        el.classList.contains('header') || 
-        el.classList.contains('title')
-      ) {
-        paras.push(el)
-      } else {
-        const firstChild = el.firstChild
-        if (firstChild && firstChild.nodeType === 3) {
-          const val = firstChild.nodeValue
-          if (val) {
-            const firstChar = val[0] === ' ' ? val.trim()[0] : val[0]
-            if (firstChar === '第' || firstChar === 'C' || firstChar === 'c' || (firstChar >= '0' && firstChar <= '9')) {
-              paras.push(el)
-            }
-          }
-        }
-      }
-    }
+    const timer = setTimeout(() => {
+      headingMapRef.current.clear()
+      const container = document.getElementById('mobi-scroll-content') || containerRef.current
+      if (!container) return
 
-    const dehydrateText = (str) => {
-      return str.replace(/[\s\-\=\_\*～~]/g, '')
-    }
-
-    const textToElMap = new Map()
-    for (let i = 0; i < paras.length; i++) {
-      const pEl = paras[i]
-      if (pEl.tagName.toLowerCase() === 'a') continue
-      
-      const text = pEl.textContent
-      if (!text) continue
-      const len = text.length
-      if (len > 0 && len < 100) {
-        const dry = dehydrateText(text)
-        if (dry) {
-          textToElMap.set(dry, { el: pEl, index: i })
-        }
-      }
-    }
-
-    toc.forEach((item, tocIndex) => {
-      if (item.isVirtual) return
-      let el = null
-
-      if (item.href.startsWith('filepos-')) {
-        const fileposVal = item.href.substring(8)
-        try {
-          const matches = container.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
-          if (matches.length > 0) {
-            el = matches[matches.length - 1]
-          }
-        } catch {}
-      } else {
-        el = document.getElementById(item.href)
-      }
-
-      if (!el) {
-        const cleanLabel = item.label.trim()
-        const coreLabel = cleanLabel.replace(/^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+|\d+[\.、\s]+)/i, '').trim()
-        const dryCleanLabel = dehydrateText(cleanLabel)
-        const dryCoreLabel = dehydrateText(coreLabel)
-        const tocRatio = toc.length > 0 ? tocIndex / toc.length : 0
-
-        let matchedData = textToElMap.get(dryCleanLabel) || textToElMap.get(dryCoreLabel)
-        
-        if (!matchedData && dryCoreLabel.length > 3) {
-          for (let [dryKey, data] of textToElMap.entries()) {
-            if (dryKey.includes(dryCoreLabel)) {
-              matchedData = data
-              break
-            }
-          }
-        }
-
-        if (matchedData) {
-          const { el: pEl, index: i } = matchedData
-          
-          let isExcluded = false
-          const hasJumpLink = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
-          if (hasJumpLink) {
-            const linkEl = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
-            const hrefAttr = linkEl.getAttribute('href') || ''
-            const fileposAttr = linkEl.getAttribute('filepos') || ''
-            if (fileposAttr || (hrefAttr && hrefAttr.startsWith('#'))) {
-              isExcluded = true
-            }
-          }
-
-          if (!isExcluded) {
-            const paraRatio = paras.length > 0 ? i / paras.length : 0
-            let isRatioOk = true
-            if (toc.length > 3 && !/^(版权|序|译者|前言|引言|序言|目录|Contents|TOC)/i.test(cleanLabel)) {
-              if (Math.abs(tocRatio - paraRatio) > 0.35) {
-                isRatioOk = false
+      // 优先提取标题标签、章节专属类名，仅对符合章节首字符特征的 p/div 进行提取，避免庞大段落库引起检索卡死
+      const paras = []
+      const rawElements = container.querySelectorAll('h1, h2, h3, h4, h5, h6, .chapter, .chaptertitle, .chapter-title, .heading, .header, .title, p, div')
+      for (let i = 0; i < rawElements.length; i++) {
+        const el = rawElements[i]
+        const tagName = el.tagName.toLowerCase()
+        if (
+          tagName.startsWith('h') || 
+          el.classList.contains('chapter') || 
+          el.classList.contains('chaptertitle') || 
+          el.classList.contains('chapter-title') || 
+          el.classList.contains('heading') || 
+          el.classList.contains('header') || 
+          el.classList.contains('title')
+        ) {
+          paras.push(el)
+        } else {
+          const firstChild = el.firstChild
+          if (firstChild && firstChild.nodeType === 3) {
+            const val = firstChild.nodeValue
+            if (val) {
+              const firstChar = val[0] === ' ' ? val.trim()[0] : val[0]
+              if (firstChar === '第' || firstChar === 'C' || firstChar === 'c' || (firstChar >= '0' && firstChar <= '9')) {
+                paras.push(el)
               }
             }
-            if (isRatioOk) {
-              el = pEl
-            }
           }
         }
       }
 
-      if (el) {
-        headingMapRef.current.set(item.href, el)
+      const dehydrateText = (str) => {
+        return str.replace(/[\s\-\=\_\*～~]/g, '')
       }
-    })
+
+      const textToElMap = new Map()
+      for (let i = 0; i < paras.length; i++) {
+        const pEl = paras[i]
+        if (pEl.tagName.toLowerCase() === 'a') continue
+        
+        const text = pEl.textContent
+        if (!text) continue
+        const len = text.length
+        if (len > 0 && len < 100) {
+          const dry = dehydrateText(text)
+          if (dry) {
+            textToElMap.set(dry, { el: pEl, index: i })
+          }
+        }
+      }
+
+      toc.forEach((item, tocIndex) => {
+        if (item.isVirtual) return
+        let el = null
+
+        if (item.href.startsWith('filepos-')) {
+          const fileposVal = item.href.substring(8)
+          try {
+            const matches = container.querySelectorAll(`[name="filepos${fileposVal}"], #filepos${fileposVal}, #filepos-${fileposVal}`)
+            if (matches.length > 0) {
+              el = matches[matches.length - 1]
+            }
+          } catch {}
+        } else {
+          el = document.getElementById(item.href)
+        }
+
+        if (!el) {
+          const cleanLabel = item.label.trim()
+          const coreLabel = cleanLabel.replace(/^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+|\d+[\.、\s]+)/i, '').trim()
+          const dryCleanLabel = dehydrateText(cleanLabel)
+          const dryCoreLabel = dehydrateText(coreLabel)
+          const tocRatio = toc.length > 0 ? tocIndex / toc.length : 0
+
+          let matchedData = textToElMap.get(dryCleanLabel) || textToElMap.get(dryCoreLabel)
+          
+          if (!matchedData && dryCoreLabel.length > 3) {
+            for (let [dryKey, data] of textToElMap.entries()) {
+              if (dryKey.includes(dryCoreLabel)) {
+                matchedData = data
+                break
+              }
+            }
+          }
+
+          if (matchedData) {
+            const { el: pEl, index: i } = matchedData
+            
+            let isExcluded = false
+            const hasJumpLink = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
+            if (hasJumpLink) {
+              const linkEl = pEl.querySelector('a[href], a[filepos]') || pEl.closest('a[href], a[filepos]')
+              const hrefAttr = linkEl.getAttribute('href') || ''
+              const fileposAttr = linkEl.getAttribute('filepos') || ''
+              if (fileposAttr || (hrefAttr && hrefAttr.startsWith('#'))) {
+                isExcluded = true
+              }
+            }
+
+            if (!isExcluded) {
+              const paraRatio = paras.length > 0 ? i / paras.length : 0
+              let isRatioOk = true
+              if (toc.length > 3 && !/^(版权|序|译者|前言|引言|序言|目录|Contents|TOC)/i.test(cleanLabel)) {
+                if (Math.abs(tocRatio - paraRatio) > 0.35) {
+                  isRatioOk = false
+                }
+              }
+              if (isRatioOk) {
+                el = pEl
+              }
+            }
+          }
+        }
+
+        if (el) {
+          headingMapRef.current.set(item.href, el)
+        }
+      })
+    }, 1000)
+
+    return () => clearTimeout(timer)
   }, [loading, toc, content])
 
   // 注册获取定位的回调
@@ -1579,7 +1586,16 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
                   chapterName={currentChapterName}
                   currentPage={pageIndex + 1}
                   totalPages={totalPages}
-                  onPageChange={(page) => goToPage(page - 1)}
+                  onPageChange={(page) => {
+                    if (page === 'home') goToPage(0)
+                    else if (page === 'end') goToPage(totalPages - 1)
+                    else if (page === 'prev') goToPage(pageIndex - 1)
+                    else if (page === 'next') goToPage(pageIndex + 1)
+                    else {
+                      const num = parseInt(page)
+                      if (!isNaN(num)) goToPage(num - 1)
+                    }
+                  }}
                 />
               </>
             )}
