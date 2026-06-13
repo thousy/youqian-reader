@@ -7,6 +7,7 @@ import { MobiReader } from './MobiReader'
 import { Azw3Reader } from './Azw3Reader'
 import { BookmarkPanel } from './BookmarkPanel'
 import { SettingsPanel } from './SettingsPanel'
+import { BookInfoModal } from '../UI/BookInfoModal'
 
 export function ReaderView() {
   const {
@@ -21,6 +22,7 @@ export function ReaderView() {
   } = useStore()
 
   const [progress, setProgress] = useState(0)
+  const [showInfoModal, setShowInfoModal] = useState(false)
   const getPositionRef = useRef(null)
   const saveProgressTimeoutRef = useRef(null)
 
@@ -171,6 +173,21 @@ export function ReaderView() {
           )}
         </button>
 
+        {/* 书籍信息 */}
+        <button
+          className={`reader-toolbar-btn ${showInfoModal ? 'active' : ''}`}
+          onClick={() => setShowInfoModal(true)}
+          title="书籍信息"
+          id="btn-book-info"
+          style={{ position:'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </button>
+
         {/* 右侧设置与排版控制组 */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {/* 阅读设置 */}
@@ -237,6 +254,7 @@ export function ReaderView() {
           />
         )}
         {showSettings && <SettingsPanel />}
+        {showInfoModal && <BookInfoModal book={currentBook} onClose={() => setShowInfoModal(false)} />}
       </div>
     </div>
   )

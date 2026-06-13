@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore'
 import logoIcon from '../../logo.png'
 import { BookCard } from './BookCard'
 import { BookListItem } from './BookListItem'
+import { BookInfoModal } from '../UI/BookInfoModal'
 
 export function LibraryView({ onImport }) {
   const {
@@ -13,6 +14,7 @@ export function LibraryView({ onImport }) {
   } = useStore()
 
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
+  const [infoBook, setInfoBook] = useState(null)
   const settingsMenuRef = useRef(null)
 
   // 外部点击关闭下拉菜单
@@ -274,6 +276,7 @@ export function LibraryView({ onImport }) {
               book={book}
               onClick={() => openBook(book)}
               onDelete={(e) => handleRemoveBook(book, e)}
+              onShowInfo={setInfoBook}
             />
           ))}
         </div>
@@ -289,6 +292,7 @@ export function LibraryView({ onImport }) {
           ))}
         </div>
       )}
+      {infoBook && <BookInfoModal book={infoBook} onClose={() => setInfoBook(null)} />}
     </div>
   )
 }

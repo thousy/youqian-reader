@@ -6,7 +6,7 @@ const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
 }
 
-export function BookCard({ book, onClick, onDelete }) {
+export function BookCard({ book, onClick, onDelete, onShowInfo }) {
   const { books, setBooks, categories, showToast, setCategories } = useStore()
   const [showPopover, setShowPopover] = useState(false)
   const [isCreatingInPopover, setIsCreatingInPopover] = useState(false)
@@ -93,10 +93,18 @@ export function BookCard({ book, onClick, onDelete }) {
       
       {/* 悬停动作层 */}
       <div className="book-card-hover-overlay">
-        <button className="book-action-btn" title="阅读" onClick={onClick}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+        <button 
+          className="book-action-btn" 
+          title="书籍信息" 
+          onClick={(e) => {
+            e.stopPropagation()
+            onShowInfo(book)
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
           </svg>
         </button>
         
