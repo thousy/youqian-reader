@@ -246,12 +246,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
 
   // 统一圆形悬浮按钮样式
   const navButtonStyle = (side) => {
-    const isCard = settingsRef.current.layoutMode === 'vertical' || settingsRef.current.layoutMode === 'horizontal-scroll'
-    const isWide = rect.width > 920
-    let offset = '20px'
-    if (isCard) {
-      offset = isWide ? `${realStartPadding - 54}px` : '16px'
-    }
+    const offset = '20px'
     return {
       position: 'absolute',
       top: '50%',
@@ -290,7 +285,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   }
 
   return (
-    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: isCardStyle ? desktopBg : 'var(--bg-base)'}}>
+    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: 'var(--bg-base)'}}>
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"/>
@@ -302,19 +297,19 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
           ref={containerRef} 
           className="pdf-container"
           style={{
-            width: isCardStyle ? 'calc(100% - 40px)' : '100%',
-            maxWidth: isCardStyle ? `${pageW}px` : 'none',
-            margin: isCardStyle ? '0 auto 20px' : '0 auto',
-            backgroundColor: isCardStyle ? readerBg : 'transparent',
-            borderRadius: isCardStyle ? '0 0 8px 8px' : '0',
-            boxShadow: isCardStyle ? '0 10px 40px rgba(0, 0, 0, 0.3)' : 'none',
+            width: '100%',
+            maxWidth: 'none',
+            margin: '0 auto',
+            backgroundColor: 'transparent',
+            borderRadius: '0',
+            boxShadow: 'none',
             boxSizing: 'border-box',
             overflow: 'hidden',
             position: 'relative',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            height: isCardStyle ? 'calc(100% - 20px)' : '100%',
+            height: '100%',
             outline: 'none',
             transition: isTransitionActive ? 'transform 0.15s ease-in-out, opacity 0.15s ease-in-out' : 'none',
             transform: 

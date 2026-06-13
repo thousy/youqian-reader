@@ -6,6 +6,7 @@ const DEFAULT_SETTINGS = {
   fontFamily: 'Noto Serif SC',
   theme: 'dark',
   lineHeight: 1.8,
+  fontWeight: 400,
   globalTheme: 'dark'
 }
 
@@ -29,15 +30,19 @@ export function SettingsPanel() {
     setCategories, setBooks, showToast
   } = useStore()
 
+  const weightMap = { 1: 300, 2: 400, 3: 600, 4: 800, 5: 900 }
+  const weightMapReverse = { 300: 1, 400: 2, 600: 3, 800: 4, 900: 5 }
+  const sliderWeight = weightMapReverse[settings.fontWeight] || 2
+
 
   return (
     <div className="settings-panel" id="settings-panel">
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
         <div className="settings-title">阅读设置</div>
-        <button style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',padding:'2px'}}
+        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
           onClick={() => setShowSettings(false)}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
       </div>
@@ -66,9 +71,9 @@ export function SettingsPanel() {
 
       {/* 字号 */}
       <div className="settings-group">
-        <div className="settings-label" style={{display:'flex',justifyContent:'space-between'}}>
+        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>字体大小</span>
-          <span style={{color:'var(--text-secondary)'}}>{settings.fontSize}px</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{settings.fontSize}px</span>
         </div>
         <input
           type="range"
@@ -82,9 +87,9 @@ export function SettingsPanel() {
 
       {/* 行高 */}
       <div className="settings-group">
-        <div className="settings-label" style={{display:'flex',justifyContent:'space-between'}}>
+        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>行间距</span>
-          <span style={{color:'var(--text-secondary)'}}>{settings.lineHeight}</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{settings.lineHeight}</span>
         </div>
         <input
           type="range"
@@ -93,6 +98,28 @@ export function SettingsPanel() {
           value={settings.lineHeight}
           onChange={e => updateSettings({ lineHeight: Number(e.target.value) })}
           id="line-height-slider"
+        />
+      </div>
+
+      {/* 字体粗细 */}
+      <div className="settings-group">
+        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>字体粗细</span>
+          <span style={{ color: 'var(--text-secondary)' }}>
+            {settings.fontWeight === 300 ? '细体' :
+              settings.fontWeight === 400 ? '常规' :
+                settings.fontWeight === 600 ? '小粗' :
+                  settings.fontWeight === 800 ? '中粗' :
+                    settings.fontWeight === 900 ? '大粗' : '常规'}
+          </span>
+        </div>
+        <input
+          type="range"
+          className="settings-slider"
+          min="1" max="5" step="1"
+          value={sliderWeight}
+          onChange={e => updateSettings({ fontWeight: weightMap[Number(e.target.value)] || 400 })}
+          id="font-weight-slider"
         />
       </div>
 
@@ -169,7 +196,7 @@ export function SettingsPanel() {
               key={f}
               className={`font-btn ${settings.fontFamily === f ? 'active' : ''}`}
               onClick={() => updateSettings({ fontFamily: f })}
-              style={{fontFamily: f}}
+              style={{ fontFamily: f }}
               id={`font-${f.replace(/\s/g, '-')}`}
             >
               {FONT_MAP[f] || f}
@@ -179,16 +206,16 @@ export function SettingsPanel() {
       </div>
 
       {/* 恢复默认设置 */}
-      <button 
+      <button
         className="settings-restore-btn"
         onClick={() => updateSettings(DEFAULT_SETTINGS)}
         id="btn-restore-default-settings"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-          <path d="M16 3h5v5"/>
-          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-          <path d="M8 21H3v-5"/>
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+          <path d="M16 3h5v5" />
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+          <path d="M8 21H3v-5" />
         </svg>
         恢复默认设置
       </button>

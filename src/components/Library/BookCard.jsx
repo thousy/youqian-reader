@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
-import defaultBookCover from '../../../resources/icon.png'
+import defaultBookCover from '../../logo.png'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
@@ -77,7 +77,7 @@ export function BookCard({ book, onClick, onDelete }) {
           <img src={book.cover} alt={book.title} loading="lazy" />
         ) : (
           <div className="book-cover-placeholder">
-            <img src={defaultBookCover} alt="Default Cover" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            <span style={{ fontSize: '32px', marginBottom: '8px', display: 'block' }}>📚</span>
             <div className="book-cover-title">{book.title}</div>
             <div className="book-cover-author">{book.author}</div>
           </div>

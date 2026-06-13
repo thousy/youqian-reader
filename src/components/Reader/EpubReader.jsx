@@ -469,6 +469,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
               ${settingsRef.current.fontFamily !== 'BookDefault' ? `font-family: "${settingsRef.current.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
               line-height: ${settingsRef.current.lineHeight} !important;
               font-size: ${settingsRef.current.fontSize}px !important;
+              font-weight: ${settingsRef.current.fontWeight || 400} !important;
             }
             html {
               background: transparent !important;
@@ -730,6 +731,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             ${s.fontFamily !== 'BookDefault' ? `font-family: "${s.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
             line-height: ${s.lineHeight} !important;
             font-size: ${s.fontSize}px !important;
+            font-weight: ${s.fontWeight || 400} !important;
           }
           html {
             background: transparent !important;
@@ -853,12 +855,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
 
   // 统一圆形悬浮按钮样式
   const navButtonStyle = (side) => {
-    const isCard = settingsRef.current.layoutMode === 'vertical' || settingsRef.current.layoutMode === 'horizontal-scroll'
-    const isWide = rect.width > 920
-    let offset = '20px'
-    if (isCard) {
-      offset = isWide ? `${realStartPadding - 54}px` : '16px'
-    }
+    const offset = '20px'
     return {
       position: 'absolute',
       top: '50%',

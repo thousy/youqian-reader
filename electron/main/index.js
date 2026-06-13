@@ -48,6 +48,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     frame: false,
+    title: 'YouQian Reader',
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
@@ -60,6 +61,10 @@ function createWindow() {
       sandbox: false,
       webSecurity: false
     }
+  })
+
+  mainWindow.on('page-title-updated', (event) => {
+    event.preventDefault()
   })
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -106,6 +111,7 @@ function createReaderWindow(bookId) {
     minWidth: 800,
     minHeight: 500,
     frame: false,
+    title: 'YouQian Reader',
     titleBarStyle: 'hidden',
     titleBarOverlay: false,
     backgroundColor: '#0d0d14',
@@ -118,6 +124,10 @@ function createReaderWindow(bookId) {
       sandbox: false,
       webSecurity: false
     }
+  })
+
+  readerWin.on('page-title-updated', (event) => {
+    event.preventDefault()
   })
 
   readerWin.bookId = bookId
@@ -150,6 +160,9 @@ function createReaderWindow(bookId) {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.youqian.reader.app')
+  }
   nativeTheme.themeSource = 'dark'
   setupDatabase()
   setupIpcHandlers()

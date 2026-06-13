@@ -24,7 +24,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
   useEffect(() => {
     setIsMeasured(false)
     setMeasureTrigger(prev => prev + 1)
-  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.layoutMode])
+  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode])
 
   // 监听浏览器自定义字体加载完毕，就绪后强制触发高精度物理排版重算，消灭空白页
   useEffect(() => {
@@ -190,7 +190,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
       requestAnimationFrame(updateRealScrollW)
     }, 150)
     return () => clearTimeout(timer)
-  }, [loading, content, totalPages, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight])
+  }, [loading, content, totalPages, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight])
 
   // 物理同源对齐步长：测算端与展示端已像素级锁定，直接使用物理理论步长以 100% 免疫任何 scrollWidth 异步测量导致的排版偏位
   const stepW = cycleW
@@ -709,7 +709,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
       mounted = false
       if (timer) clearTimeout(timer)
     }
-  }, [loading, pageW, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight, isCardStyle, settings.layoutMode, measureTrigger, isMeasured])
+  }, [loading, pageW, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, isCardStyle, settings.layoutMode, measureTrigger, isMeasured])
 
   // 无自然目录时生成虚拟目录
   useEffect(() => {
@@ -902,7 +902,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [loading, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.layoutMode, totalPages, isCardStyle])
+  }, [loading, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode, totalPages, isCardStyle])
 
   // 内容与目录缓存指针映射绑定
   useEffect(() => {
@@ -1352,6 +1352,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
     fontSize: `${settings.fontSize}px`,
     fontFamily: `"${settings.fontFamily}", Georgia, "Noto Serif SC", serif`,
     lineHeight: settings.lineHeight,
+    fontWeight: settings.fontWeight || 400,
     color: 'var(--reader-text, var(--text-primary))'
   }
 
@@ -1369,12 +1370,7 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
 
   // 常显、高级半透明毛玻璃悬浮翻页按钮样式
   const navButtonStyle = (side) => {
-    const isCard = settings.layoutMode === 'vertical' || settings.layoutMode === 'horizontal-scroll'
-    const isWide = rect.width > 920
-    let offset = '20px'
-    if (isCard) {
-      offset = isWide ? `${realStartPadding - 54}px` : '16px'
-    }
+    const offset = '20px'
     return {
       position: 'absolute',
       top: '50%',
@@ -1448,12 +1444,14 @@ export function Azw3Reader({ book, savedProgress, settings, onProgressChange, re
                 ${settings.fontFamily !== 'BookDefault' ? `font-family: "${settings.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
                 line-height: ${settings.lineHeight} !important;
                 font-size: ${settings.fontSize}px !important;
+                font-weight: ${settings.fontWeight || 400} !important;
               }
               #mobi-scroll-content p, #mobi-scroll-content div, #mobi-scroll-content span, #mobi-scroll-content li,
               #mobi-measure-content p, #mobi-measure-content div, #mobi-measure-content span, #mobi-measure-content li {
                 ${settings.fontFamily !== 'BookDefault' ? `font-family: "${settings.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
                 line-height: ${settings.lineHeight} !important;
                 font-size: ${settings.fontSize}px !important;
+                font-weight: ${settings.fontWeight || 400} !important;
               }
               #mobi-scroll-content img, #mobi-measure-content img {
                 max-width: 100% !important;

@@ -342,7 +342,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         })
       }
     }
-  }, [loading, layoutWidth, rect.height, currentChapterIndex, settings.fontSize, settings.fontFamily, settings.lineHeight, isCardStyle, paragraphs, chapters, onProgressChange])
+  }, [loading, layoutWidth, rect.height, currentChapterIndex, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, isCardStyle, paragraphs, chapters, onProgressChange])
 
   // 静默后台测算所有章节的实际页数
   useEffect(() => {
@@ -415,7 +415,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         const chapParas = paragraphs.slice(startIdx, endIdx)
 
         testDiv.innerHTML = chapParas.map(para => {
-          return `<p style="font-size: ${settings.fontSize}px; font-family: '${settings.fontFamily}', Georgia, 'Noto Serif SC', serif; line-height: ${settings.lineHeight}; margin: 0 0 1em 0; text-indent: 2em; text-align: justify; word-break: break-all; min-height: ${para.trim() === '' ? '1em' : 'auto'};">${para}</p>`
+          return `<p style="font-size: ${settings.fontSize}px; font-weight: ${settings.fontWeight || 400}; font-family: '${settings.fontFamily}', Georgia, 'Noto Serif SC', serif; line-height: ${settings.lineHeight}; margin: 0 0 1em 0; text-indent: 2em; text-align: justify; word-break: break-all; min-height: ${para.trim() === '' ? '1em' : 'auto'};">${para}</p>`
         }).join('')
 
         let total = 1
@@ -449,7 +449,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return () => {
       active = false
     }
-  }, [chapters, paragraphs, rect.width, rect.height, layoutWidth, settings.fontSize, settings.fontFamily, settings.lineHeight, isCardStyle, totalPages, currentChapterIndex])
+  }, [chapters, paragraphs, rect.width, rect.height, layoutWidth, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, isCardStyle, totalPages, currentChapterIndex])
 
   // 非卡片模式下的滚动定位与排版校准
   useEffect(() => {
@@ -795,6 +795,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     fontSize: `${settings.fontSize}px`,
     fontFamily: `"${settings.fontFamily}", Georgia, "Noto Serif SC", serif`,
     lineHeight: settings.lineHeight,
+    fontWeight: settings.fontWeight || 400,
     color: 'var(--reader-text, var(--text-primary))'
   }
 
@@ -848,12 +849,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   }
 
   const navButtonStyle = (side) => {
-    const isCard = settings.layoutMode === 'vertical' || settings.layoutMode === 'horizontal-scroll'
-    const isWide = rect.width > 920
-    let offset = '20px'
-    if (isCard) {
-      offset = isWide ? `${realStartPadding - 54}px` : '16px'
-    }
+    const offset = '20px'
     return {
       position: 'absolute',
       top: '50%',

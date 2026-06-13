@@ -12,7 +12,7 @@
     "publish": "node scripts/publish.js"
   },
   "build": {
-    "appId": "com.youqian.reader",
+    "appId": "com.youqian.reader.app",
     "productName": "YouQian Reader",
     "directories": {
       "output": "release"
@@ -38,7 +38,7 @@
         { "target": "portable", "arch": ["x64"] },
         { "target": "zip", "arch": ["x64"] }
       ],
-      "icon": "resources/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

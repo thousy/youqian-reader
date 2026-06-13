@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
-import logoIcon from '../../../resources/icon.png'
+import logoIcon from '../../logo.png'
 
 export function TitleBar({ windowTitle }) {
   const [maximized, setMaximized] = useState(false)
@@ -19,8 +19,8 @@ export function TitleBar({ windowTitle }) {
   return (
     <div className="titlebar">
       <div className="titlebar-logo" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <img src={logoIcon} alt="Logo" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
-        <span className="titlebar-title">{windowTitle || 'YouQian Reader'}</span>
+        <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}>📚</span>
+        <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader'}</span>
       </div>
       <div className="titlebar-spacer" />
       <div className="titlebar-controls">

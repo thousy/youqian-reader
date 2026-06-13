@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
-import logoIcon from '../../../resources/icon.png'
+import logoIcon from '../../logo.png'
 import { BookCard } from './BookCard'
 import { BookListItem } from './BookListItem'
 
@@ -246,7 +246,7 @@ export function LibraryView({ onImport }) {
       {filteredBooks.length === 0 ? (
         <div className="empty-library">
           <div className="empty-icon">
-            <img src={logoIcon} alt="Logo" style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+            <span style={{ fontSize: '40px', display: 'inline-flex', alignItems: 'center' }}>📚</span>
           </div>
           {books.length === 0 ? (
             <>

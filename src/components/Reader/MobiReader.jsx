@@ -22,7 +22,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   useEffect(() => {
     setIsMeasured(false)
     setMeasureTrigger(prev => prev + 1)
-  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.layoutMode])
+  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode])
 
 
   const [debugInfo, setDebugInfo] = useState({ scrollW: 0, maxLeft: 0, tradTotal: 0, lastEl: '' })
@@ -166,12 +166,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
 
   // 常显、高级半透明毛玻璃悬浮翻页按钮样式
   const navButtonStyle = (side) => {
-    const isCard = settings.layoutMode === 'vertical' || settings.layoutMode === 'horizontal-scroll'
-    const isWide = rect.width > 920
-    let offset = '20px'
-    if (isCard) {
-      offset = isWide ? `${realStartPadding - 54}px` : '16px'
-    }
+    const offset = '20px'
     return {
       position: 'absolute',
       top: '50%',
@@ -223,7 +218,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
       requestAnimationFrame(updateRealScrollW)
     }, 150)
     return () => clearTimeout(timer)
-  }, [loading, content, totalPages, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight])
+  }, [loading, content, totalPages, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight])
 
   const desktopBg = settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
   const outerBg = isCardStyle ? desktopBg : 'transparent'
@@ -772,7 +767,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
       mounted = false
       if (timer) clearTimeout(timer)
     }
-  }, [loading, pageW, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight, isCardStyle, settings.layoutMode, measureTrigger, isMeasured])
+  }, [loading, pageW, rect.width, rect.height, content, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, isCardStyle, settings.layoutMode, measureTrigger, isMeasured])
 
   // 当总页数计算完成，且书籍无自然目录时，自动生成按页切片的虚拟目录，保证目录绝不空置
   useEffect(() => {
@@ -1024,7 +1019,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     }, 50)
 
     return () => clearTimeout(timer)
-  }, [loading, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.layoutMode, cycleW, totalPages, toc, measureTrigger])
+  }, [loading, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode, cycleW, totalPages, toc, measureTrigger])
 
   // 当内容完成渲染或 TOC 发生变化时，在后台静默异步抓取各章节 DOM 指针并填入 headingMapRef 缓存
   useEffect(() => {
@@ -1638,6 +1633,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     fontSize: `${settings.fontSize}px`,
     fontFamily: `"${settings.fontFamily}", Georgia, "Noto Serif SC", serif`,
     lineHeight: settings.lineHeight,
+    fontWeight: settings.fontWeight || 400,
     color: 'var(--reader-text, var(--text-primary))'
   }
 
@@ -1729,6 +1725,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                 ${settings.fontFamily !== 'BookDefault' ? `font-family: "${settings.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
                 line-height: ${settings.lineHeight} !important;
                 font-size: ${settings.fontSize}px !important;
+                font-weight: ${settings.fontWeight || 400} !important;
               }
               #mobi-scroll-content img, #mobi-content img {
                 max-width: 100% !important;
