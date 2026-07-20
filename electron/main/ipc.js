@@ -79,6 +79,12 @@ export function setupIpcHandlers() {
   ipcMain.handle('remove-book', (_, id) => removeBook(id))
   ipcMain.handle('update-book', (_, id, updates) => updateBook(id, updates))
 
+  // ===== 文件关联：按文件路径查找书籍 =====
+  ipcMain.handle('get-book-by-path', (_, filePath) => {
+    const books = getAllBooks()
+    return books.find(b => b.filePath === filePath) || null
+  })
+
   // ===== 文件内容读取 =====
   ipcMain.handle('read-file', async (_, filePath) => {
     if (!existsSync(filePath)) throw new Error('文件不存在: ' + filePath)

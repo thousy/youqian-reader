@@ -1,6 +1,6 @@
 {
   "name": "youqian-reader",
-  "version": "1.5.0",
+  "version": "1.6.1",
   "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
   "main": "out/main/index.js",
   "author": "YouQian Reader",
@@ -38,7 +38,39 @@
         { "target": "portable", "arch": ["x64"] },
         { "target": "zip", "arch": ["x64"] }
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "fileAssociations": [
+        {
+          "ext": "epub",
+          "name": "EPUB 电子书",
+          "description": "使用 YouQian Reader 打开 EPUB 文件",
+          "icon": "build/icon.ico"
+        },
+        {
+          "ext": "pdf",
+          "name": "PDF 文档",
+          "description": "使用 YouQian Reader 打开 PDF 文件",
+          "icon": "build/icon.ico"
+        },
+        {
+          "ext": "azw3",
+          "name": "AZW3 电子书",
+          "description": "使用 YouQian Reader 打开 AZW3 文件",
+          "icon": "build/icon.ico"
+        },
+        {
+          "ext": "mobi",
+          "name": "MOBI 电子书",
+          "description": "使用 YouQian Reader 打开 MOBI 文件",
+          "icon": "build/icon.ico"
+        },
+        {
+          "ext": "txt",
+          "name": "文本文件",
+          "description": "使用 YouQian Reader 打开 TXT 文件",
+          "icon": "build/icon.ico"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

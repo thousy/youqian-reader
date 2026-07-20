@@ -8,6 +8,14 @@ const api = {
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'),
   onMaximized: (cb) => ipcRenderer.on('window-maximized', (_, v) => cb(v)),
   openBookWindow: (bookId) => ipcRenderer.invoke('open-book-window', bookId),
+  openFileReaderWindow: (filePath) => ipcRenderer.invoke('open-file-reader-window', filePath),
+
+  // 文件关联：按文件路径查找书架中的书籍
+  getBookByPath: (filePath) => ipcRenderer.invoke('get-book-by-path', filePath),
+  // 文件关联：监听主进程发来的关闭询问信号（仅文件关联窗口使用）
+  onCloseRequested: (cb) => ipcRenderer.on('file-reader-close-requested', () => cb()),
+  // 文件关联：将用户关闭决策回传主进程
+  confirmClose: (addToLibrary) => ipcRenderer.send('file-reader-close-decision', { addToLibrary }),
 
   // 文件选择
   selectBooks: () => ipcRenderer.invoke('select-books'),

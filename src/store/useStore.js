@@ -86,27 +86,46 @@ export const useStore = create((set, get) => ({
   openBook: (book) => {
     const params = new URLSearchParams(window.location.search)
     const isReaderWindow = params.get('windowType') === 'reader'
-    
-    if (!isReaderWindow) {
+    const isFileReaderWindow = params.get('windowType') === 'file-reader'
+
+    if (!isReaderWindow && !isFileReaderWindow) {
       window.api?.openBookWindow(book.id)
       return
     }
-    
+
     set({ currentBook: book, currentView: 'reader', showToc: false, showBookmarks: false, showSettings: false })
     window.api?.setLastOpenedBook(book.id)
+  },
+
+  // ===== 文件关联：通过文件路径直接打开（临时阅读，无 bookId）=====
+  openBookByPath: (filePath) => {
+    const ext = filePath.split('.').pop().toUpperCase()
+    const fileName = filePath.split(/[\\/]/).pop().replace(/\.[^.]+$/, '')
+    const tempBook = {
+      id: null,
+      filePath,
+      format: ext,
+      title: fileName,
+      author: '未知',
+      cover: null,
+      _isTemp: true // 标记为临时书籍（未入库）
+    }
+    set({ currentBook: tempBook, currentView: 'reader', showToc: false, showBookmarks: false, showSettings: false })
   },
 
   closeBook: () => {
     const params = new URLSearchParams(window.location.search)
     const isReaderWindow = params.get('windowType') === 'reader'
+    const isFileReaderWindow = params.get('windowType') === 'file-reader'
     
-    if (isReaderWindow) {
+    if (isReaderWindow || isFileReaderWindow) {
       window.api?.close()
       return
     }
     
     set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [] })
   },
+
 
   setReadingProgress: (progress) => set({ readingProgress: progress }),
 
