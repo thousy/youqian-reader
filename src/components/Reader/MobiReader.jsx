@@ -175,12 +175,12 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
       width: '44px',
       height: '44px',
       borderRadius: '50%',
-      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
-      border: settings.theme === 'light' || settings.theme === 'sepia' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+      border: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
       boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-      color: 'var(--text-primary)',
+      color: settings.theme === 'word' ? '#333333' : 'var(--text-primary)',
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
@@ -195,13 +195,13 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const handleBtnMouseEnter = (e) => {
     e.currentTarget.style.opacity = '1'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1.12)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
+    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
   }
 
   const handleBtnMouseLeave = (e) => {
     e.currentTarget.style.opacity = '0.5'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
+    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
 
   const paddingY = isHorizontalScroll ? 60 : 40
@@ -220,13 +220,14 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     return () => clearTimeout(timer)
   }, [loading, content, totalPages, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight])
 
-  const desktopBg = settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
-  const outerBg = isCardStyle ? desktopBg : 'transparent'
+  const desktopBg = settings.theme === 'word' ? '#f3f3f3' : (settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
+  const outerBg = settings.theme === 'word' ? '#f3f3f3' : (isCardStyle ? desktopBg : 'transparent')
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
     dark: '#12121c',
-    night: '#05050a'
+    night: '#05050a',
+    word: '#ffffff'
   }[settings.theme] || '#12121c'
   const renderedBackgroundPages = Math.min(totalPages, 200)
   const visibleVerticalPageIndex = containerRef.current?.clientHeight
@@ -1688,6 +1689,16 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
 
 
 
+  const activeTocRef = useRef(null)
+  useEffect(() => {
+    if (showToc && activeTocRef.current) {
+      const timer = setTimeout(() => {
+        activeTocRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showToc, currentTocItem])
+
   return (
     <div 
       style={{ flex: 1, display: 'flex', flexDirection: 'row', overflow: 'hidden', position: 'relative', width: '100%', height: '100%' }}
@@ -1699,6 +1710,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
           {toc.map((item, i) => (
             <div
               key={i}
+              ref={currentTocItem === item.href ? activeTocRef : null}
               className={`toc-item level-${item.level} ${currentTocItem === item.href ? 'active' : ''}`}
               onClick={() => jumpToToc(item)}
             >
@@ -1755,8 +1767,9 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                   height: `${cardHeight}px`,
                   margin: '0 auto 20px',
                   backgroundColor: readerBg,
-                  borderRadius: '0 0 8px 8px',
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                  borderRadius: settings.theme === 'word' ? '0' : '0 0 8px 8px',
+                  boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : '0 10px 40px rgba(0, 0, 0, 0.3)',
+                  border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none',
                   boxSizing: 'border-box',
                   overflow: 'hidden',
                   position: 'relative',
@@ -1849,8 +1862,9 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                         width: `${pageW}px`,
                         height: 'calc(100% - 60px)',
                         backgroundColor: readerBg,
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                        borderRadius: settings.theme === 'word' ? '0' : '8px',
+                        boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : '0 10px 40px rgba(0, 0, 0, 0.3)',
+                        border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none',
                         boxSizing: 'border-box',
                         overflow: 'hidden'
                       }}
@@ -1903,8 +1917,9 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                         width: `${pageW}px`,
                         height: 'calc(100% - 60px)',
                         backgroundColor: readerBg,
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                        borderRadius: settings.theme === 'word' ? '0' : '8px',
+                        boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : '0 10px 40px rgba(0, 0, 0, 0.3)',
+                        border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none',
                         boxSizing: 'border-box'
                       }}
                     />

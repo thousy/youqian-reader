@@ -126,13 +126,14 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   const paddingY = 40
 
-  const desktopBg = settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
-  const outerBg = isCardStyle ? desktopBg : 'transparent'
+  const desktopBg = settings.theme === 'word' ? '#f3f3f3' : (settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
+  const outerBg = settings.theme === 'word' ? '#f3f3f3' : (isCardStyle ? desktopBg : 'transparent')
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
     dark: '#12121c',
-    night: '#05050a'
+    night: '#05050a',
+    word: '#ffffff'
   }[settings.theme] || '#12121c'
   const renderedBackgroundPages = Math.min(totalPages, 200)
   const visibleVerticalPageIndex = containerRef.current?.clientHeight
@@ -858,12 +859,12 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       width: '44px',
       height: '44px',
       borderRadius: '50%',
-      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
-      border: settings.theme === 'light' || settings.theme === 'sepia' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+      border: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
       boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-      color: 'var(--text-primary)',
+      color: settings.theme === 'word' ? '#333333' : 'var(--text-primary)',
       cursor: 'pointer',
       display: 'flex',
       alignItems: 'center',
@@ -878,14 +879,24 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   const handleBtnMouseEnter = (e) => {
     e.currentTarget.style.opacity = '1'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1.12)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
+    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
   }
 
   const handleBtnMouseLeave = (e) => {
     e.currentTarget.style.opacity = '0.5'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
+    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
+
+  const activeTocRef = useRef(null)
+  useEffect(() => {
+    if (showToc && activeTocRef.current) {
+      const timer = setTimeout(() => {
+        activeTocRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showToc, currentChapterIndex])
 
   return (
     <div 
@@ -898,6 +909,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
           {chapters.map((item, i) => (
             <div
               key={i}
+              ref={currentChapterIndex === i ? activeTocRef : null}
               className={`toc-item level-1 ${currentChapterIndex === i ? 'active' : ''}`}
               onClick={() => {
                 goToPage(0, i)
@@ -929,8 +941,9 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                   height: `${cardHeight}px`,
                   margin: '0 auto 20px',
                   backgroundColor: readerBg,
-                  borderRadius: '0 0 8px 8px',
-                  boxShadow: '0 10px 40px rgba(0, 0, 0, 0.3)',
+                  borderRadius: settings.theme === 'word' ? '0' : '0 0 8px 8px',
+                  boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : '0 10px 40px rgba(0, 0, 0, 0.3)',
+                  border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none',
                   boxSizing: 'border-box',
                   overflow: 'hidden',
                   position: 'relative',

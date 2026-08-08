@@ -57,6 +57,7 @@ export function SettingsPanel() {
             { key: 'light', label: '亮白', cls: 'theme-light' },
             { key: 'sepia', label: '米黄', cls: 'theme-sepia' },
             { key: 'night', label: '夜间', cls: 'theme-night' },
+            { key: 'word', label: 'Word', cls: 'theme-word' },
           ].map(t => (
             <button
               key={t.key}

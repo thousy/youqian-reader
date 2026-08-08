@@ -4,8 +4,9 @@ import logoIcon from '../../logo.png'
 
 export function TitleBar({ windowTitle }) {
   const [maximized, setMaximized] = useState(false)
-  const { settings, updateSettings } = useStore()
+  const { settings, updateSettings, currentBook } = useStore()
   const isDark = settings.globalTheme !== 'light'
+  const isWordTheme = settings.theme === 'word'
 
   const toggleTheme = () => {
     updateSettings({ globalTheme: isDark ? 'light' : 'dark' })
@@ -18,9 +19,36 @@ export function TitleBar({ windowTitle }) {
 
   return (
     <div className="titlebar">
-      <div className="titlebar-logo" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}>📚</span>
-        <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader'}</span>
+      <div className="titlebar-logo" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {isWordTheme ? (
+          <>
+            <div style={{
+              width: '18px',
+              height: '18px',
+              backgroundColor: '#103f84',
+              borderRadius: '3px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ffffff',
+              fontWeight: '900',
+              fontSize: '11px',
+              fontFamily: 'Georgia, serif',
+              flexShrink: 0
+            }}>
+              W
+            </div>
+            <span className="titlebar-title" style={{ color: '#ffffff', fontSize: '12px' }}>
+              {currentBook ? `${currentBook.title}.docx` : (windowTitle || '文档')}
+              <span style={{ opacity: 0.75, fontSize: '11px', fontWeight: 'normal', marginLeft: '6px' }}>- Word</span>
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}>📚</span>
+            <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader'}</span>
+          </>
+        )}
       </div>
       <div className="titlebar-spacer" />
       <div className="titlebar-controls">

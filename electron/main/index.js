@@ -32,7 +32,14 @@ ipcMain.on('window-maximize', (event) => {
 })
 ipcMain.on('window-close', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
-  if (win) win.close()
+  if (win) {
+    // 当关闭的是阅读窗口且主书库窗口被隐藏时，恢复显示主书库窗口
+    if (win !== mainWindow && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+    win.close()
+  }
 })
 ipcMain.handle('window-is-maximized', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender)
@@ -105,10 +112,7 @@ function createWindow(showImmediately = true) {
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false))
 
   mainWindow.on('closed', () => {
-    // 主窗口关闭时，关闭所有的阅读窗口
-    for (const win of readerWindows) {
-      if (!win.isDestroyed()) win.destroy()
-    }
+    // 主窗口关闭时，不影响已经打开的独立阅读窗口
     mainWindow = null
   })
 
@@ -165,6 +169,10 @@ function createReaderWindow(bookId) {
 
   readerWin.once('ready-to-show', () => {
     readerWin.show()
+    // 打开书籍时，自动隐藏书库主窗口，无需展示书库
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+      mainWindow.hide()
+    }
   })
 
   readerWin.on('maximize', () => readerWin.webContents.send('window-maximized', true))

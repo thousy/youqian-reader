@@ -1,9 +1,6 @@
 @echo off
-chcp 65001 >nul
 title YouQian Reader
 cd /d "%~dp0"
-set PATH=%~dp0node;%PATH%
-set HTTPS_PROXY=http://127.0.0.1:1080
-set HTTP_PROXY=http://127.0.0.1:1080
+if exist "%~dp0node\node.exe" set "PATH=%~dp0node;%PATH%"
 npm run dev
 pause

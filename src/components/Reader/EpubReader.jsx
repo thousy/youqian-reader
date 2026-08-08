@@ -13,7 +13,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [pageIndex, setPageIndex] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [currentChapterName, setCurrentChapterName] = useState('正文')
-  const { showToast } = useStore()
+  const { showToast, setShowSettings } = useStore()
   const [rect, setRect] = useState({ width: 0, height: 0 })
   const wrapperRef = useRef(null)
   
@@ -28,16 +28,17 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     globalPage: 1
   })
   
-  const desktopBg = settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
+  const desktopBg = settings.theme === 'word' ? '#f3f3f3' : (settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
     dark: '#12121c',
-    night: '#05050a'
+    night: '#05050a',
+    word: '#ffffff'
   }[settings.theme] || '#12121c'
 
   const isCardStyle = settings.layoutMode === 'vertical' || settings.layoutMode === 'horizontal-scroll'
-  const outerBg = isCardStyle ? desktopBg : 'transparent'
+  const outerBg = settings.theme === 'word' ? '#f3f3f3' : (isCardStyle ? desktopBg : 'transparent')
 
   const layoutWidth = isCardStyle ? Math.min(840, rect.width - 40) : rect.width
   const pageW = isCardStyle && layoutWidth ? Math.min(800, layoutWidth - 40) : 800
@@ -294,6 +295,9 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           }
         })
 
+        // 点击 EPUB iframe 中的正文同样视为点击设置面板外。
+        rendition.on('click', () => setShowSettings(false))
+
         // 进度追踪
         rendition.on('relocated', (location) => {
           if (!mounted) return
@@ -303,10 +307,10 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           onProgressChange({ cfi: location.start.cfi, percentage: progress })
           
           const href = location.start.href
-          setCurrentTocItem(href)
 
           // 极速模糊匹配章节名 (使用 tocRef.current 规避捕获空数组)
           const currentToc = tocRef.current
+          setCurrentTocItem(href)
           if (href && currentToc && currentToc.length > 0) {
             const matched = currentToc.find(item => {
               const clean1 = item.href.split('#')[0]
@@ -318,6 +322,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             })
             if (matched && matched.label) {
               setCurrentChapterName(matched.label.trim())
+              setCurrentTocItem(matched.href)
             } else {
               setCurrentChapterName('正文')
             }
@@ -459,7 +464,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             dark: { body: { background: '#12121c', color: '#d4d4e8' } },
             light: { body: { background: '#fafafa', color: '#1a1a2e' } },
             sepia: { body: { background: '#f4ede0', color: '#3d2b1f' } },
-            night: { body: { background: '#05050a', color: '#8888a8' } }
+            night: { body: { background: '#05050a', color: '#8888a8' } },
+            word: { body: { background: '#ffffff', color: '#111111' } }
           }
           const activeTheme = themes[settingsRef.current.theme] || themes.dark
           const fg = activeTheme.body.color
@@ -665,7 +671,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   function applySettings(rendition, s) {
     const w = viewerRef.current?.clientWidth || 800
     const h = viewerRef.current?.clientHeight || 600
-    const desktopBg = s.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14'
+    const desktopBg = s.theme === 'word' ? '#f3f3f3' : (s.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
     
     const pageW = Math.min(800, w - 80)
     const pageGap = 40
@@ -676,7 +682,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
       dark: { body: { background: '#12121c', color: '#d4d4e8' }, a: { color: '#a78bfa' } },
       light: { body: { background: '#fafafa', color: '#1a1a2e' }, a: { color: '#6d28d9' } },
       sepia: { body: { background: '#f4ede0', color: '#3d2b1f' }, a: { color: '#78350f' } },
-      night: { body: { background: '#05050a', color: '#8888a8' }, a: { color: '#6d28d9' } }
+      night: { body: { background: '#05050a', color: '#8888a8' }, a: { color: '#6d28d9' } },
+      word: { body: { background: '#ffffff', color: '#111111' }, a: { color: '#185abd' } }
     }
     
     // 应用背景主题
@@ -725,7 +732,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           dark: { body: { background: '#12121c', color: '#d4d4e8' } },
           light: { body: { background: '#fafafa', color: '#1a1a2e' } },
           sepia: { body: { background: '#f4ede0', color: '#3d2b1f' } },
-          night: { body: { background: '#05050a', color: '#8888a8' } }
+          night: { body: { background: '#05050a', color: '#8888a8' } },
+          word: { body: { background: '#ffffff', color: '#111111' } }
         }
         const activeTheme = themes[s.theme] || themes.dark
         const fg = activeTheme.body.color
@@ -903,6 +911,17 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     e.currentTarget.style.backgroundColor = settingsRef.current.theme === 'light' || settingsRef.current.theme === 'sepia' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
 
+  // Bring the active chapter into view whenever the table of contents opens.
+  const activeTocRef = useRef(null)
+  useEffect(() => {
+    if (!showToc || !activeTocRef.current) return
+
+    const timer = setTimeout(() => {
+      activeTocRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [showToc, currentTocItem])
+
   return (
     <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
       {/* 目录面板 */}
@@ -912,6 +931,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           {toc.map((item, i) => (
             <div
               key={i}
+              ref={currentTocItem === item.href ? activeTocRef : null}
               className={`toc-item level-${item.level} ${currentTocItem === item.href ? 'active' : ''}`}
               onClick={() => renditionRef.current?.display(item.href)}
             >
@@ -939,9 +959,10 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             width: isCardStyle ? 'calc(100% - 40px)' : '100%',
             maxWidth: isCardStyle ? `${pageW}px` : 'none',
             margin: isCardStyle ? '0 auto 20px' : '0 auto',
-            backgroundColor: isCardStyle ? readerBg : 'transparent',
-            borderRadius: isCardStyle ? '0 0 8px 8px' : '0',
-            boxShadow: isCardStyle ? '0 10px 40px rgba(0, 0, 0, 0.3)' : 'none',
+            backgroundColor: isCardStyle || settings.theme === 'word' ? readerBg : 'transparent',
+            borderRadius: settings.theme === 'word' ? '0' : (isCardStyle ? '0 0 8px 8px' : '0'),
+            boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : (isCardStyle ? '0 10px 40px rgba(0, 0, 0, 0.3)' : 'none'),
+            border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none',
             boxSizing: 'border-box',
             overflow: 'hidden', 
             position: 'relative', 

@@ -285,7 +285,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   }
 
   return (
-    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: 'var(--bg-base)'}}>
+    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: settings.theme === 'word' ? '#f3f3f3' : 'var(--bg-base)'}}>
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"/>
@@ -331,7 +331,10 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
             maxWidth: '100%',
             maxHeight: '100%',
             objectFit: 'contain',
-            display: 'block'
+            display: 'block',
+            backgroundColor: '#ffffff',
+            boxShadow: settings.theme === 'word' ? '0 4px 20px rgba(0, 0, 0, 0.12), 0 0 2px rgba(0, 0, 0, 0.08)' : 'none',
+            border: settings.theme === 'word' ? '1px solid #d4d4d4' : 'none'
           }}/>
         </div>
         {!loading && totalPages > 0 && (
