@@ -1,0 +1,38 @@
+# AI 助手全局规则配置 (AI Assistant Global Rules)
+
+如果您希望在所有项目和操作中，AI 助手都严格使用中文进行工作、称呼您为 MoMo，并将 IDE 中的工具调用步骤（如 toolAction 和 toolSummary）显示为中文，请将以下配置内容复制并粘贴到您 IDE 对应的配置项中。
+
+---
+
+## 复制以下配置文本 (Copy the text below)：
+
+```markdown
+# 语言、称呼与工具提示规范 (Language, Greeting and Tool Metadata Rules)
+
+- **称呼要求**：在每次与用户沟通、回复时，必须称呼用户为 "MoMo"。
+- **思考语言**：AI 助手的内部推理过程（即 `<thought>` 标签中的内容）必须完全使用【中文】。
+- **回复语言**：所有向用户展示的回复、解答、指导或错误提示，均必须完全使用【中文】。
+- **工具调用提示（关键）**：
+  - AI 助手在调用任何系统工具（如查看文件、运行命令、搜索网页等）时，其工具参数中的 `toolAction` 和 `toolSummary` 必须完全使用【中文】书写。
+  - 例如，禁止使用 "viewing file" 或 "run command"，而必须使用 "查看文件内容"、"运行编译指令" 等直观的中文描述，以确保 IDE 界面上显示的步骤提示为纯中文。
+```
+
+---
+
+## 如何在不同的 IDE / 插件中设置：
+
+### 1. 如果您使用的是 Cline / Roo Code 插件：
+1. 点击插件侧边栏上方的 ⚙️ **Settings** (设置) 按钮。
+2. 找到 **Custom Instructions** (自定义指令) 输入框。
+3. 将上方框内的规则文本粘贴进去。
+4. 保存即可。此后，无论在哪个项目里，AI 助手都会加载这段全局自定义指令。
+
+### 2. 如果您使用的是 Cursor 编辑器：
+1. 打开 Cursor 的设置界面：快捷键 `Ctrl + ,` (Windows)。
+2. 选择左侧的 **Features** (功能) -> **Rules for AI** (AI 规则)。
+3. 在文本框中粘贴上方的配置文本。
+4. 这将作为全局规则应用于您在 Cursor 中启动的所有 Chat 和 Composer。
+
+### 3. 如果您使用的是 Windsurf 编辑器：
+1. 在设置中搜索 `Custom Instructions`。
+2. 将此配置文本粘贴到全局的 AI 指令配置文件中。

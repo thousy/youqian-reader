@@ -3,6 +3,12 @@ import { join } from 'path'
 import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
 
+// ===== 隐私保护：禁用 Chromium 内置的网络连通性探测 =====
+// Chromium 默认会向 Google DNS (8.8.4.4 / 8.8.8.8) 发送 captive portal 检测请求
+// YouQian Reader 是纯本地离线应用，无需任何联网行为，此处彻底屏蔽
+app.commandLine.appendSwitch('disable-background-networking')
+app.commandLine.appendSwitch('no-pings')
+
 // 屏蔽开发环境下控制台堆积的黄色 Electron 安全警告，提供完美清爽的开发调试体验
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 
@@ -329,7 +335,7 @@ if (!gotLock) {
       // 有文件路径时：主窗口静默在后台加载，直接显示阅读窗口
       createWindow(false)
       mainWindow.webContents.once('did-finish-load', () => {
-        setTimeout(() => createFileReaderWindow(filePath), 300)
+        createFileReaderWindow(filePath)
       })
     } else {
       // 正常启动：直接显示主窗口书库

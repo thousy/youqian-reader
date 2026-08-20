@@ -10,6 +10,7 @@ fontStyle.textContent = `
   @font-face {
     font-family: 'ZTE Zhengyuan';
     src: url('${fontUrl}') format('truetype');
+    font-display: swap;
   }
 `
 document.head.appendChild(fontStyle)

@@ -6,7 +6,10 @@ export function TitleBar({ windowTitle }) {
   const [maximized, setMaximized] = useState(false)
   const { settings, updateSettings, currentBook } = useStore()
   const isDark = settings.globalTheme !== 'light'
-  const isWordTheme = settings.theme === 'word'
+  // Word 主题仅影响阅读器窗口，书库主窗口不应用 Word 样式
+  const params = new URLSearchParams(window.location.search)
+  const isReaderWindow = params.get('windowType') === 'reader' || params.get('windowType') === 'file-reader'
+  const isWordTheme = isReaderWindow && settings.theme === 'word'
 
   const toggleTheme = () => {
     updateSettings({ globalTheme: isDark ? 'light' : 'dark' })

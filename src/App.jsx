@@ -24,17 +24,16 @@ export default function App() {
 
     async function init() {
       try {
-        // 加载设置
-        const savedSettings = await window.api.getSettings()
-        if (savedSettings) updateSettings(savedSettings)
+        // 并行加载设置、书库、分类（无依赖关系，无需串行等待）
+        const [savedSettings, books, categories] = await Promise.all([
+          window.api.getSettings(),
+          window.api.getAllBooks(),
+          window.api.getCategories()
+        ])
+        if (!mounted) return
 
-        // 加载书库
-        const books = await window.api.getAllBooks()
-        if (!mounted) return
+        if (savedSettings) updateSettings(savedSettings)
         setBooks(books)
-        // 加载分类
-        const categories = await window.api.getCategories()
-        if (!mounted) return
         if (categories) setCategories(categories)
 
         if (isReaderWindow) {
@@ -199,9 +198,11 @@ export default function App() {
       </div>
     )
   }
+  // 书库主窗口：data-theme 使用 globalTheme 基础值，不受阅读器主题（word/sepia 等）影响
+  const libraryTheme = currentView === 'library' ? (settings.globalTheme || 'dark') : settings.theme
 
   return (
-    <div className="app" data-theme={settings.theme} data-global-theme={settings.globalTheme || 'dark'}>
+    <div className="app" data-theme={libraryTheme} data-global-theme={settings.globalTheme || 'dark'}>
       <TitleBar />
       <div className="main-layout">
         <Sidebar />

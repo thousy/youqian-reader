@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, Suspense } from 'react'
 import { useStore } from '../../store/useStore'
-import { EpubReader } from './EpubReader'
-import { PdfReader } from './PdfReader'
-import { TxtReader } from './TxtReader'
-import { MobiReader } from './MobiReader'
-import { Azw3Reader } from './Azw3Reader'
+// 懒加载各格式阅读器组件（首屏无需加载全部 ~260KB 的阅读器代码）
+const EpubReader = React.lazy(() => import('./EpubReader').then(m => ({ default: m.EpubReader })))
+const PdfReader = React.lazy(() => import('./PdfReader').then(m => ({ default: m.PdfReader })))
+const TxtReader = React.lazy(() => import('./TxtReader').then(m => ({ default: m.TxtReader })))
+const MobiReader = React.lazy(() => import('./MobiReader').then(m => ({ default: m.MobiReader })))
+const Azw3Reader = React.lazy(() => import('./Azw3Reader').then(m => ({ default: m.Azw3Reader })))
 import { BookmarkPanel } from './BookmarkPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { BookInfoModal } from '../UI/BookInfoModal'
@@ -90,6 +91,12 @@ export function ReaderView() {
     showToast('书签已删除', 'success')
   }
 
+  const readerFallback = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
+      <div className="loading-spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }} />
+    </div>
+  )
+
   const renderReader = () => {
     const props = {
       book: currentBook,
@@ -111,14 +118,16 @@ export function ReaderView() {
       showToc,
       onTocItemClick: () => {}
     }
+    let reader
     switch (format) {
-      case 'EPUB': return <EpubReader {...props} />
-      case 'PDF': return <PdfReader {...props} />
-      case 'TXT': return <TxtReader {...props} />
-      case 'MOBI': return <MobiReader {...props} />
-      case 'AZW3': return <Azw3Reader {...props} />
+      case 'EPUB': reader = <EpubReader {...props} />; break
+      case 'PDF': reader = <PdfReader {...props} />; break
+      case 'TXT': reader = <TxtReader {...props} />; break
+      case 'MOBI': reader = <MobiReader {...props} />; break
+      case 'AZW3': reader = <Azw3Reader {...props} />; break
       default: return <div style={{padding:'40px',color:'var(--text-muted)'}}>不支持的格式: {format}</div>
     }
+    return <Suspense fallback={readerFallback}>{reader}</Suspense>
   }
 
   return (
