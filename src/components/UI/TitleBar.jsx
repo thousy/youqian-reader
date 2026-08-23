@@ -49,7 +49,7 @@ export function TitleBar({ windowTitle }) {
         ) : (
           <>
             <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}>📚</span>
-            <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader'}</span>
+            <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader V2.0'}</span>
           </>
         )}
       </div>

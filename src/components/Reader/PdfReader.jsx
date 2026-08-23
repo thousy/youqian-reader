@@ -8,13 +8,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-export function PdfReader({ book, savedProgress, settings, onProgressChange, registerGetPosition }) {
+export function PdfReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
   const [pdf, setPdf] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [loading, setLoading] = useState(true)
   const [scale, setScale] = useState(1.2)
   const [jumpPage, setJumpPage] = useState('')
+  const [toc, setToc] = useState([])
   const containerRef = useRef(null)
   const renderTaskRef = useRef(null)
   const canvasRef = useRef(null)
@@ -36,7 +37,7 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   const realStartPadding = (rect.width - pageW) / 2
 
   // 卡片滑动位移过渡动画状态 (垂直/水平翻页)
-  const [animState, setAnimState] = useState('idle') // 'idle', 'out-up', 'out-down', 'in-up', 'in-down', 'out-left', 'out-right', 'in-left', 'in-right'
+  const [animState, setAnimState] = useState('idle')
   const [isTransitionActive, setIsTransitionActive] = useState(false)
   const animationTimeoutRef = useRef(null)
 
@@ -113,6 +114,44 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
         setTotalPages(pdfDoc.numPages)
         const startPage = savedProgress?.page || 1
         setCurrentPage(Math.min(startPage, pdfDoc.numPages))
+
+        // 尝试解析提取 PDF 的 Outline (书签/章节大纲)
+        try {
+          const outline = await pdfDoc.getOutline()
+          let parsedToc = []
+          if (Array.isArray(outline) && outline.length > 0) {
+            for (let i = 0; i < outline.length; i++) {
+              const item = outline[i]
+              let pageNum = 1
+              if (item.dest) {
+                try {
+                  const dest = typeof item.dest === 'string' ? await pdfDoc.getDestination(item.dest) : item.dest
+                  if (dest && dest[0]) {
+                    const pageIndex = await pdfDoc.getPageIndex(dest[0])
+                    pageNum = pageIndex + 1
+                  }
+                } catch (_) {}
+              }
+              parsedToc.push({
+                label: item.title,
+                page: pageNum
+              })
+            }
+          }
+          if (parsedToc.length > 0) {
+            setToc(parsedToc)
+          } else {
+            const fallbackToc = []
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+              fallbackToc.push({
+                label: `第 ${i} 页`,
+                page: i
+              })
+            }
+            setToc(fallbackToc)
+          }
+        } catch (_) {}
+
         setLoading(false)
       } catch (e) {
         console.error('PDF 加载失败:', e)
@@ -128,12 +167,32 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
     renderPage(pdf, currentPage)
   }, [pdf, currentPage, scale])
 
+  // 查找当前页对应的章节名称
+  const getCurrentChapterTitle = useCallback(() => {
+    if (!toc || toc.length === 0) return ''
+    for (let i = toc.length - 1; i >= 0; i--) {
+      if (currentPage >= toc[i].page) {
+        return toc[i].label
+      }
+    }
+    return ''
+  }, [toc, currentPage])
+
   useEffect(() => {
-    registerGetPosition(() => ({
-      label: `第 ${currentPage} 页`,
-      page: currentPage
-    }))
-  }, [currentPage])
+    registerGetPosition(() => {
+      const chapTitle = getCurrentChapterTitle()
+      return {
+        label: chapTitle ? `${chapTitle} (第 ${currentPage} 页)` : `第 ${currentPage} 页`,
+        page: currentPage
+      }
+    })
+  }, [currentPage, toc, getCurrentChapterTitle])
+
+  useEffect(() => {
+    if (savedProgress?.page && totalPages > 0) {
+      setCurrentPage(Math.min(savedProgress.page, totalPages))
+    }
+  }, [savedProgress?.page, totalPages])
 
   useEffect(() => {
     if (totalPages > 0) {
@@ -285,7 +344,44 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   }
 
   return (
-    <div ref={wrapperRef} style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',backgroundColor: settings.theme === 'word' ? '#f3f3f3' : 'var(--bg-base)'}}>
+    <div ref={wrapperRef} style={{flex:1,display:'flex',overflow:'hidden',position:'relative',backgroundColor: settings.theme === 'word' ? '#f3f3f3' : 'var(--bg-base)'}}>
+      {/* PDF 章节目录/大纲标签抽屉 */}
+      {showToc && (
+        <div className="reader-toc-panel">
+          <div className="toc-header">章节目录</div>
+          {toc.length > 0 ? (
+            toc.map((item, i) => {
+              const isActive = currentPage >= item.page && (i === toc.length - 1 || currentPage < (toc[i + 1]?.page || Infinity))
+              return (
+                <div
+                  key={i}
+                  className={`toc-item level-0 ${isActive ? 'active' : ''}`}
+                  onClick={() => {
+                    if (item.page && item.page >= 1 && item.page <= totalPages) {
+                      setCurrentPage(item.page)
+                    }
+                  }}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.label}
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px', flexShrink: 0 }}>
+                      第 {item.page} 页
+                    </span>
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              未找到章节大纲
+            </div>
+          )}
+        </div>
+      )}
+
       {loading && (
         <div className="loading-overlay">
           <div className="loading-spinner"/>

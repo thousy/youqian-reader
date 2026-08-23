@@ -11,6 +11,7 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
   const [showPopover, setShowPopover] = useState(false)
   const [isCreatingInPopover, setIsCreatingInPopover] = useState(false)
   const [popoverCatName, setPopoverCatName] = useState('')
+  const [imgError, setImgError] = useState(false)
 
   // 外部点击关闭气泡
   useEffect(() => {
@@ -70,16 +71,23 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
     }
   }
 
+  const hasValidCover = book.cover && !imgError
+
   return (
     <div className="book-card" onClick={onClick} id={`book-card-${book.id}`} style={{ position: 'relative' }}>
       <div className="book-cover">
-        {book.cover ? (
-          <img src={book.cover} alt={book.title} loading="lazy" />
+        {hasValidCover ? (
+          <img 
+            src={book.cover} 
+            alt={book.title} 
+            loading="lazy" 
+            onError={() => setImgError(true)}
+          />
         ) : (
           <div className="book-cover-placeholder">
             <span style={{ fontSize: '32px', marginBottom: '8px', display: 'block' }}>📚</span>
             <div className="book-cover-title">{book.title}</div>
-            <div className="book-cover-author">{book.author}</div>
+            <div className="book-cover-author">{book.author || '未知作者'}</div>
           </div>
         )}
         <div className="book-format-badge" style={{ color: FORMAT_COLORS[book.format] || 'var(--accent-light)' }}>

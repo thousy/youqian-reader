@@ -4,6 +4,9 @@ import { TitleBar } from './components/UI/TitleBar'
 import { Sidebar } from './components/UI/Sidebar'
 import { LibraryView } from './components/Library/LibraryView'
 import { ReaderView } from './components/Reader/ReaderView'
+import { NovelSearchView } from './components/Novel/NovelSearchView'
+import { DownloadManagerView } from './components/Novel/DownloadManagerView'
+import { SourceEditorView } from './components/Novel/SourceEditorView'
 import { Toast } from './components/UI/Toast'
 import { ConfirmModal } from './components/UI/ConfirmModal'
 import { DropOverlay } from './components/UI/DropOverlay'
@@ -207,7 +210,16 @@ export default function App() {
       <div className="main-layout">
         <Sidebar />
         <div className="main-content">
-          {currentView === 'library' ? <LibraryView onImport={importFiles} /> : <ReaderView />}
+          {currentView === 'reader'
+            ? <ReaderView />
+            : currentView === 'novelSearch'
+            ? <NovelSearchView />
+            : currentView === 'downloadManager'
+            ? <DownloadManagerView />
+            : currentView === 'sourceEditor'
+            ? <SourceEditorView />
+            : <LibraryView onImport={importFiles} />
+          }
         </div>
       </div>
       {toast && <Toast {...toast} />}

@@ -91,6 +91,17 @@ export function ReaderView() {
     showToast('书签已删除', 'success')
   }
 
+  const handleSelectBookmark = (bm) => {
+    if (!bm) return
+    if (format === 'PDF' && bm.page) {
+      setReadingProgress({ page: bm.page })
+      showToast(`已跳至书签位置：第 ${bm.page} 页`, 'info')
+    } else if (bm.cfi || bm.percentage !== undefined || bm.pageIndex !== undefined) {
+      setReadingProgress(bm)
+      showToast('已跳至书签位置', 'info')
+    }
+  }
+
   const readerFallback = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>
       <div className="loading-spinner" style={{ width: '24px', height: '24px', borderWidth: '2px' }} />
@@ -175,14 +186,14 @@ export function ReaderView() {
           </span>
           <span 
             style={{ padding: '4px 10px', color: '#555555', cursor: 'pointer' }}
-            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? () => setShowToc(!showToc) : undefined}
+            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? () => setShowToc(!showToc) : undefined}
           >
             目录
           </span>
 
           {/* 右侧原核心功能与排版控制组 */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) && (
+              {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) && (
                 <button
                   className={`reader-toolbar-btn ${showToc ? 'active' : ''}`}
                   onClick={() => setShowToc(!showToc)}
@@ -302,16 +313,16 @@ export function ReaderView() {
             书库
           </button>
           <div 
-            className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? 'clickable' : ''}`}
-            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? () => setShowToc(!showToc) : undefined}
-            title={['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) ? "点击切换目录" : ""}
+            className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? 'clickable' : ''}`}
+            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? () => setShowToc(!showToc) : undefined}
+            title={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? "点击切换目录" : ""}
           >
             <div className="reader-book-title">{currentBook.title}</div>
             <div className="reader-book-author">{currentBook.author}</div>
           </div>
 
           {/* 目录 */}
-          {['EPUB', 'MOBI', 'AZW3', 'TXT'].includes(format) && (
+          {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) && (
             <button
               className={`reader-toolbar-btn ${showToc ? 'active' : ''}`}
               onClick={() => setShowToc(!showToc)}
@@ -433,6 +444,7 @@ export function ReaderView() {
           <BookmarkPanel
             bookmarks={bookmarks}
             onRemove={handleRemoveBookmark}
+            onSelect={handleSelectBookmark}
           />
         )}
         {showSettings && <SettingsPanel />}

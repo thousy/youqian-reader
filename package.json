@@ -1,6 +1,6 @@
 {
   "name": "youqian-reader",
-  "version": "1.6.4",
+  "version": "2.0.0",
   "description": "多格式电子书阅读器 - 支持 EPUB, PDF, AZW3, MOBI, TXT",
   "main": "out/main/index.js",
   "author": "YouQian Reader",
@@ -35,8 +35,18 @@
     ],
     "win": {
       "target": [
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.ico",
       "fileAssociations": [
@@ -87,10 +97,15 @@
     "vite": "^5.3.1"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
+    "archiver": "^8.0.0",
     "chardet": "^2.0.0",
+    "cheerio": "^1.2.0",
     "electron-store": "^8.2.0",
     "epubjs": "^0.3.93",
     "iconv-lite": "^0.6.3",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.4.168",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

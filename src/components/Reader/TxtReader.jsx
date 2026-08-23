@@ -152,58 +152,84 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   // 正则解析 TXT 目录章节
   const chapters = useMemo(() => {
-    // 优先读取数据库已有的持久化目录，秒速载入，实现 O(1) 零计算开销！
-    if (book.toc && book.toc.length > 0) {
-      return book.toc
-    }
-
-    if (paragraphs.length === 0) return []
-    const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+)/i
     let list = []
     
-    // 1. 尝试匹配常规章节目录（使用基于首字符及长度高速初筛的高性能 for 循环）
-    const len = paragraphs.length
-    for (let i = 0; i < len; i++) {
-      const para = paragraphs[i]
-      // 第一层初筛：长度过滤。空行或字数大于 60 的叙述段落直接秒速跳过
-      if (para.length === 0 || para.length > 60) continue
-      
-      // 第二层初筛：首字符常数级快速过滤。开头不是 '第'、'C'、'c' 且不是空格的普通描述直接秒速跳过！
-      // 这一步直接将 99.9% 的叙事正文秒杀，使正则匹配次数从数十万次直降至几百次！性能飙升千倍以上！
-      const firstChar = para[0] === ' ' ? para.trim()[0] : para[0]
-      if (firstChar !== '第' && firstChar !== 'C' && firstChar !== 'c') continue
-      
-      const text = para.trim()
-      if (CHAPTER_REGEX.test(text)) {
-        list.push({
-          label: text,
-          paraIndex: i
-        })
+    // 优先读取数据库已有的持久化目录
+    if (book.toc && book.toc.length > 0) {
+      list = [...book.toc]
+    } else if (paragraphs.length > 0) {
+      const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+)/i
+      const len = paragraphs.length
+      for (let i = 0; i < len; i++) {
+        const para = paragraphs[i]
+        if (para.length === 0 || para.length > 60) continue
+        
+        const firstChar = para[0] === ' ' ? para.trim()[0] : para[0]
+        if (firstChar !== '第' && firstChar !== 'C' && firstChar !== 'c') continue
+        
+        const text = para.trim()
+        if (CHAPTER_REGEX.test(text)) {
+          list.push({
+            label: text,
+            paraIndex: i
+          })
+        }
+      }
+
+      if (list.length === 0) {
+        const chunkSize = 120
+        const totalParas = paragraphs.length
+        const numChunks = Math.ceil(totalParas / chunkSize)
+        for (let i = 0; i < numChunks; i++) {
+          const startIdx = i * chunkSize
+          const endIdx = Math.min((i + 1) * chunkSize, totalParas)
+          list.push({
+            label: `第 ${i + 1} 部分 (${startIdx + 1}-${endIdx}段)`,
+            paraIndex: startIdx
+          })
+        }
+      } else {
+        if (list[0].paraIndex > 0) {
+          list.unshift({
+            label: '前言',
+            paraIndex: 0
+          })
+        }
       }
     }
 
-    // 2. 如果没有匹配到任何章节，则每 120 个段落强制分片，形成“虚拟章节”
-    if (list.length === 0) {
-      const chunkSize = 120
-      const totalParas = paragraphs.length
-      const numChunks = Math.ceil(totalParas / chunkSize)
-      for (let i = 0; i < numChunks; i++) {
-        const startIdx = i * chunkSize
-        const endIdx = Math.min((i + 1) * chunkSize, totalParas)
-        list.push({
-          label: `第 ${i + 1} 部分 (${startIdx + 1}-${endIdx}段)`,
-          paraIndex: startIdx
-        })
+    // 全局防重过滤：剔除连续相同的章节项，或相同章节序号的项
+    if (list.length > 0) {
+      const normalize = (str) => (str || '').replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '')
+      const extractNum = (str) => {
+        const m = (str || '').match(/(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+)/i)
+        return m ? normalize(m[1]) : null
       }
-    } else {
-      // 3. 如果匹配到了章节，但第一章前有内容（引言、前言），则补充前言
-      if (list[0].paraIndex > 0) {
-        list.unshift({
-          label: '前言',
-          paraIndex: 0
-        })
+
+      const deduplicated = []
+      for (let k = 0; k < list.length; k++) {
+        const item = list[k]
+        if (deduplicated.length > 0) {
+          const prev = deduplicated[deduplicated.length - 1]
+          const normPrev = normalize(prev.label)
+          const normCurr = normalize(item.label)
+          const numPrev = extractNum(prev.label)
+          const numCurr = extractNum(item.label)
+
+          // 1. 两者规范化标题相同
+          const isSameTitle = normPrev && normCurr && normPrev === normCurr
+          // 2. 章节序号相同且两个目录项段落索引很近 (<= 15 行)
+          const isSameNumClose = numPrev && numCurr && numPrev === numCurr && (item.paraIndex == null || Math.abs(item.paraIndex - prev.paraIndex) <= 15)
+
+          if (isSameTitle || isSameNumClose) {
+            continue // 跳过重复的章节
+          }
+        }
+        deduplicated.push(item)
       }
+      return deduplicated
     }
+
     return list
   }, [paragraphs, book.toc])
 

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electro
 import { join } from 'path'
 import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
+import { setMainWindow } from './novel/downloader'
 
 // ===== 隐私保护：禁用 Chromium 内置的网络连通性探测 =====
 // Chromium 默认会向 Google DNS (8.8.4.4 / 8.8.8.8) 发送 captive portal 检测请求
@@ -336,10 +337,14 @@ if (!gotLock) {
       createWindow(false)
       mainWindow.webContents.once('did-finish-load', () => {
         createFileReaderWindow(filePath)
+        setMainWindow(mainWindow)
       })
     } else {
       // 正常启动：直接显示主窗口书库
       createWindow(true)
+      mainWindow.webContents.once('did-finish-load', () => {
+        setMainWindow(mainWindow)
+      })
     }
 
     app.on('activate', () => {

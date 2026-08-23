@@ -13,7 +13,7 @@ export const useStore = create((set, get) => ({
 
   // ===== 当前阅读 =====
   currentBook: null,
-  currentView: 'library', // 'library' | 'reader'
+  currentView: 'library', // 'library' | 'reader' | 'novelSearch'
   readingProgress: null,
   bookmarks: [],
   showToc: false,
@@ -123,7 +123,15 @@ export const useStore = create((set, get) => ({
       return
     }
     
+    try { document.documentElement.removeAttribute('data-theme') } catch (_) {}
     set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [] })
+  },
+
+  setCurrentView: (view) => {
+    if (view !== 'reader') {
+      try { document.documentElement.removeAttribute('data-theme') } catch (_) {}
+    }
+    set({ currentView: view })
   },
 
 
@@ -172,5 +180,26 @@ export const useStore = create((set, get) => ({
   setSelectedCategoryId: (id) => {
     set({ selectedCategoryId: id })
     get().applyFilter()
+  },
+
+  // ===== 全局书源检测与多选状态 (跨 View 切换持续驻留) =====
+  batchTesting: false,
+  batchProgress: { current: 0, total: 0, validCount: 0, invalidCount: 0 },
+  stopBatchRef: { current: false },
+  selectedSourceIds: new Set(),
+  invalidSourceIds: new Set(),
+
+  setBatchTesting: (v) => set({ batchTesting: v }),
+  setBatchProgress: (p) => set(s => ({ batchProgress: { ...s.batchProgress, ...p } })),
+  setSelectedSourceIds: (setOrFn) => set(s => ({
+    selectedSourceIds: typeof setOrFn === 'function' ? setOrFn(s.selectedSourceIds) : setOrFn
+  })),
+  setInvalidSourceIds: (setOrFn) => set(s => ({
+    invalidSourceIds: typeof setOrFn === 'function' ? setOrFn(s.invalidSourceIds) : setOrFn
+  })),
+  stopBatchTest: () => {
+    const { stopBatchRef } = get()
+    stopBatchRef.current = true
+    set({ batchTesting: false })
   }
 }))

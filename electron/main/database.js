@@ -112,6 +112,11 @@ export function addBookmark(bookId, bookmark) {
   return newBookmark
 }
 
+export function saveBookmarks(bookId, bookmarks) {
+  store.set(`bookmarks.${bookId}`, bookmarks)
+  return bookmarks
+}
+
 export function removeBookmark(bookId, bookmarkId) {
   const bookmarks = getBookmarks(bookId).filter(b => b.id !== bookmarkId)
   store.set(`bookmarks.${bookId}`, bookmarks)

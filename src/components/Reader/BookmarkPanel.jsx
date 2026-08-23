@@ -6,7 +6,7 @@ function formatTime(dateStr) {
   return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`
 }
 
-export function BookmarkPanel({ bookmarks, onRemove }) {
+export function BookmarkPanel({ bookmarks, onRemove, onSelect }) {
   return (
     <div className="bookmark-panel">
       <div className="bookmark-panel-header">
@@ -27,7 +27,13 @@ export function BookmarkPanel({ bookmarks, onRemove }) {
           </div>
         ) : (
           bookmarks.map(bm => (
-            <div key={bm.id} className="bookmark-item" id={`bookmark-${bm.id}`}>
+            <div 
+              key={bm.id} 
+              className="bookmark-item" 
+              id={`bookmark-${bm.id}`}
+              onClick={() => onSelect?.(bm)}
+              style={{ cursor: 'pointer' }}
+            >
               <svg className="bookmark-icon" width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)" stroke="none">
                 <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
               </svg>
