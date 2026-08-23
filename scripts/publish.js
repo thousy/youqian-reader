@@ -53,6 +53,41 @@ function getGitProxy() {
   }
 }
 
+function curlRequest(url, method = 'GET', headers = {}, body = null) {
+  const proxy = getGitProxy();
+  const curlArgs = [
+    '-s',
+    '-X', method,
+    url
+  ];
+
+  if (proxy) {
+    curlArgs.unshift('-x', proxy);
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    curlArgs.push('-H', `${key}: ${value}`);
+  }
+
+  if (body) {
+    curlArgs.push('-d', typeof body === 'string' ? body : JSON.stringify(body));
+  }
+
+  curlArgs.push('-w', '\n__HTTP_STATUS__:%{http_code}');
+
+  const res = spawnSync('curl.exe', curlArgs, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+  if (res.error) {
+    throw res.error;
+  }
+
+  const output = res.stdout || '';
+  const parts = output.split('\n__HTTP_STATUS__:');
+  const responseBody = parts[0] || '';
+  const statusCode = parseInt(parts[1] || '0', 10);
+
+  return { statusCode, body: responseBody };
+}
+
 
 function fixWinCodeSign() {
   log('正在检测并修复 winCodeSign 缓存...', colors.cyan);
@@ -378,15 +413,14 @@ async function main() {
   log(`正在检查 Release ${tag} 是否已存在...`, colors.cyan);
   
   try {
-    const checkRes = await fetch(releaseUrl, { headers: apiHeaders });
-    if (checkRes.status === 200) {
-      releaseData = await checkRes.json();
+    const checkRes = curlRequest(releaseUrl, 'GET', apiHeaders);
+    if (checkRes.statusCode === 200) {
+      releaseData = JSON.parse(checkRes.body);
       log(`找到已存在的 Release ${tag}。`, colors.green);
-    } else if (checkRes.status === 404) {
+    } else if (checkRes.statusCode === 404) {
       log(`Release ${tag} 不存在，准备创建新 Release...`, colors.yellow);
     } else {
-      const errMsg = await checkRes.text();
-      throw new Error(`检查 Release 失败 (${checkRes.status}): ${errMsg}`);
+      throw new Error(`检查 Release 失败 (${checkRes.statusCode}): ${checkRes.body}`);
     }
   } catch (error) {
     log(`与 GitHub 通信时发生错误: ${error.message}`, colors.red + colors.bright);
@@ -399,27 +433,22 @@ async function main() {
     log(`正在创建 Release ${tag}...`, colors.cyan);
     try {
       const releaseNotes = `## YouQian Reader ${tag} 正式版发布 📚\n\n### 🌟 V2.0.1 新增功能与重大升级\n- ⚡ **全链路线程并发调节控制**：书源工坊新增 3~30 线程诊断调节；选章下载弹窗支持 1~16 线程滑动调节与防封2/推荐4/极速8/狂飙16快捷预设。\n- 🧪 **智能自适应「检测已勾选书源」**：勾选书源时精准仅检测已选书源，未勾选时支持全量检测。\n- 🔄 **失效书源专属「低速稳健复测」**：支持 1/2/3/5 线程防限速复测，测试通过的书源自动解封移出失效并取消勾选。\n- 📦 **纯绿色真便携化架构 (True Portable)**：应用配置、书库数据库、自定义书源规则及下载的小说全部收拢在软件本体目录下，零污染系统盘，随拷随走，换机或改盘符后书架自动重定位秒开！\n- 🛡️ **纯净零内置原则**：软件原始零预置书源，彻底保持绿色纯净。`;
-      const createRes = await fetch(createUrl, {
-        method: 'POST',
-        headers: {
-          ...apiHeaders,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          tag_name: tag,
-          name: `YouQian Reader ${tag}`,
-          body: releaseNotes,
-          draft: false,
-          prerelease: false
-        })
-      });
+      const createRes = curlRequest(createUrl, 'POST', {
+        ...apiHeaders,
+        'Content-Type': 'application/json'
+      }, JSON.stringify({
+        tag_name: tag,
+        name: `YouQian Reader ${tag}`,
+        body: releaseNotes,
+        draft: false,
+        prerelease: false
+      }));
 
-      if (createRes.status === 201) {
-        releaseData = await createRes.json();
+      if (createRes.statusCode === 201) {
+        releaseData = JSON.parse(createRes.body);
         log(`Release ${tag} 创建成功！`, colors.green);
       } else {
-        const errMsg = await createRes.text();
-        throw new Error(`创建 Release 失败 (${createRes.status}): ${errMsg}`);
+        throw new Error(`创建 Release 失败 (${createRes.statusCode}): ${createRes.body}`);
       }
     } catch (error) {
       log(`创建 Release 失败: ${error.message}`, colors.red + colors.bright);
@@ -441,15 +470,11 @@ async function main() {
       log(`发现重名资产: ${asset.name} (ID: ${existingAsset.id})，正在删除旧资产...`, colors.yellow);
       const deleteUrl = `https://api.github.com/repos/${owner}/${repo}/releases/assets/${existingAsset.id}`;
       try {
-        const deleteRes = await fetch(deleteUrl, {
-          method: 'DELETE',
-          headers: apiHeaders
-        });
-        if (deleteRes.status === 204) {
+        const deleteRes = curlRequest(deleteUrl, 'DELETE', apiHeaders);
+        if (deleteRes.statusCode === 204) {
           log(`旧资产 ${asset.name} 删除成功。`, colors.green);
         } else {
-          const errMsg = await deleteRes.text();
-          throw new Error(`删除旧资产失败 (${deleteRes.status}): ${errMsg}`);
+          throw new Error(`删除旧资产失败 (${deleteRes.statusCode}): ${deleteRes.body}`);
         }
       } catch (error) {
         log(`删除资产失败: ${error.message}`, colors.red + colors.bright);
