@@ -308,16 +308,21 @@ async function main() {
   fixWinCodeSign();
 
   // 3. 执行打包
-  log('\n[第一步] 开始执行项目打包...', colors.green + colors.bright);
-  try {
-    hijack7z();
-    await runCommand('npm', ['run', 'package']);
-    log('项目打包成功！', colors.green);
-  } catch (error) {
-    log(`打包失败: ${error.message}`, colors.red + colors.bright);
-    process.exit(1);
-  } finally {
-    restore7z();
+  const skipBuild = process.argv.includes('--skip-build') || process.argv.includes('--no-build');
+  if (skipBuild) {
+    log('\n[第一步] 检测到 --skip-build 参数，跳过重复打包，直接使用 release 目录中的现有构建产物。', colors.yellow + colors.bright);
+  } else {
+    log('\n[第一步] 开始执行项目打包...', colors.green + colors.bright);
+    try {
+      hijack7z();
+      await runCommand('npm', ['run', 'package']);
+      log('项目打包成功！', colors.green);
+    } catch (error) {
+      log(`打包失败: ${error.message}`, colors.red + colors.bright);
+      process.exit(1);
+    } finally {
+      restore7z();
+    }
   }
 
   // 4. 扫描打包出的资产
@@ -393,6 +398,7 @@ async function main() {
     const createUrl = `https://api.github.com/repos/${owner}/${repo}/releases`;
     log(`正在创建 Release ${tag}...`, colors.cyan);
     try {
+      const releaseNotes = `## YouQian Reader ${tag} 正式版发布 📚\n\n### 🌟 V2.0.1 新增功能与重大升级\n- ⚡ **全链路线程并发调节控制**：书源工坊新增 3~30 线程诊断调节；选章下载弹窗支持 1~16 线程滑动调节与防封2/推荐4/极速8/狂飙16快捷预设。\n- 🧪 **智能自适应「检测已勾选书源」**：勾选书源时精准仅检测已选书源，未勾选时支持全量检测。\n- 🔄 **失效书源专属「低速稳健复测」**：支持 1/2/3/5 线程防限速复测，测试通过的书源自动解封移出失效并取消勾选。\n- 📦 **纯绿色真便携化架构 (True Portable)**：应用配置、书库数据库、自定义书源规则及下载的小说全部收拢在软件本体目录下，零污染系统盘，随拷随走，换机或改盘符后书架自动重定位秒开！\n- 🛡️ **纯净零内置原则**：软件原始零预置书源，彻底保持绿色纯净。`;
       const createRes = await fetch(createUrl, {
         method: 'POST',
         headers: {
@@ -401,8 +407,8 @@ async function main() {
         },
         body: JSON.stringify({
           tag_name: tag,
-          name: tag,
-          body: `YouQian Reader ${tag} 发布版本。\n\n- 支持 EPUB, PDF, AZW3, MOBI, TXT 格式。\n- 优化阅读器排版与主题设置。`,
+          name: `YouQian Reader ${tag}`,
+          body: releaseNotes,
           draft: false,
           prerelease: false
         })

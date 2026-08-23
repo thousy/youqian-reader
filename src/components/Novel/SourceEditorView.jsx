@@ -5,6 +5,7 @@ export function SourceEditorView() {
   const {
     showToast, showConfirm,
     batchTesting, setBatchTesting,
+    testConcurrency, setTestConcurrency,
     batchProgress, setBatchProgress,
     stopBatchRef, stopBatchTest: handleStopBatchTest,
     selectedSourceIds: selectedIds, setSelectedSourceIds: setSelectedIds,
@@ -36,10 +37,11 @@ export function SourceEditorView() {
   const [contentSelector, setContentSelector] = useState('')
   const [cleanRules, setCleanRules] = useState('')
 
-  // 测试沙盒状态
+  // 测试沙盒与复测状态
   const [testUrl, setTestUrl] = useState('')
   const [testing, setTesting] = useState(false)
   const [sniffing, setSniffing] = useState(false)
+  const [retestConcurrency, setRetestConcurrency] = useState(2) // 针对失效书源的复测线程数 (默认 2 线程稳健防封)
   const [logs, setLogs] = useState([
     '[系统] 可视化书源工坊与沙盒控制台已就绪。',
     '[提示] 可填写入参后点击【测试解析正文】或【导出规则 JSON】。'
@@ -381,35 +383,61 @@ export function SourceEditorView() {
     }
   }
 
-  // 一键检测全量/当前书源可用性
-  const handleBatchTestSources = async () => {
+  // 一键检测全量/勾选书源可用性 (支持指定线程与自定义目标列表)
+  const handleBatchTestSources = async (customConcurrency = null, customTargetList = null) => {
     if (batchTesting) return
-    const targetList = filteredSources.length > 0 ? filteredSources : sources
+    
+    // 确定检测目标书源列表：
+    // 1. 若传入 customTargetList 则使用
+    // 2. 否则若有勾选，优先检测勾选的书源
+    // 3. 否则检测当前搜索过滤出的列表或全量书源
+    let targetList = []
+    let isOnlySelected = false
+
+    if (Array.isArray(customTargetList) && customTargetList.length > 0) {
+      targetList = customTargetList
+      isOnlySelected = true
+    } else if (selectedIds.size > 0) {
+      targetList = sources.filter(s => selectedIds.has(s.id))
+      isOnlySelected = true
+    } else {
+      targetList = filteredSources.length > 0 ? filteredSources : sources
+      isOnlySelected = false
+    }
+
     if (targetList.length === 0) {
-      showToast('当前书源列表为空', 'warning')
+      showToast('当前没有待检测的书源', 'warning')
       return
     }
 
-    const ok = await showConfirm('一键检测书源', `即将在后台并发检测当前 ${targetList.length} 个书源的连通性。\n检测完毕后将【自动勾选所有无法搜到图书的失效书源】，方便您一键批量清理！`)
+    const CONCURRENCY = customConcurrency !== null && Number(customConcurrency) > 0
+      ? Math.max(1, Math.min(50, Number(customConcurrency)))
+      : Math.max(1, Math.min(50, testConcurrency || 10))
+
+    const titleText = isOnlySelected ? '检测已勾选书源' : '一键检测书源'
+    const confirmMsg = isOnlySelected
+      ? `即将在后台以 ${CONCURRENCY} 线程并发检测您已选中的 ${targetList.length} 个书源的连通性。\n检测完毕后将自动更新可用状态并保持失效勾选，方便您批量清理或复测！`
+      : `即将在后台以 ${CONCURRENCY} 线程并发检测当前全部 ${targetList.length} 个书源的连通性。\n检测完毕后将【自动勾选所有无法搜到图书的失效书源】，方便您一键批量清理！`
+
+    const ok = await showConfirm(titleText, confirmMsg)
     if (!ok) return
 
     setBatchTesting(true)
     stopBatchRef.current = false
-    setBatchProgress({ current: 0, total: targetList.length, validCount: 0, invalidCount: 0 })
+    setBatchProgress({ current: 0, total: targetList.length, validCount: 0, invalidCount: 0, concurrency: CONCURRENCY })
 
     const nextSelected = new Set(selectedIds)
     const nextInvalid = new Set(invalidIds)
 
-    const CONCURRENCY = 10 // 10 线程并发跑测试，非常迅速
     let currentDone = 0
     let validCnt = 0
     let invalidCnt = 0
 
-    showToast(`正在启动 ${CONCURRENCY} 线程全量检测书源中...`, 'info')
+    showToast(`正在启动 ${CONCURRENCY} 线程检测 ${targetList.length} 个${isOnlySelected ? '已选' : ''}书源中...`, 'info')
 
     for (let i = 0; i < targetList.length; i += CONCURRENCY) {
       if (stopBatchRef.current) {
-        showToast('已中断一键书源检测', 'info')
+        showToast('已中断书源检测', 'info')
         break
       }
 
@@ -421,6 +449,12 @@ export function SourceEditorView() {
             const searchRes = await window.api.novelTestSingleSource(src.id, '修仙')
             if (searchRes && searchRes.success && Array.isArray(searchRes.results) && searchRes.results.length > 0) {
               validCnt++
+              // 若之前是失效状态，复测成功后自动解封恢复！
+              nextInvalid.delete(src.id)
+              if (isOnlySelected) {
+                // 如果是针对勾选项复测成功，将其从勾选中移出
+                nextSelected.delete(src.id)
+              }
             } else {
               // 搜不到书或超时/报错 ➔ 判定为失效，自动勾选起来！
               invalidCnt++
@@ -433,7 +467,7 @@ export function SourceEditorView() {
             nextSelected.add(src.id)
           } finally {
             currentDone++
-            setBatchProgress({ current: currentDone, total: targetList.length, validCount: validCnt, invalidCount: invalidCnt })
+            setBatchProgress({ current: currentDone, total: targetList.length, validCount: validCnt, invalidCount: invalidCnt, concurrency: CONCURRENCY })
           }
         })
       )
@@ -444,8 +478,20 @@ export function SourceEditorView() {
     setBatchTesting(false)
 
     if (!stopBatchRef.current) {
-      showToast(`🎉 一键检测完成！可用: ${validCnt} 个，失效: ${invalidCnt} 个！已自动勾选所有失效书源！`, invalidCnt > 0 ? 'warning' : 'success')
+      showToast(`🎉 检测完成！可用: ${validCnt} 个，失效: ${invalidCnt} 个！已自动更新勾选状态！`, invalidCnt > 0 ? 'warning' : 'success')
     }
+  }
+
+  // 针对失效书源专属低速稳健复测
+  const handleRetestInvalidSources = (customConc = null) => {
+    if (invalidIds.size === 0) {
+      showToast('当前没有失效书源需要复测', 'info')
+      return
+    }
+    const targetConc = customConc !== null && Number(customConc) > 0 ? Number(customConc) : (retestConcurrency || 2)
+    setTestConcurrency(targetConc)
+    const invalidList = sources.filter(s => invalidIds.has(s.id))
+    handleBatchTestSources(targetConc, invalidList)
   }
 
 
@@ -606,7 +652,45 @@ export function SourceEditorView() {
               </span>
             )}
 
-            {/* 🔥 一键检测全量书源按钮 */}
+            {/* ⚡ 一键检测并发线程调节选择器 */}
+            <div
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: 'var(--bg-layer1)', padding: '4px 10px', borderRadius: '8px',
+                border: '1px solid var(--border)', fontSize: '13px'
+              }}
+              title="设置自动化连通性诊断的并发线程数"
+            >
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
+                <span>⚡</span>
+                <span>检测线程:</span>
+              </span>
+              <select
+                value={testConcurrency}
+                onChange={e => setTestConcurrency(Number(e.target.value))}
+                disabled={batchTesting}
+                style={{
+                  background: 'var(--bg-layer2)',
+                  color: 'var(--accent-light)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: batchTesting ? 'not-allowed' : 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value={3}>3 线程 (防限速)</option>
+                <option value={5}>5 线程 (稳健)</option>
+                <option value={10}>10 线程 (推荐)</option>
+                <option value={15}>15 线程 (快速)</option>
+                <option value={20}>20 线程 (极速)</option>
+                <option value={30}>30 线程 (狂飙)</option>
+              </select>
+            </div>
+
+            {/* 🔥 一键检测全量/勾选书源按钮 */}
             {batchTesting ? (
               <button
                 onClick={handleStopBatchTest}
@@ -620,15 +704,21 @@ export function SourceEditorView() {
               </button>
             ) : (
               <button
-                onClick={handleBatchTestSources}
+                onClick={() => handleBatchTestSources()}
                 style={{
                   padding: '8px 16px', borderRadius: '8px', border: 'none',
-                  background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: '6px'
+                  background: selectedIds.size > 0 ? 'linear-gradient(135deg, var(--accent), #6366f1)' : 'var(--accent)',
+                  color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  boxShadow: selectedIds.size > 0 ? '0 2px 8px rgba(99, 102, 241, 0.35)' : 'none'
                 }}
-                title="一键并发检测全量/当前搜出书源的连通性，并自动勾选搜不到书的失效书源"
+                title={selectedIds.size > 0 ? `一键以 ${testConcurrency} 线程并发检测已勾选的 ${selectedIds.size} 个书源` : `一键以 ${testConcurrency} 线程并发检测全部书源`}
               >
-                🧪 一键检测书源
+                {selectedIds.size > 0 ? (
+                  <>🧪 检测已勾选 ({selectedIds.size})</>
+                ) : (
+                  <>🧪 一键检测全部 ({filteredSources.length || sources.length})</>
+                )}
               </button>
             )}
 
@@ -725,7 +815,7 @@ export function SourceEditorView() {
               border: '1px solid var(--accent)', marginBottom: '16px', fontSize: '12px'
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                <span>⚡ 正在 10 线程并发跑自动化连通性诊断...</span>
+                <span>⚡ 正在 {batchProgress.concurrency || testConcurrency} 线程并发跑自动化连通性诊断...</span>
                 <span style={{ color: 'var(--accent-light)', fontFamily: 'monospace' }}>
                   {batchProgress.current} / {batchProgress.total} ({Math.round((batchProgress.current / (batchProgress.total || 1)) * 100)}%)
                 </span>
@@ -741,7 +831,7 @@ export function SourceEditorView() {
           )}
 
           {/* 复选框快捷操作条 */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px', fontSize: '12px', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', fontSize: '12px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none' }}>
               <input
                 type="checkbox"
@@ -753,15 +843,56 @@ export function SourceEditorView() {
             </label>
 
             {invalidIds.size > 0 && (
-              <button
-                onClick={handleSelectOnlyInvalid}
-                style={{
-                  padding: '2px 8px', borderRadius: '4px', border: '1px solid #f87171',
-                  background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', cursor: 'pointer', fontSize: '11px'
-                }}
-              >
-                ⚠️ 仅勾选检测出的 {invalidIds.size} 个失效书源
-              </button>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'var(--bg-layer1)', padding: '2px 8px', borderRadius: '6px', border: '1px solid var(--border-subtle)' }}>
+                <button
+                  onClick={handleSelectOnlyInvalid}
+                  style={{
+                    padding: '2px 6px', borderRadius: '4px', border: '1px solid #f87171',
+                    background: 'rgba(248, 113, 113, 0.1)', color: '#f87171', cursor: 'pointer', fontSize: '11px'
+                  }}
+                  title="仅勾选当前被判定为失效的书源"
+                >
+                  ⚠️ 仅勾选失效 ({invalidIds.size})
+                </button>
+
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>| 复测线程:</span>
+                <select
+                  value={retestConcurrency}
+                  onChange={e => setRetestConcurrency(Number(e.target.value))}
+                  disabled={batchTesting}
+                  style={{
+                    background: 'var(--bg-layer2)',
+                    color: 'var(--accent-light)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '4px',
+                    padding: '2px 4px',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: batchTesting ? 'not-allowed' : 'pointer',
+                    outline: 'none'
+                  }}
+                  title="选择失效书源复测时的并发线程数"
+                >
+                  <option value={1}>1 线程 (单线程极限防封)</option>
+                  <option value={2}>2 线程 (双线程防限速)</option>
+                  <option value={3}>3 线程 (推荐稳健)</option>
+                  <option value={5}>5 线程 (快速复测)</option>
+                </select>
+
+                <button
+                  onClick={() => handleRetestInvalidSources(retestConcurrency)}
+                  disabled={batchTesting}
+                  style={{
+                    padding: '3px 10px', borderRadius: '4px', border: '1px solid var(--accent)',
+                    background: 'rgba(99, 102, 241, 0.15)', color: 'var(--accent-light)', cursor: batchTesting ? 'not-allowed' : 'pointer', fontSize: '11px',
+                    fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px'
+                  }}
+                  title={`以 ${retestConcurrency} 线程防限速稳健模式对所有失效书源重新逐一验证，验证通过的自动恢复正常`}
+                >
+                  <span>🔄</span>
+                  <span>立即复测失效 ({retestConcurrency}线程 · {invalidIds.size}个)</span>
+                </button>
+              </div>
             )}
 
             {selectedIds.size > 0 && (

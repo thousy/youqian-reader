@@ -9,6 +9,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { getPortableDataDir, getPortableDownloadsDir } from '../portablePath.js'
 import { getSourceById } from './sourceManager.js'
 import { buildEpub } from './epubBuilder.js'
 import { buildPdf } from './pdfBuilder.js'
@@ -163,13 +164,7 @@ function generateDownloadFileName(novelInfo, source, format, chapters = []) {
 }
 
 function getConfigFilePath() {
-  let userData = process.cwd()
-  try {
-    if (app && typeof app.getPath === 'function') {
-      userData = app.getPath('userData')
-    }
-  } catch (_) {}
-  return join(userData, 'download_config.json')
+  return join(getPortableDataDir(), 'download_config.json')
 }
 
 /**
@@ -210,13 +205,17 @@ export function saveDownloadConfig(newConfig) {
  * @param {Array}  chapters     [{ title, url }]  要下载的章节范围
  * @param {string} sourceId     书源 ID
  * @param {string} formatOverride 可选：指定下载格式 ('TXT' | 'EPUB' | 'PDF')
+ * @param {number} concurrencyOverride 可选：指定下载并发线程数 (1 ~ 32)
  */
-export async function startDownload(taskId, novelInfo, chapters, sourceId, formatOverride = null) {
+export async function startDownload(taskId, novelInfo, chapters, sourceId, formatOverride = null, concurrencyOverride = null) {
   const source = getSourceById(sourceId)
   if (!source) throw new Error(`未知书源: ${sourceId}`)
 
   const cfg = getDownloadConfig()
-  const CONCURRENCY = Math.max(1, Math.min(16, cfg.concurrency || 4))
+  const rawConcurrency = concurrencyOverride !== null && concurrencyOverride !== undefined && Number(concurrencyOverride) > 0
+    ? Number(concurrencyOverride)
+    : (cfg.concurrency || 4)
+  const CONCURRENCY = Math.max(1, Math.min(32, rawConcurrency))
   const BATCH_INTERVAL = Math.max(100, Math.min(5000, cfg.batchInterval || 500))
   const MAX_RETRIES = Math.max(0, Math.min(5, cfg.maxRetries || 3))
   const targetFormat = (formatOverride || cfg.outputFormat || 'EPUB').toUpperCase()
@@ -296,10 +295,10 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     // 按章节原始顺序排序
     completedChapters.sort((a, b) => a.index - b.index)
 
-    // 输出保存路径处理
+    // 输出保存路径处理 (优先用户自定义目录，默认使用软件本体下的 downloads/ 目录)
     let booksDir = cfg.saveDir && existsSync(cfg.saveDir)
       ? cfg.saveDir
-      : join(app.getPath('documents'), 'YouQian Reader', '下载小说')
+      : getPortableDownloadsDir()
 
     if (!existsSync(booksDir)) {
       try { mkdirSync(booksDir, { recursive: true }) } catch (_) {}

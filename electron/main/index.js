@@ -1,5 +1,11 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron'
 import { join } from 'path'
+import { getPortableDataDir, migrateLegacyDataIfNeed } from './portablePath'
+
+// ===== 纯绿色全便携化 (True Portable)：将应用数据与数据库收拢在软件本体 data 目录 =====
+migrateLegacyDataIfNeed()
+app.setPath('userData', getPortableDataDir())
+
 import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
 import { setMainWindow } from './novel/downloader'

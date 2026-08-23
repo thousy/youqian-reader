@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell } from 'electron'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'fs'
 import { extname, basename } from 'path'
+import { getPortableDownloadsDir, resolveBookPath } from './portablePath.js'
 import {
   getAllBooks, addBook, removeBook, updateBook, getBookById,
   getReadingProgress, saveReadingProgress,
@@ -91,33 +92,36 @@ export function setupIpcHandlers() {
 
   // ===== 文件关联：按文件路径查找书籍 =====
   ipcMain.handle('get-book-by-path', (_, filePath) => {
+    const realPath = resolveBookPath(filePath)
     const books = getAllBooks()
-    return books.find(b => b.filePath === filePath) || null
+    return books.find(b => b.filePath === realPath || b.filePath === filePath) || null
   })
 
   // ===== 文件内容读取 =====
   ipcMain.handle('read-file', async (_, filePath) => {
-    if (!existsSync(filePath)) throw new Error('文件不存在: ' + filePath)
-    return readFileSync(filePath)
+    const realPath = resolveBookPath(filePath)
+    if (!existsSync(realPath)) throw new Error('文件不存在: ' + realPath)
+    return readFileSync(realPath)
   })
 
   ipcMain.handle('read-file-base64', async (_, filePath) => {
-    if (!existsSync(filePath)) throw new Error('文件不存在: ' + filePath)
-    return readFileSync(filePath).toString('base64')
+    const realPath = resolveBookPath(filePath)
+    if (!existsSync(realPath)) throw new Error('文件不存在: ' + realPath)
+    return readFileSync(realPath).toString('base64')
   })
 
-  ipcMain.handle('file-exists', (_, filePath) => existsSync(filePath))
+  ipcMain.handle('file-exists', (_, filePath) => existsSync(resolveBookPath(filePath)))
 
   ipcMain.handle('open-external', (_, url) => shell.openExternal(url))
 
   // ===== TXT 读取（含编码检测）=====
   ipcMain.handle('read-txt-file', async (_, filePath) => {
-    return readTxtFile(filePath)
+    return readTxtFile(resolveBookPath(filePath))
   })
 
   // ===== MOBI/AZW3 内容提取 =====
   ipcMain.handle('extract-mobi-content', async (_, filePath) => {
-    return extractMobiContent(filePath)
+    return extractMobiContent(resolveBookPath(filePath))
   })
 
   // ===== 阅读进度 =====
@@ -375,10 +379,10 @@ export function setupIpcHandlers() {
   })
 
   // ===== 在线小说：开始下载 =====
-  ipcMain.handle('novel-start-download', async (_, novelInfo, chapters, sourceId, format) => {
+  ipcMain.handle('novel-start-download', async (_, novelInfo, chapters, sourceId, format, concurrency) => {
     const taskId = randomUUID()
     // 异步执行，立即返回 taskId
-    startDownload(taskId, novelInfo, chapters, sourceId, format).catch(err => {
+    startDownload(taskId, novelInfo, chapters, sourceId, format, concurrency).catch(err => {
       console.error('[下载] 任务失败:', err)
     })
     return { taskId }
@@ -407,7 +411,7 @@ export function setupIpcHandlers() {
   ipcMain.handle('novel-open-download-dir', async (_, customPath) => {
     const dir = customPath && existsSync(customPath)
       ? customPath
-      : join(app.getPath('documents'), 'YouQian Reader', '下载小说')
+      : getPortableDownloadsDir()
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     shell.openPath(dir)
     return true

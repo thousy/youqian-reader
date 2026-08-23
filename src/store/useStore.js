@@ -184,12 +184,14 @@ export const useStore = create((set, get) => ({
 
   // ===== 全局书源检测与多选状态 (跨 View 切换持续驻留) =====
   batchTesting: false,
-  batchProgress: { current: 0, total: 0, validCount: 0, invalidCount: 0 },
+  testConcurrency: 10,
+  batchProgress: { current: 0, total: 0, validCount: 0, invalidCount: 0, concurrency: 10 },
   stopBatchRef: { current: false },
   selectedSourceIds: new Set(),
   invalidSourceIds: new Set(),
 
   setBatchTesting: (v) => set({ batchTesting: v }),
+  setTestConcurrency: (v) => set({ testConcurrency: Math.max(1, Math.min(50, parseInt(v) || 10)) }),
   setBatchProgress: (p) => set(s => ({ batchProgress: { ...s.batchProgress, ...p } })),
   setSelectedSourceIds: (setOrFn) => set(s => ({
     selectedSourceIds: typeof setOrFn === 'function' ? setOrFn(s.selectedSourceIds) : setOrFn

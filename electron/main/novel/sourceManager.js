@@ -3,6 +3,7 @@ import { join } from 'path'
 import * as electron from 'electron'
 import * as cheerio from 'cheerio'
 import iconv from 'iconv-lite'
+import { getPortableDataDir } from '../portablePath.js'
 import { fetchWithRetry, stripDuplicateTitle } from './utils.js'
 import { biqugeSource } from './sources/biquge.js'
 import { dingdianSource } from './sources/dingdian.js'
@@ -21,15 +22,9 @@ let RULE_SOURCES = []
 let CUSTOM_SOURCES = []
 let disabledSourceIds = new Set()
 
-// 用户自定义书源目录
+// 用户自定义书源目录 (软件本体/data/custom_rules)
 function getCustomRulesDir() {
-  let userData = process.cwd()
-  try {
-    if (app && typeof app.getPath === 'function') {
-      userData = app.getPath('userData')
-    }
-  } catch (_) {}
-  const dir = join(userData, 'custom_rules')
+  const dir = join(getPortableDataDir(), 'custom_rules')
   if (!existsSync(dir)) {
     try { mkdirSync(dir, { recursive: true }) } catch (_) {}
   }

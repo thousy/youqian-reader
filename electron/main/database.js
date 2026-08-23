@@ -1,12 +1,13 @@
 import Store from 'electron-store'
 import { existsSync, statSync } from 'fs'
-
+import { getPortableDataDir, resolveBookPath } from './portablePath'
 
 let store = null
 
 export function setupDatabase() {
   store = new Store({
     name: 'youqian-data',
+    cwd: getPortableDataDir(),
     defaults: {
       books: [],
       categories: [],
@@ -21,7 +22,7 @@ export function setupDatabase() {
       }
     }
   })
-  console.log('数据库初始化完成:', store.path)
+  console.log('便携数据库初始化完成:', store.path)
 }
 
 export function getStore() {
@@ -31,13 +32,22 @@ export function getStore() {
 // ===== 书籍管理 =====
 
 export function getAllBooks() {
-  return store.get('books', [])
+  const list = store.get('books', [])
+  return list.map(b => {
+    if (b && b.filePath) {
+      const resolved = resolveBookPath(b.filePath)
+      if (resolved && resolved !== b.filePath) {
+        return { ...b, filePath: resolved }
+      }
+    }
+    return b
+  })
 }
 
 export function addBook(book) {
-  const books = getAllBooks()
+  const books = store.get('books', [])
   // 检查是否已存在
-  const exists = books.find(b => b.filePath === book.filePath)
+  const exists = books.find(b => b.filePath === book.filePath || (b.title === book.title && b.author === book.author))
   if (exists) return { success: false, error: '该书籍已在书库中', book: exists }
   
   const newBook = {
@@ -51,7 +61,7 @@ export function addBook(book) {
 }
 
 export function updateBook(id, updates) {
-  const books = getAllBooks()
+  const books = store.get('books', [])
   const idx = books.findIndex(b => b.id === id)
   if (idx === -1) return false
   books[idx] = { ...books[idx], ...updates }
@@ -60,7 +70,7 @@ export function updateBook(id, updates) {
 }
 
 export function removeBook(id) {
-  const books = getAllBooks().filter(b => b.id !== id)
+  const books = store.get('books', []).filter(b => b.id !== id)
   store.set('books', books)
   // 清理对应的阅读进度、书签和 locations
   const progress = store.get('readingProgress', {})
@@ -76,7 +86,14 @@ export function removeBook(id) {
 }
 
 export function getBookById(id) {
-  return getAllBooks().find(b => b.id === id) || null
+  const book = store.get('books', []).find(b => b.id === id)
+  if (book && book.filePath) {
+    const resolved = resolveBookPath(book.filePath)
+    if (resolved && resolved !== book.filePath) {
+      return { ...book, filePath: resolved }
+    }
+  }
+  return book || null
 }
 
 // ===== 阅读进度 =====

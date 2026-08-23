@@ -401,16 +401,17 @@ export function NovelSearchView() {
     }
   }
 
-  const handleStartDownload = async (novelInfo, chapters, sourceId, format = 'EPUB') => {
+  const handleStartDownload = async (novelInfo, chapters, sourceId, format = 'EPUB', concurrency = null) => {
     try {
-      const res = await window.api.novelStartDownload(novelInfo, chapters, sourceId, format)
+      const res = await window.api.novelStartDownload(novelInfo, chapters, sourceId, format, concurrency)
       setTasks(prev => ({
         ...prev,
-        [res.taskId]: { status: 'running', progress: 0, total: chapters.length, novelTitle: novelInfo.title, format }
+        [res.taskId]: { status: 'running', progress: 0, total: chapters.length, novelTitle: novelInfo.title, format, concurrency }
       }))
       setChapterModal(null)
       if (previewModal) setPreviewModal(null)
-      showToast(`已开始下载《${novelInfo.title}》[${format}]，共 ${chapters.length} 章`, 'success')
+      const threadTip = concurrency ? ` [${concurrency}线程]` : ''
+      showToast(`已开始下载《${novelInfo.title}》[${format}]${threadTip}，共 ${chapters.length} 章`, 'success')
     } catch (e) {
       showToast('启动下载失败: ' + e.message, 'error')
     }
@@ -1235,6 +1236,8 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
   const [downloadMode, setDownloadMode] = useState('all')
   // 导出格式: 'EPUB' (默认推荐) | 'TXT' | 'PDF'
   const [downloadFormat, setDownloadFormat] = useState('EPUB')
+  // 下载并发线程数 (1 ~ 16)
+  const [downloadConcurrency, setDownloadConcurrency] = useState(4)
 
   const [startChapter, setStartChapter] = useState(1)
   const [endChapter, setEndChapter] = useState(1)
@@ -1244,6 +1247,12 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
     if (chapters.length > 0) {
       setEndChapter(chapters.length)
     }
+    // 读取系统默认下载并发配置
+    window.api?.novelGetDownloadConfig?.().then(cfg => {
+      if (cfg && cfg.concurrency) {
+        setDownloadConcurrency(cfg.concurrency)
+      }
+    })
   }, [chapters.length])
 
   // 计算要下载的具体章节列表
@@ -1262,7 +1271,7 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
 
   const handleDownload = () => {
     if (selectedChapters.length === 0) return
-    onDownload(novelInfo, selectedChapters, sourceId, downloadFormat)
+    onDownload(novelInfo, selectedChapters, sourceId, downloadFormat, downloadConcurrency)
   }
 
   return (
@@ -1489,6 +1498,52 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
                 </div>
               </div>
 
+              {/* ⚡ 3. 下载并发线程数调节 */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>⚡ 3. 并发下载线程数：</span>
+                  <span style={{ fontSize: '12px', color: 'var(--accent-light)', fontFamily: 'monospace', fontWeight: 600 }}>
+                    {downloadConcurrency} 线程
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--bg-layer2)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                  <input
+                    type="range"
+                    min="1"
+                    max="16"
+                    value={downloadConcurrency}
+                    onChange={e => setDownloadConcurrency(parseInt(e.target.value) || 4)}
+                    style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[
+                      { count: 2, label: '防封 2' },
+                      { count: 4, label: '推荐 4' },
+                      { count: 8, label: '极速 8' },
+                      { count: 16, label: '狂飙 16' }
+                    ].map(item => (
+                      <button
+                        key={item.count}
+                        type="button"
+                        onClick={() => setDownloadConcurrency(item.count)}
+                        style={{
+                          padding: '2px 7px', borderRadius: '4px',
+                          border: `1px solid ${downloadConcurrency === item.count ? 'var(--accent)' : 'var(--border)'}`,
+                          background: downloadConcurrency === item.count ? 'var(--accent)' : 'var(--bg-base)',
+                          color: downloadConcurrency === item.count ? '#fff' : 'var(--text-secondary)',
+                          cursor: 'pointer', fontSize: '11px', fontWeight: downloadConcurrency === item.count ? 600 : 400
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  💡 提示：建议设为 3~6 线程。线程数过高可能触发部分源站防爬限流。
+                </div>
+              </div>
+
               {/* 章节目录展示与直接预览入口 */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>目录预览（点击任意章节可立即在线试读）：</span>
@@ -1519,7 +1574,7 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
           <div className="novel-modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
               <span className="novel-modal-tip" style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                下载完成后自动加入书库并生成 <strong>{downloadFormat}</strong> 文件
+                下载完成后自动加入书库并生成 <strong>{downloadFormat}</strong> 文件 ({downloadConcurrency} 线程)
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
                 当前已选：<strong style={{ color: 'var(--accent-light)' }}>{selectedChapters.length}</strong> 章
@@ -1542,10 +1597,10 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
                   boxShadow: '0 2px 8px rgba(0,0,0,0.2)', transition: 'all 0.2s ease',
                   opacity: selectedChapters.length === 0 ? 0.6 : 1
                 }}
-                title={`按当前选择下载 ${selectedChapters.length} 章为 ${downloadFormat} 格式`}
+                title={`按当前选择下载 ${selectedChapters.length} 章为 ${downloadFormat} 格式 (${downloadConcurrency} 线程)`}
               >
                 <span>{downloadFormat === 'EPUB' ? '📚' : downloadFormat === 'PDF' ? '📕' : '📄'}</span>
-                <span>立即下载 {downloadFormat} ({selectedChapters.length}章)</span>
+                <span>立即下载 {downloadFormat} ({selectedChapters.length}章 · {downloadConcurrency}线程)</span>
               </button>
             </div>
           </div>

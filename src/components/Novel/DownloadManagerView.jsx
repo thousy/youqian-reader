@@ -403,7 +403,7 @@ export function DownloadManagerView() {
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-primary)', marginBottom: '6px', fontWeight: 500 }}>
                   并发下载线程数 ({config.concurrency} 线程)
                 </label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
                   <input
                     type="range"
                     min="1"
@@ -416,7 +416,30 @@ export function DownloadManagerView() {
                     {config.concurrency}
                   </span>
                 </div>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>建议设为 3~6，过高可能触发部分小说站反爬封禁 IP</span>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '6px' }}>
+                  {[
+                    { count: 2, label: '防封 2' },
+                    { count: 4, label: '推荐 4' },
+                    { count: 8, label: '极速 8' },
+                    { count: 16, label: '狂飙 16' }
+                  ].map(item => (
+                    <button
+                      key={item.count}
+                      type="button"
+                      onClick={() => setConfig({ ...config, concurrency: item.count })}
+                      style={{
+                        padding: '3px 8px', borderRadius: '4px',
+                        border: `1px solid ${config.concurrency === item.count ? 'var(--accent)' : 'var(--border)'}`,
+                        background: config.concurrency === item.count ? 'var(--accent)' : 'var(--bg-layer2)',
+                        color: config.concurrency === item.count ? '#fff' : 'var(--text-secondary)',
+                        cursor: 'pointer', fontSize: '11px', fontWeight: config.concurrency === item.count ? 600 : 400
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>建议设为 3~6 线程，过高可能触发部分小说站反爬封禁 IP</span>
               </div>
 
               <div>
@@ -537,12 +560,12 @@ export function DownloadManagerView() {
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-                当前保存路径（留空则默认保存在系统“文档 / YouQian Reader / 下载小说”）
+                当前保存路径（留空则默认保存在软件本体目录下的“downloads”文件夹中，纯绿色便携）
               </label>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input
                   type="text"
-                  placeholder="默认保存路径"
+                  placeholder="默认：软件本体 / downloads 目录"
                   value={config.saveDir}
                   onChange={e => setConfig({ ...config, saveDir: e.target.value })}
                   style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-layer2)', color: 'var(--text-primary)', fontSize: '13px' }}
