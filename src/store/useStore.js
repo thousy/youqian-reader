@@ -184,14 +184,15 @@ export const useStore = create((set, get) => ({
 
   // ===== 全局书源检测与多选状态 (跨 View 切换持续驻留) =====
   batchTesting: false,
-  testConcurrency: 10,
-  batchProgress: { current: 0, total: 0, validCount: 0, invalidCount: 0, concurrency: 10 },
+  testConcurrency: 30,
+  batchProgress: { current: 0, total: 0, validCount: 0, invalidCount: 0, concurrency: 30 },
   stopBatchRef: { current: false },
   selectedSourceIds: new Set(),
   invalidSourceIds: new Set(),
+  sourceErrors: {}, // { [sourceId]: '失败原因描述' }
 
   setBatchTesting: (v) => set({ batchTesting: v }),
-  setTestConcurrency: (v) => set({ testConcurrency: Math.max(1, Math.min(50, parseInt(v) || 10)) }),
+  setTestConcurrency: (v) => set({ testConcurrency: Math.max(1, Math.min(60, parseInt(v) || 30)) }),
   setBatchProgress: (p) => set(s => ({ batchProgress: { ...s.batchProgress, ...p } })),
   setSelectedSourceIds: (setOrFn) => set(s => ({
     selectedSourceIds: typeof setOrFn === 'function' ? setOrFn(s.selectedSourceIds) : setOrFn
@@ -199,6 +200,10 @@ export const useStore = create((set, get) => ({
   setInvalidSourceIds: (setOrFn) => set(s => ({
     invalidSourceIds: typeof setOrFn === 'function' ? setOrFn(s.invalidSourceIds) : setOrFn
   })),
+  setSourceErrors: (mapOrFn) => set(s => ({
+    sourceErrors: typeof mapOrFn === 'function' ? mapOrFn(s.sourceErrors) : { ...s.sourceErrors, ...mapOrFn }
+  })),
+  clearSourceErrors: () => set({ sourceErrors: {} }),
   stopBatchTest: () => {
     const { stopBatchRef } = get()
     stopBatchRef.current = true

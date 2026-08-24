@@ -446,28 +446,16 @@ export function NovelSearchView() {
 
   const handleImportSource = async () => {
     try {
-      const input = document.createElement('input')
-      input.type = 'file'
-      input.accept = '.json,.json5,.txt'
-      input.onchange = async (e) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-        const reader = new FileReader()
-        reader.onload = async (ev) => {
-          const content = ev.target.result
-          const res = await window.api.novelImportCustomSource(content)
-          if (res.success) {
-            showToast(`成功导入 ${res.count} 个书源！`, 'success')
-            reloadSources()
-          } else {
-            showToast('导入失败: ' + res.error, 'error')
-          }
-        }
-        reader.readAsText(file, 'utf-8')
+      const res = await window.api?.novelImportSource?.()
+      if (res?.canceled) return
+      if (res?.success) {
+        showToast(`成功导入 ${res.count || 1} 个书源！`, 'success')
+        reloadSources()
+      } else {
+        showToast(`导入失败: ${res?.error || '未识别到有效书源'}`, 'error')
       }
-      input.click()
     } catch (e) {
-      showToast('选择文件出错: ' + e.message, 'error')
+      showToast('导入出错: ' + e.message, 'error')
     }
   }
 

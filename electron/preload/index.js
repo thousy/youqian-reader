@@ -87,6 +87,7 @@ const api = {
   novelAutoSniffRule: (input) => ipcRenderer.invoke('novel-auto-sniff-rule', input),
   novelExportSourcesJson: (sourceIds) => ipcRenderer.invoke('novel-export-sources-json', sourceIds),
   novelImportSource: () => ipcRenderer.invoke('novel-import-source'),
+  novelImportCustomSource: (content) => ipcRenderer.invoke('novel-import-custom-source', content),
   novelSearch: (keyword, sourceId) => ipcRenderer.invoke('novel-search', keyword, sourceId),
   novelCancelSearch: () => ipcRenderer.invoke('novel-cancel-search'),
   novelGetChapters: (novelUrl, sourceId) => ipcRenderer.invoke('novel-get-chapters', novelUrl, sourceId),

@@ -340,28 +340,49 @@ function evalJsTransform(jsCode, r) {
 function parseLegadoJsoupPart(part) {
   if (!part) return ''
   let trimmed = part.trim()
+
+  // text.下页 -> :contains("下页")
+  if (trimmed.startsWith('text.')) {
+    const kw = trimmed.slice(5)
+    return `:contains("${kw}")`
+  }
+
+  // class.xxx 或 class.item.0
   if (trimmed.startsWith('class.')) {
     const rest = trimmed.slice(6)
     const tokens = rest.split('.')
     if (tokens.length > 1 && !isNaN(tokens[tokens.length - 1])) {
-      const idx = parseInt(tokens.pop()) + 1
-      return `.${tokens.join('.')}:nth-of-type(${idx})`
+      const idx = parseInt(tokens.pop())
+      return `.${tokens.join('.')}:eq(${idx})`
     }
     return '.' + tokens.join('.').replace(/\s+/g, '.')
   }
+
+  // id.xxx
   if (trimmed.startsWith('id.')) {
     const rest = trimmed.slice(3)
     return '#' + rest
   }
+
+  // tag.a.0 或 tag.div
   if (trimmed.startsWith('tag.')) {
     const rest = trimmed.slice(4)
     const tokens = rest.split('.')
     if (tokens.length > 1 && !isNaN(tokens[tokens.length - 1])) {
-      const idx = parseInt(tokens.pop()) + 1
-      return `${tokens.slice(0, -1).join('.')}:eq(${idx - 1})`
+      const idx = parseInt(tokens.pop())
+      return `${tokens.join('.')}:eq(${idx})`
     }
     return rest
   }
+
+  // a.0, p.1, span.0, div.2, li.0 等纯 tag.index 简写
+  const tagIndexMatch = trimmed.match(/^([a-zA-Z0-9_-]+)\.(\d+)$/)
+  if (tagIndexMatch) {
+    const tagName = tagIndexMatch[1]
+    const idx = parseInt(tagIndexMatch[2])
+    return `${tagName}:eq(${idx})`
+  }
+
   return trimmed
 }
 
@@ -561,6 +582,7 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
 export class RuleSource {
   constructor(rule) {
     this.rule = rule
+    this.rawLegadoRule = rule.rawLegadoRule || (rule.bookSourceUrl ? rule : null)
     const namePart = (rule.name || '').replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')
     const urlPart = (rule.url || rule.baseUrl || '').replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '_')
     const rawId = rule.id || `${namePart}_${urlPart}`.replace(/__+/g, '_').replace(/^_|_$/g, '')
@@ -609,6 +631,24 @@ export class RuleSource {
       'Referer': safeReferer
     }
 
+    // 提取书源自带的自定义 Header（如移动端 UA、自定义 Cookie 等）
+    const rawHeader = this.rule.rawLegadoRule?.header || this.rule.header
+    if (rawHeader) {
+      if (typeof rawHeader === 'object' && rawHeader !== null) {
+        Object.assign(headers, rawHeader)
+      } else if (typeof rawHeader === 'string' && rawHeader.trim().startsWith('{')) {
+        try {
+          const parsedH = JSON.parse(rawHeader)
+          if (parsedH && typeof parsedH === 'object') Object.assign(headers, parsedH)
+        } catch (_) {}
+      }
+    }
+
+    // 请求配置特定 header 覆盖
+    if (urlOrConfig && typeof urlOrConfig === 'object' && urlOrConfig.headers) {
+      Object.assign(headers, urlOrConfig.headers)
+    }
+
     if (cookies) {
       headers['Cookie'] = typeof cookies === 'string'
         ? cookies
@@ -616,7 +656,8 @@ export class RuleSource {
     }
 
     // 优先尝试编码列表：规则指定优先，否则先 UTF-8 再 GBK
-    const isExplicitGbk = this.rule.encoding === 'gbk' || this.rule.charset === 'gbk'
+    const explicitEnc = (urlOrConfig.charset || this.rule.encoding || this.rule.charset || '').toLowerCase()
+    const isExplicitGbk = explicitEnc === 'gbk'
     const encodings = isExplicitGbk ? ['gbk', 'utf-8'] : ['utf-8', 'gbk']
 
     let lastError = null
@@ -628,11 +669,8 @@ export class RuleSource {
         let bodyData = null
 
         if (keyword) {
-          if (isGbk) {
-            url = url.replace('%s', encodeGBK(keyword))
-          } else {
-            url = url.replace('%s', encodeURIComponent(keyword))
-          }
+          const encodedKw = isGbk ? encodeGBK(keyword) : encodeURIComponent(keyword)
+          url = url.replace(/\{\{key\}\}|\{\{keyword\}\}|%s|\{key\}|\{keyword\}/gi, encodedKw)
         }
 
         // @js: URL 计算
@@ -644,29 +682,50 @@ export class RuleSource {
         // POST 表单数据构造
         if (method === 'POST') {
           headers['Content-Type'] = 'application/x-www-form-urlencoded'
-          let rawData = urlOrConfig.data || `searchkey=${keyword}`
-          const matches = [...rawData.matchAll(/(\w+)\s*:\s*([^,}]+)/g)]
-          const formObj = {}
-          for (const m of matches) {
-            const k = m[1].trim()
-            let v = m[2].trim().replace(/^['"]|['"]$/g, '')
-            if (v === '%s') v = keyword
-            formObj[k] = v
-          }
-
-          if (Object.keys(formObj).length === 0) {
-            formObj['searchkey'] = keyword
-          }
-
-          const pairs = []
-          for (const [k, v] of Object.entries(formObj)) {
-            if (isGbk) {
-              pairs.push(`${encodeURIComponent(k)}=${encodeGBK(v)}`)
+          let rawData = urlOrConfig.body || urlOrConfig.data || `searchkey=${keyword}`
+          
+          if (typeof rawData === 'string') {
+            if (rawData.startsWith('{') && rawData.endsWith('}')) {
+              try {
+                // 如果 body 是 JSON 字符串
+                headers['Content-Type'] = 'application/json'
+                const replacedJson = rawData.replace(/\{\{key\}\}|\{\{keyword\}\}|%s|\{key\}|\{keyword\}/gi, keyword)
+                bodyData = replacedJson
+              } catch (_) {
+                bodyData = rawData
+              }
+            } else if (rawData.includes('=')) {
+              // 键值对形式：key=val&searchkey={{key}}
+              const encodedKw = isGbk ? encodeGBK(keyword) : encodeURIComponent(keyword)
+              bodyData = rawData.replace(/\{\{key\}\}|\{\{keyword\}\}|%s|\{key\}|\{keyword\}/gi, encodedKw)
             } else {
-              pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+              const matches = [...rawData.matchAll(/(\w+)\s*:\s*([^,}]+)/g)]
+              const formObj = {}
+              for (const m of matches) {
+                const k = m[1].trim()
+                let v = m[2].trim().replace(/^['"]|['"]$/g, '')
+                if (v === '%s' || v === '{{key}}' || v === '{{keyword}}') v = keyword
+                formObj[k] = v
+              }
+
+              if (Object.keys(formObj).length === 0) {
+                formObj['searchkey'] = keyword
+              }
+
+              const pairs = []
+              for (const [k, v] of Object.entries(formObj)) {
+                if (isGbk) {
+                  pairs.push(`${encodeURIComponent(k)}=${encodeGBK(v)}`)
+                } else {
+                  pairs.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+                }
+              }
+              bodyData = pairs.join('&')
             }
+          } else if (typeof rawData === 'object' && rawData !== null) {
+            headers['Content-Type'] = 'application/json'
+            bodyData = JSON.stringify(rawData).replace(/\{\{key\}\}|\{\{keyword\}\}|%s|\{key\}|\{keyword\}/gi, keyword)
           }
-          bodyData = pairs.join('&')
         }
 
         const html = await fetchWithRetry(url, {
@@ -693,13 +752,30 @@ export class RuleSource {
     if (!s || s.disabled) return []
 
     try {
-      let targetUrl = s.url || ''
+      let targetUrl = s.url || this.rule.rawLegadoRule?.searchUrl || ''
+      let reqConfig = { ...s }
+
+      // 解析 Legado 3.0 的复杂 searchUrl 格式：url,{"method":"POST","body":"...","charset":"gbk"}
+      if (targetUrl.includes(',') && targetUrl.includes('{')) {
+        const commaIdx = targetUrl.indexOf(',')
+        const urlPart = targetUrl.slice(0, commaIdx).trim()
+        const optPart = targetUrl.slice(commaIdx + 1).trim()
+        try {
+          const parsedOpt = JSON.parse(optPart)
+          targetUrl = urlPart
+          if (parsedOpt.method) reqConfig.method = parsedOpt.method
+          if (parsedOpt.body) reqConfig.body = parsedOpt.body
+          if (parsedOpt.charset) reqConfig.charset = parsedOpt.charset
+          if (parsedOpt.headers) reqConfig.headers = parsedOpt.headers
+        } catch (_) {}
+      }
+
       // 自动修复 SPA Hash 路由 URL 为 API 或真实路径
       if (targetUrl.includes('/#/search')) {
         targetUrl = targetUrl.replace('/#/search', '/api/search')
       }
 
-      const html = await this._request({ ...s, url: targetUrl }, keyword)
+      const html = await this._request({ ...reqConfig, url: targetUrl }, keyword)
       if (!html) return []
 
       // 1. 优先自动检测是否为 JSON 响应（支持现代 SPA / API 书源）
@@ -902,6 +978,15 @@ export class RuleSource {
           }
           tocUrl = toc.url.replace('%s', bookId)
         }
+      } else {
+        // 支持从详情页中提取完整目录入口 (如 Legado 的 ruleBookInfo.tocUrl)
+        const tocSel = this.rule.bookInfo?.tocUrl || this.rule.search?.tocUrl || this.rule.ruleBookInfo?.tocUrl
+        if (tocSel) {
+          const extractedToc = resolveSelector(tocSel, $detail, $detail.root())
+          if (extractedToc) {
+            tocUrl = this._absUrl(extractedToc)
+          }
+        }
       }
 
       let tocHtml = tocUrl === novelUrl ? detailHtml : await fetchWithRetry(tocUrl)
@@ -913,10 +998,26 @@ export class RuleSource {
 
       const extractChapters = ($page) => {
         const baseUri = toc.baseUri || ''
-        $page(toc.item || 'a').each((_, el) => {
+        const itemSel = toc.item || this.rule.ruleToc?.chapterList || 'a'
+        $page(itemSel).each((_, el) => {
           const $el = $page(el)
-          const text = $el.text().trim()
-          const href = $el.attr('href')
+          let text = ''
+          let href = ''
+
+          if (toc.chapterName) {
+            text = resolveSelector(toc.chapterName, $page, $el)
+          }
+          if (!text) {
+            text = $el.is('a') ? $el.text().trim() : ($el.find('a').first().text().trim() || $el.text().trim())
+          }
+
+          if (toc.chapterUrl) {
+            href = resolveSelector(toc.chapterUrl, $page, $el)
+          }
+          if (!href) {
+            href = $el.is('a') ? $el.attr('href') : $el.find('a').first().attr('href')
+          }
+
           if (!text || !href) return
           const absHref = href.startsWith('http') ? href : (baseUri ? baseUri.replace('%s', '') + href : this._absUrl(href))
           if (!seen.has(absHref)) {

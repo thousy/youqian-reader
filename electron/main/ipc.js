@@ -338,6 +338,15 @@ export function setupIpcHandlers() {
     }
   })
 
+  ipcMain.handle('novel-import-custom-source', async (_, content) => {
+    try {
+      if (!content || typeof content !== 'string') return { success: false, error: '书源内容为空' }
+      return importCustomSource(content)
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  })
+
   // ===== 在线小说：聚合搜索 (带流式实时推送) =====
   ipcMain.handle('novel-search', async (event, keyword, sourceId) => {
     try {

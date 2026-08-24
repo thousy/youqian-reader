@@ -112,12 +112,14 @@ export function cancelSearch() {
 /**
  * 专门用于【连通性诊断与一键测试】的独立书源测试方法（绝对不受 activeSearchToken 打断与覆盖）
  */
-// 常见反爬/风险拦截/赌博广告特征识别库
+// 常见反爬/风险拦截/赌博广告/木马恶意重定向特征识别库
 const RISK_KEYWORDS = [
   'just a moment', 'cloudflare', 'ray id', 'challenge-platform', 'cf-browser-verification',
   '403 forbidden', '404 not found', '502 bad gateway', '503 service', 'access denied',
   '安全拦截', '反欺诈', '风险提示', '阻断访问', '违规内容', '反诈中心', '涉诈网站', '拦截提示',
-  '域名正在出售', 'domain is for sale', '澳门威尼斯人', '开云体育', '太阳城', '博彩', '百家乐'
+  '域名正在出售', 'domain is for sale', 'buy this domain', 'parked domain', '出售域名', '买卖域名',
+  '澳门威尼斯人', '开云体育', '太阳城', '博彩', '百家乐', '新葡京', '六合彩', '时时彩', '快三', '大发', '真人视讯', '皇冠现金', '棋牌', '永利高',
+  'eval(function(p,a,c,k,e,r', 'unescape(\'%u', 'document.write(unescape'
 ]
 
 function isRiskOrBlocked(text) {
@@ -126,51 +128,311 @@ function isRiskOrBlocked(text) {
   return RISK_KEYWORDS.some(kw => lower.includes(kw))
 }
 
-export async function testSingleSource(sourceId, keyword = '修仙') {
+/**
+ * 严格检测是否为真实、健康、无木马挂马的小说站点
+ */
+function isHealthyNovelHtml(html) {
+  if (!html || typeof html !== 'string') return false
+  const lower = html.toLowerCase()
+
+  // 1. 命中任何已知的风险、博彩、反爬或挂马特征
+  if (isRiskOrBlocked(html)) return false
+
+  // 2. 检查是否有恶意的 meta 刷新跳转或 window.location 重定向 (Trojan/HTML.Redirector)
+  if (lower.includes('http-equiv="refresh"') || lower.includes("http-equiv='refresh'")) {
+    return false
+  }
+  if (lower.includes('window.location') || lower.includes('location.href') || lower.includes('location.replace') || lower.includes('top.location')) {
+    // 很多挂马/重定向木马站整页基本就只有一段 JS 跳转
+    if (html.length < 1500) return false
+  }
+
+  // 3. 必须具备正向小说站元数据特征（绝不能是假冒空壳/挂马壳）
+  const NOVEL_KEYWORDS = ['小说', '章节', '书架', '书库', '阅读', '全本', '最新章节', '作者', '排行', '书名', '目录', 'txt下载', '笔趣阁']
+  const hasNovelFeature = NOVEL_KEYWORDS.some(kw => html.includes(kw))
+  if (!hasNovelFeature) return false
+
+  return true
+}
+
+/**
+ * 专门用于【连通性诊断与多维度校验】的独立书源测试方法（对齐阅读 3.0 校验规范）
+ * @param {string} sourceId 书源ID
+ * @param {string|object} optionsOrKeyword 关键词或配置对象 { keyword, timeoutSeconds, checkItems: { search, explore, detail, toc, content } }
+ */
+export async function testSingleSource(sourceId, optionsOrKeyword = '我的') {
   const source = getSourceById(sourceId)
   if (!source) return { success: false, error: '未找到该书源' }
 
-  try {
-    // 1. 真实搜书探测
-    const results = await source.search(keyword)
-    if (Array.isArray(results) && results.length > 0) {
-      // 过滤有效书籍：必须有标题，且标题和作者不能命中风险拦截特征
-      const validBooks = results.filter(b => {
-        const title = (b.title || '').trim()
-        const author = (b.author || '').trim()
-        const url = (b.url || '').trim()
-        if (!title || !url) return false
-        if (isRiskOrBlocked(title) || isRiskOrBlocked(author) || isRiskOrBlocked(url)) return false
-        return true
-      })
+  const options = typeof optionsOrKeyword === 'object' && optionsOrKeyword !== null
+    ? optionsOrKeyword
+    : { keyword: typeof optionsOrKeyword === 'string' ? optionsOrKeyword : '我的' }
 
-      if (validBooks.length > 0) {
-        // 2. 深度穿透探测：尝试拉取第一本书的目录列表，确保目录非空且未被反爬
+  const timeoutSeconds = Math.max(3, Math.min(300, Number(options.timeoutSeconds) || 60))
+  const checkItems = options.checkItems || { search: true, explore: false, detail: true, toc: true, content: true }
+
+  // 1. 智能提取搜书关键词：优先使用书源自带的 checkKeyWord，否则使用广谱轮询词
+  const configuredCheckWord = source.rule?.search?.checkKeyWord ||
+                              source.rule?.rawLegadoRule?.ruleSearch?.checkKeyWord ||
+                              source.rule?.checkKeyWord ||
+                              (options.keyword && options.keyword !== '修仙' && options.keyword !== '我的' ? options.keyword : null)
+
+  const candidateKeywords = configuredCheckWord
+    ? [configuredCheckWord]
+    : [options.keyword || '我的', '我的', '系统', '我', '修仙']
+
+  const resultDetails = {
+    sourceId: source.id,
+    sourceName: source.name,
+    passedStages: [],
+    failedStage: null,
+    searchCount: 0,
+    exploreCount: 0,
+    chapterCount: 0,
+    contentLength: 0,
+    durationMs: 0
+  }
+
+  const startTime = Date.now()
+  const stageTimeoutSec = Math.min(10, Math.max(3, Math.round(timeoutSeconds / 4)))
+
+  // 包装超时执行函数（阶段快探超时 + 总超时保护）
+  const runWithTimeout = (promise, sec, stageName) => {
+    const actualSec = Math.min(sec, Math.max(3, Math.round(timeoutSeconds - (Date.now() - startTime) / 1000)))
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`${stageName}阶段请求超时 (${actualSec}秒)`)), Math.max(1000, actualSec * 1000)))
+    ])
+  }
+
+  try {
+    let validBooks = []
+    let firstBook = null
+
+    // 1. 【搜索】校验
+    if (checkItems.search !== false) {
+      let searchRes = null
+      let networkDead = false
+
+      for (const kw of candidateKeywords) {
+        if (!kw) continue
         try {
-          const firstBook = validBooks[0]
-          const toc = await source.getChapters(firstBook.url)
-          if (toc && Array.isArray(toc.chapters) && toc.chapters.length > 0) {
-            // 确保章节标题未被拦截
-            const firstChapter = toc.chapters[0]
-            if (firstChapter && firstChapter.title && !isRiskOrBlocked(firstChapter.title)) {
-              return { success: true, results: validBooks, chapterCount: toc.chapters.length }
+          const res = await runWithTimeout(source.search(kw), stageTimeoutSec, '搜索')
+          if (Array.isArray(res) && res.length > 0) {
+            const filtered = res.filter(b => {
+              const title = (b.title || '').trim()
+              const author = (b.author || '').trim()
+              const url = (b.url || '').trim()
+              if (!title || !url) return false
+              if (isRiskOrBlocked(title) || isRiskOrBlocked(author) || isRiskOrBlocked(url)) return false
+              return true
+            })
+            if (filtered.length > 0) {
+              searchRes = filtered
+              break
             }
           }
-        } catch (_) {
-          // 目录探测如果网络抖动，但搜书确有真实正常结果，可保留搜书结果
-          return { success: true, results: validBooks }
+        } catch (err) {
+          const errMsg = (err.message || '').toLowerCase()
+          // 🚀 网络级硬性失败（DNS解析失败/连接拒绝/超时）直接快速熔断，不再浪费时间轮询其他词！
+          if (errMsg.includes('enotfound') || errMsg.includes('econnrefused') || errMsg.includes('timeout') || errMsg.includes('超时') || errMsg.includes('fetch failed')) {
+            networkDead = true
+            break
+          }
         }
       }
+
+      if (searchRes && searchRes.length > 0) {
+        validBooks = searchRes
+        resultDetails.searchCount = validBooks.length
+        resultDetails.passedStages.push('search')
+        firstBook = validBooks[0]
+      } else if (!networkDead) {
+        // 🛡️ 双通道连通性严格判定：未搜到书时，必须通过【健康小说站点特征认证】且绝无木马恶意跳转！
+        let isAlive = false
+        let pingErr = null
+        try {
+          const testPingUrl = source.baseUrl || source.rule?.url || ''
+          if (testPingUrl && testPingUrl.startsWith('http')) {
+            const pingHtml = await runWithTimeout(source._request(testPingUrl), 4, '连通性')
+            if (isHealthyNovelHtml(pingHtml)) {
+              isAlive = true
+            }
+          }
+        } catch (err) {
+          pingErr = err
+        }
+
+        if (isAlive) {
+          resultDetails.passedStages.push('search')
+          resultDetails.isConnectedAlive = true
+          resultDetails.statusMessage = '站点在线且响应正常（站内暂无该关键词藏书）'
+        } else {
+          return { success: false, failedStage: 'search', error: pingErr ? `站点无法连接: ${pingErr.message}` : '未搜到图书且目标站点无法连通或涉嫌恶意挂马劫持' }
+        }
+      } else {
+        return { success: false, failedStage: 'search', error: '站点网络无法连接或请求超时' }
+      }
+    }
+
+    // 2. 【发现】校验
+    if (checkItems.explore) {
+      const exploreUrl = source.rule?.exploreUrl || source.rule?.rawLegadoRule?.exploreUrl || source.rule?.explore?.url
+      if (exploreUrl) {
+        try {
+          let targetExplore = String(exploreUrl).split('\n')[0].split('&&')[0].trim()
+          if (targetExplore.includes('::')) targetExplore = targetExplore.split('::')[1].trim()
+          if (targetExplore.includes(',')) targetExplore = targetExplore.split(',')[0].trim()
+          if (!targetExplore.startsWith('http') && source.baseUrl) {
+            targetExplore = `${source.baseUrl.replace(/\/+$/, '')}/${targetExplore.replace(/^\/+/, '')}`
+          }
+          if (targetExplore.startsWith('http')) {
+            const expHtml = await runWithTimeout(source._request(targetExplore), timeoutSeconds, '发现')
+            if (!expHtml || expHtml.length < 50 || isRiskOrBlocked(expHtml)) {
+              return { success: false, failedStage: 'explore', error: '发现页响应无效或被拦截' }
+            }
+            resultDetails.passedStages.push('explore')
+          } else {
+            resultDetails.passedStages.push('explore')
+          }
+        } catch (expErr) {
+          return { success: false, failedStage: 'explore', error: `发现页测试失败: ${expErr.message}` }
+        }
+      } else {
+        resultDetails.passedStages.push('explore')
+      }
+    }
+
+    // 3. 【详情】校验
+    if (!firstBook && (checkItems.detail || checkItems.toc || checkItems.content)) {
+      const sampleUrl = source.rule?.sampleNovelUrl || source.baseUrl
+      if (sampleUrl && sampleUrl.startsWith('http')) {
+        firstBook = { title: '测试图书', url: sampleUrl }
+      }
+    }
+
+    if (checkItems.detail) {
+      if (firstBook && firstBook.url) {
+        try {
+          const detailHtml = await runWithTimeout(source._request(firstBook.url), timeoutSeconds, '详情')
+          if (!detailHtml || detailHtml.length < 30 || isRiskOrBlocked(detailHtml)) {
+            if (!resultDetails.isConnectedAlive) {
+              return { success: false, failedStage: 'detail', error: '书籍详情页被拦截或无法访问' }
+            }
+          } else {
+            resultDetails.passedStages.push('detail')
+          }
+        } catch (detErr) {
+          if (!resultDetails.isConnectedAlive) {
+            return { success: false, failedStage: 'detail', error: `书籍详情页请求失败: ${detErr.message}` }
+          }
+        }
+      } else if (resultDetails.isConnectedAlive) {
+        resultDetails.passedStages.push('detail')
+      } else {
+        return { success: false, failedStage: 'detail', error: '无有效书籍可供详情测试' }
+      }
+    }
+
+    // 4. 【目录】校验（带多书籍容错，避免单本书偶然下架误杀全源）
+    let tocResult = null
+    if (checkItems.toc) {
+      if (validBooks.length > 0 || (firstBook && firstBook.url)) {
+        const candidateBooks = validBooks.length > 0 ? validBooks.slice(0, 3) : [firstBook]
+        let lastTocErr = null
+
+        for (const book of candidateBooks) {
+          try {
+            const res = await runWithTimeout(source.getChapters(book.url), timeoutSeconds, '目录')
+            if (res && Array.isArray(res.chapters) && res.chapters.length > 0) {
+              const firstCh = res.chapters[0]
+              if (firstCh && firstCh.title && !isRiskOrBlocked(firstCh.title)) {
+                tocResult = res
+                firstBook = book
+                break
+              }
+            }
+          } catch (err) {
+            lastTocErr = err
+          }
+        }
+
+        if (tocResult && Array.isArray(tocResult.chapters) && tocResult.chapters.length > 0) {
+          resultDetails.chapterCount = tocResult.chapters.length
+          resultDetails.passedStages.push('toc')
+        } else if (!resultDetails.isConnectedAlive) {
+          return { success: false, failedStage: 'toc', error: lastTocErr ? `目录解析失败: ${lastTocErr.message}` : '提取到的目录章节列表为空' }
+        } else {
+          resultDetails.passedStages.push('toc')
+        }
+      } else if (resultDetails.isConnectedAlive) {
+        resultDetails.passedStages.push('toc')
+      } else {
+        return { success: false, failedStage: 'toc', error: '无有效书籍可供目录测试' }
+      }
+    }
+
+    // 5. 【正文】校验（带多章节容错）
+    if (checkItems.content) {
+      let testChapters = []
+      if (tocResult && Array.isArray(tocResult.chapters) && tocResult.chapters.length > 0) {
+        testChapters = tocResult.chapters.slice(0, 3)
+      } else if (firstBook && firstBook.url) {
+        try {
+          const tempToc = await runWithTimeout(source.getChapters(firstBook.url), timeoutSeconds, '获取章节')
+          if (tempToc && Array.isArray(tempToc.chapters) && tempToc.chapters.length > 0) {
+            testChapters = tempToc.chapters.slice(0, 3)
+          }
+        } catch (_) {}
+      }
+
+      if (testChapters.length > 0) {
+        let contentSuccess = false
+        let lastContentErr = null
+
+        for (const ch of testChapters) {
+          if (!ch.url) continue
+          try {
+            const content = await runWithTimeout(source.getContent(ch.url), timeoutSeconds, '正文')
+            if (content && content.length > 20 && !isRiskOrBlocked(content) && !content.includes('【获取') && !content.includes('【正文内容为空')) {
+              resultDetails.contentLength = content.length
+              resultDetails.passedStages.push('content')
+              contentSuccess = true
+              break
+            }
+          } catch (err) {
+            lastContentErr = err
+          }
+        }
+
+        if (contentSuccess) {
+          resultDetails.passedStages.push('content')
+        } else if (!resultDetails.isConnectedAlive) {
+          return { success: false, failedStage: 'content', error: lastContentErr ? `正文抓取失败: ${lastContentErr.message}` : '正文内容为空、字数过短或被反爬拦截' }
+        } else {
+          resultDetails.passedStages.push('content')
+        }
+      } else if (resultDetails.isConnectedAlive) {
+        resultDetails.passedStages.push('content')
+      } else {
+        return { success: false, failedStage: 'content', error: '无法获取有效章节链接以测试正文' }
+      }
+    }
+
+    resultDetails.durationMs = Date.now() - startTime
+    return {
+      success: true,
+      results: validBooks,
+      ...resultDetails
     }
   } catch (err) {
     const msg = err.message || ''
+    const failedStage = err.failedStage || 'unknown'
     if (isRiskOrBlocked(msg)) {
-      return { success: false, error: `被反爬/安全拦截: ${msg}` }
+      return { success: false, failedStage, error: `被反爬/安全拦截: ${msg}` }
     }
-    return { success: false, error: `搜书失败或超时: ${msg}` }
+    return { success: false, failedStage, error: `测试失败: ${msg}` }
   }
-
-  return { success: false, error: '未搜到有效图书，或目标站已被拦截/关停' }
 }
 
 /**
@@ -267,10 +529,13 @@ let deletedSourceIds = new Set()
  * 获取全量有效的书源详情列表（已被删除/清空的书源彻底在列表中擦除，不予展示）
  */
 export function getAllSourcesDetail() {
+  const customIdSet = new Set(CUSTOM_SOURCES.map(c => c.id))
+  const hardcodedIdSet = new Set(HARDCODED_SOURCES.map(h => h.id))
+
   let list = getAllSources().filter(s => !deletedSourceIds.has(s.id))
   return list.map(s => {
-    const isCustom = CUSTOM_SOURCES.some(c => c.id === s.id)
-    const isHardcoded = HARDCODED_SOURCES.some(h => h.id === s.id)
+    const isCustom = customIdSet.has(s.id)
+    const isHardcoded = hardcodedIdSet.has(s.id)
     return {
       id: s.id,
       name: s.name,
@@ -282,6 +547,7 @@ export function getAllSourcesDetail() {
         url: s.baseUrl,
         search: { url: s.baseUrl }
       },
+      rawLegadoRule: s.rawLegadoRule || s.rule?.rawLegadoRule || null,
       isCustom,
       isBuiltin: isHardcoded
     }
@@ -306,8 +572,8 @@ export function saveOrUpdateSource(ruleObj) {
       return { success: false, error: '书源名称和主站网址不能为空' }
     }
     const dir = getCustomRulesDir()
-    const safeId = ruleObj.url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '_')
-    const fileName = `custom_${safeId}.json`
+    const safeId = ruleObj.id || ruleObj.url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '_')
+    const fileName = `custom_rule_${safeId}.json`
     writeFileSync(join(dir, fileName), JSON.stringify(ruleObj, null, 2), 'utf-8')
     loadCustomSources()
     return { success: true, id: safeId }
@@ -317,7 +583,7 @@ export function saveOrUpdateSource(ruleObj) {
 }
 
 /**
- * 删除书源（支持单个 ID 或批量 ID 数组，彻底在列表中剔除擦除）
+ * 删除书源（支持单个 ID 或批量 ID 数组，彻底在列表中剔除擦除，物理删除磁盘规则文件）
  */
 export function deleteSource(idOrIds) {
   try {
@@ -327,8 +593,12 @@ export function deleteSource(idOrIds) {
 
     for (const id of ids) {
       if (!id) continue
+
+      // 1. 记入已删除集合（彻底在列表及搜索中擦除）
       deletedSourceIds.add(id)
-      const customSrc = CUSTOM_SOURCES.find(c => c.id === id)
+
+      // 2. 找到 CUSTOM_SOURCES 中的对应书源并删除物理文件
+      const customSrc = CUSTOM_SOURCES.find(s => s.id === id || s.name === id)
       if (customSrc && customSrc._customFileName) {
         const p = join(dir, customSrc._customFileName)
         if (existsSync(p)) {
@@ -338,11 +608,21 @@ export function deleteSource(idOrIds) {
           } catch (_) {}
         }
       }
+
+      // 3. 兜底删除 custom_rule_${id}.json
+      const directPath = join(dir, `custom_rule_${id}.json`)
+      if (existsSync(directPath)) {
+        try {
+          unlinkSync(directPath)
+          hasCustomDeleted = true
+        } catch (_) {}
+      }
     }
 
-    if (hasCustomDeleted) {
-      loadCustomSources()
-    }
+    // 4. 彻底刷新内存中的书源
+    loadCustomSources()
+    CUSTOM_SOURCES = CUSTOM_SOURCES.filter(s => !deletedSourceIds.has(s.id))
+    RULE_SOURCES = RULE_SOURCES.filter(s => !deletedSourceIds.has(s.id))
 
     return { success: true, count: ids.length }
   } catch (err) {
@@ -372,6 +652,8 @@ export function clearAllSources() {
     for (const src of all) {
       deletedSourceIds.add(src.id)
     }
+    CUSTOM_SOURCES = []
+    RULE_SOURCES = []
 
     return { success: true }
   } catch (err) {
@@ -389,11 +671,20 @@ export function resetDefaultSources() {
 /**
  * 转换有钱阅读器内部书源/规则为标准的【开源阅读 3.0 (Legado)】格式 JSON
  */
-/**
- * 转换有钱阅读器内部书源/规则为标准的【开源阅读 3.0 (Legado)】格式 JSON
- */
 export function convertToLegado3Format(sourceDetail) {
   if (!sourceDetail) return null
+
+  // 1. 核心无损还原：若原本就是从阅读 3.0 导入的原生书源，进行 100% 规则无损输出！
+  const rawLegado = sourceDetail.rawLegadoRule || sourceDetail.rule?.rawLegadoRule
+  if (rawLegado && typeof rawLegado === 'object' && (rawLegado.bookSourceUrl || rawLegado.ruleSearch || rawLegado.ruleToc)) {
+    const cloned = JSON.parse(JSON.stringify(rawLegado))
+    cloned.enabled = sourceDetail.enabled !== false
+    cloned.lastUpdateTime = Date.now()
+    if (sourceDetail.name && sourceDetail.name !== cloned.bookSourceName) {
+      cloned.bookSourceName = sourceDetail.name
+    }
+    return cloned
+  }
 
   const rule = sourceDetail.rule || sourceDetail
   const name = sourceDetail.name || rule.name || '未命名书源'
@@ -575,16 +866,17 @@ export function convertToLegado3Format(sourceDetail) {
 
     ruleBookInfo = {
       intro: `@js:\n(() => {\n  try {\n    let urlStr = String(baseUrl || result || "");\n    let m = urlStr.match(/book\\/(\\d+)/);\n    if (!m) return result;\n    let bookId = Number(m[1]);\n    let salt = "book@token.html";\n    let jsonStr = JSON.stringify({ id: bookId });\n    let encToken = "";\n    if (typeof CryptoJS !== 'undefined' && CryptoJS.AES && CryptoJS.MD5) {\n      let code = CryptoJS.MD5(salt).toString();\n      let iv = CryptoJS.enc.Utf8.parse(code.substring(0, 16));\n      let key = CryptoJS.enc.Utf8.parse(code.substring(16));\n      encToken = encodeURIComponent(CryptoJS.AES.encrypt(jsonStr, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).toString());\n    } else {\n      let md5 = java.md5Encode(salt);\n      let iv = md5.substring(0, 16);\n      let key = md5.substring(16);\n      encToken = encodeURIComponent(java.aesEncode(jsonStr, key, "AES/CBC/PKCS5Padding", iv));\n    }\n    let origin = "${baseUrl}".replace(/\\/book\\/.*$/, '').replace(/\\/+$/, '');\n    let res = java.ajax(origin + "/api/book?token=" + encToken);\n    let json = JSON.parse(res);\n    return (json && json.intro) ? json.intro : result;\n  } catch(e) {\n    return result;\n  }\n})()`,
-      kind: `@js:\n(() => {\n  try {\n    let urlStr = String(baseUrl || result || "");\n    let m = urlStr.match(/book\\/(\\d+)/);\n    if (!m) return "";\n    let bookId = Number(m[1]);\n    let salt = "book@token.html";\n    let jsonStr = JSON.stringify({ id: bookId });\n    let encToken = "";\n    if (typeof CryptoJS !== 'undefined' && CryptoJS.AES && CryptoJS.MD5) {\n      let code = CryptoJS.MD5(salt).toString();\n      let iv = CryptoJS.enc.Utf8.parse(code.substring(0, 16));\n      let key = CryptoJS.enc.Utf8.parse(code.substring(16));\n      encToken = encodeURIComponent(CryptoJS.AES.encrypt(jsonStr, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).toString());\n    } else {\n      let md5 = java.md5Encode(salt);\n      let iv = md5.substring(0, 16);\n      let key = md5.substring(16);\n      encToken = encodeURIComponent(java.aesEncode(jsonStr, key, "AES/CBC/PKCS5Padding", iv));\n    }\n    let origin = "${baseUrl}".replace(/\\/book\\/.*$/, '').replace(/\\/+$/, '');\n    let res = java.ajax(origin + "/api/book?token=" + encToken);\n    let json = JSON.parse(res);\n    let tags = [];\n    if (json && json.sortname) tags.push(json.sortname);\n    if (json && json.full) tags.push(json.full);\n    return tags.join(',');\n  } catch(e) {\n    return "";\n  }\n})()`,
+      kind: `@js:\n(() => {\n  try {\n    let urlStr = String(baseUrl || result || "");\n    let m = urlStr.match(/book\\/(\\d+)/);\n    if (!m) return "";\n    let bookId = Number(m[1]);\n    let salt = "book@token.html";\n    let jsonStr = JSON.stringify({ id: bookId });\n    let encToken = "";\n    if (typeof CryptoJS !== 'undefined' && CryptoJS.AES && CryptoJS.MD5) {\n      let code = CryptoJS.MD5(salt).toString();\n      let iv = CryptoJS.enc.Utf8.parse(code.substring(0, 16));\n      let key = CryptoJS.enc.Utf8.parse(code.substring(16));\n      encToken = encodeURIComponent(CryptoJS.AES.encrypt(jsonStr, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).toString());\n    } else {\n      let md5 = java.md5Encode(salt);\n      let iv = md5.substring(0, 16);\n      let key = md5.substring(16);\n      encToken = encodeURIComponent(java.aesEncode(jsonStr, key, "AES/CBC/PKCS5Padding", iv));\n    }\n    let origin = "${baseUrl}".replace(/\\/book\\/.*$/, '').replace(/\\/+$/, '');\n    let res = java.ajax(origin + "/api/book?token=" + encToken);\n    let json = JSON.parse(res);\n    return (json && json.sortname) ? json.sortname : "";\n  } catch(e) {\n    return "";\n  }\n})()`,
       lastChapter: `@js:\n(() => {\n  try {\n    let urlStr = String(baseUrl || result || "");\n    let m = urlStr.match(/book\\/(\\d+)/);\n    if (!m) return "";\n    let bookId = Number(m[1]);\n    let salt = "book@token.html";\n    let jsonStr = JSON.stringify({ id: bookId });\n    let encToken = "";\n    if (typeof CryptoJS !== 'undefined' && CryptoJS.AES && CryptoJS.MD5) {\n      let code = CryptoJS.MD5(salt).toString();\n      let iv = CryptoJS.enc.Utf8.parse(code.substring(0, 16));\n      let key = CryptoJS.enc.Utf8.parse(code.substring(16));\n      encToken = encodeURIComponent(CryptoJS.AES.encrypt(jsonStr, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).toString());\n    } else {\n      let md5 = java.md5Encode(salt);\n      let iv = md5.substring(0, 16);\n      let key = md5.substring(16);\n      encToken = encodeURIComponent(java.aesEncode(jsonStr, key, "AES/CBC/PKCS5Padding", iv));\n    }\n    let origin = "${baseUrl}".replace(/\\/book\\/.*$/, '').replace(/\\/+$/, '');\n    let res = java.ajax(origin + "/api/book?token=" + encToken);\n    let json = JSON.parse(res);\n    return (json && json.lastchapter) ? json.lastchapter : "";\n  } catch(e) {\n    return "";\n  }\n})()`
     }
   } else {
     // 2. 常规 HTML 站点构造 Legado ruleSearch
+    const searchBookUrl = rule.search?.bookUrl || setRuleSuffix(rule.search?.bookName || 'h3 a, h4 a, td:nth-child(1) a, a', 'href')
     ruleSearch = {
       bookList: rule.search?.result || 'tr, dl, li, div.item, .bookbox',
       name: setRuleSuffix(rule.search?.bookName || 'h3 a, h4 a, td:nth-child(1) a, a', 'text'),
       author: setRuleSuffix(rule.search?.author || '.author, td:nth-child(3)', 'text'),
-      bookUrl: setRuleSuffix(rule.search?.bookName || 'h3 a, h4 a, td:nth-child(1) a, a', 'href'),
+      bookUrl: searchBookUrl,
       lastChapter: setRuleSuffix(rule.search?.latestChapter, 'text'),
       intro: setRuleSuffix(rule.search?.intro, 'text'),
       coverUrl: setRuleSuffix(rule.search?.coverUrl || rule.book?.coverUrl, 'src')
@@ -595,10 +887,13 @@ export function convertToLegado3Format(sourceDetail) {
       if (!ruleSearch[k]) delete ruleSearch[k]
     })
 
-    // 构造常规 HTML 站点的 ruleBookInfo (详情页简介/封面规则)
+    // 构造常规 HTML 站点的 ruleBookInfo (详情页简介/封面/完整目录规则)
     ruleBookInfo = {
-      intro: setRuleSuffix(rule.book?.intro || rule.search?.intro || '#intro, .intro, #bookintro, p.review, div.intro', 'textNodes'),
-      coverUrl: setRuleSuffix(rule.book?.coverUrl || rule.search?.coverUrl || '#fmimg img, .cover img, img', 'src')
+      intro: setRuleSuffix(rule.book?.intro || rule.bookInfo?.intro || rule.search?.intro || '#intro, .intro, #bookintro, p.review, div.intro', 'textNodes'),
+      coverUrl: setRuleSuffix(rule.book?.coverUrl || rule.bookInfo?.coverUrl || rule.search?.coverUrl || '#fmimg img, .cover img, img', 'src')
+    }
+    if (rule.bookInfo?.tocUrl || rule.search?.tocUrl) {
+      ruleBookInfo.tocUrl = rule.bookInfo?.tocUrl || rule.search?.tocUrl
     }
 
     // 3. 构造 Legado ruleToc (智能规范化指向 a 标签)
@@ -607,12 +902,12 @@ export function convertToLegado3Format(sourceDetail) {
 
     ruleToc = {
       chapterList: rawItem,
-      chapterName: endsWithAnchor ? 'text' : 'a@text',
-      chapterUrl: endsWithAnchor ? 'href' : 'a@href'
+      chapterName: rule.toc?.chapterName || (endsWithAnchor ? 'text' : 'a@text'),
+      chapterUrl: rule.toc?.chapterUrl || (endsWithAnchor ? 'href' : 'a@href')
     }
 
-    if (rule.toc?.nextPage) {
-      ruleToc.nextTocUrl = rule.toc.nextPage
+    if (rule.toc?.nextPage || rule.toc?.nextTocUrl) {
+      ruleToc.nextTocUrl = rule.toc?.nextPage || rule.toc?.nextTocUrl
     }
 
     // 4. 构造 Legado ruleContent
@@ -627,8 +922,8 @@ export function convertToLegado3Format(sourceDetail) {
     if (rule.chapter?.filterTxt) {
       ruleContent.replaceRegex = `##${rule.chapter.filterTxt}`
     }
-    if (rule.chapter?.nextPage) {
-      ruleContent.nextContentUrl = rule.chapter.nextPage
+    if (rule.chapter?.nextPage || rule.chapter?.nextContentUrl) {
+      ruleContent.nextContentUrl = rule.chapter?.nextPage || rule.chapter?.nextContentUrl
     }
   }
 
@@ -650,7 +945,7 @@ export function convertToLegado3Format(sourceDetail) {
     customOrder: 0,
     enabled: sourceDetail.enabled !== false,
     enabledCookieJar: false,
-    header: JSON.stringify(defaultHeader),
+    header: rule.header || JSON.stringify(defaultHeader),
     lastUpdateTime: Date.now(),
     respondTime: 180,
     ruleContent,
@@ -694,6 +989,11 @@ export function normalizeSourceRule(raw) {
 
   if (!name && !url) return null
 
+  // 保留原始完整阅读 3.0 / Legado 规则（如果是 Legado 格式或已有 rawLegadoRule）
+  const rawLegadoRule = raw.rawLegadoRule || (
+    (raw.bookSourceUrl || raw.ruleSearch || raw.ruleToc || raw.ruleContent || raw.searchUrl) ? JSON.parse(JSON.stringify(raw)) : null
+  )
+
   let searchUrl = raw.search?.url || raw.searchUrl || ''
   if (searchUrl.includes('<js>')) {
     searchUrl = searchUrl.split('<js>')[0].trim()
@@ -730,6 +1030,7 @@ export function normalizeSourceRule(raw) {
     data: searchData,
     result: raw.search?.result || raw.ruleSearch?.bookList || 'tr, dl, li, div.item',
     bookName: raw.search?.bookName || raw.ruleSearch?.name || 'h3 a, h4 a, a',
+    bookUrl: raw.search?.bookUrl || raw.ruleSearch?.bookUrl || '',
     author: raw.search?.author || raw.ruleSearch?.author || '.author',
     intro: raw.search?.intro || raw.ruleSearch?.intro || '',
     latestChapter: raw.search?.latestChapter || raw.ruleSearch?.lastChapter || '',
@@ -737,14 +1038,25 @@ export function normalizeSourceRule(raw) {
     coverUrl: raw.search?.coverUrl || raw.ruleSearch?.coverUrl || raw.ruleBookInfo?.coverUrl || ''
   }
 
+  const bookInfoRule = {
+    intro: raw.book?.intro || raw.ruleBookInfo?.intro || '',
+    coverUrl: raw.book?.coverUrl || raw.ruleBookInfo?.coverUrl || '',
+    tocUrl: raw.bookInfo?.tocUrl || raw.ruleBookInfo?.tocUrl || raw.search?.tocUrl || raw.ruleSearch?.tocUrl || ''
+  }
+
   const tocRule = {
     item: raw.toc?.item || raw.ruleToc?.chapterList || raw.ruleToc?.chapterName || '#list a, dd a, li a',
-    nextPage: raw.toc?.nextPage || raw.ruleToc?.nextTocUrl || ''
+    chapterName: raw.toc?.chapterName || raw.ruleToc?.chapterName || '',
+    chapterUrl: raw.toc?.chapterUrl || raw.ruleToc?.chapterUrl || '',
+    nextPage: raw.toc?.nextPage || raw.ruleToc?.nextTocUrl || '',
+    nextTocUrl: raw.toc?.nextTocUrl || raw.ruleToc?.nextTocUrl || ''
   }
 
   const chapterRule = {
     content: raw.chapter?.content || raw.ruleContent?.content || '#content, .read-content, #txtContent',
-    filterTxt: raw.chapter?.filterTxt || raw.ruleContent?.replaceRegex || ''
+    filterTxt: raw.chapter?.filterTxt || raw.ruleContent?.replaceRegex || '',
+    nextPage: raw.chapter?.nextPage || raw.ruleContent?.nextContentUrl || '',
+    nextContentUrl: raw.chapter?.nextContentUrl || raw.ruleContent?.nextContentUrl || ''
   }
 
   return {
@@ -752,10 +1064,13 @@ export function normalizeSourceRule(raw) {
     url: url || searchUrl,
     comment: raw.comment || raw.bookSourceComment || raw.bookSourceGroup || '',
     encoding: raw.encoding || raw.charset || 'utf-8',
+    header: raw.header || (typeof raw.headers === 'string' ? raw.headers : (raw.headers ? JSON.stringify(raw.headers) : '')),
     search: searchRule,
+    bookInfo: bookInfoRule,
     toc: tocRule,
     chapter: chapterRule,
-    enabled: raw.enabled !== false
+    enabled: raw.enabled !== false,
+    rawLegadoRule
   }
 }
 

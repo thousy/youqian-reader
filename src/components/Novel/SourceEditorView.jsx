@@ -9,7 +9,8 @@ export function SourceEditorView() {
     batchProgress, setBatchProgress,
     stopBatchRef, stopBatchTest: handleStopBatchTest,
     selectedSourceIds: selectedIds, setSelectedSourceIds: setSelectedIds,
-    invalidSourceIds: invalidIds, setInvalidSourceIds: setInvalidIds
+    invalidSourceIds: invalidIds, setInvalidSourceIds: setInvalidIds,
+    sourceErrors, setSourceErrors, clearSourceErrors
   } = useStore()
 
   // 选项卡：'list' (书源列表管理) 或 'create' (制作与调试工坊)
@@ -19,6 +20,11 @@ export function SourceEditorView() {
   const [sources, setSources] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [displayLimit, setDisplayLimit] = useState(100) // 分批渐进式秒开渲染，彻底消除卡顿
+
+  useEffect(() => {
+    setDisplayLimit(100)
+  }, [searchQuery])
 
   // 弹窗状态：查看 JSON / 编辑
   const [viewDetailModal, setViewDetailModal] = useState(null) // source item
@@ -42,6 +48,20 @@ export function SourceEditorView() {
   const [testing, setTesting] = useState(false)
   const [sniffing, setSniffing] = useState(false)
   const [retestConcurrency, setRetestConcurrency] = useState(2) // 针对失效书源的复测线程数 (默认 2 线程稳健防封)
+
+  // 校验设置弹窗状态 (对齐阅读 3.0 校验规范)
+  const [validateModalOpen, setValidateModalOpen] = useState(false)
+  const [validateTargetConfig, setValidateTargetConfig] = useState(null) // { targetList, isOnlySelected }
+  const [validateTimeout, setValidateTimeout] = useState('180') // 单个书源校验超时 (秒，默认180秒对齐阅读3.0)
+  const [validateConcurrency, setValidateConcurrency] = useState(30) // 并发线程 (默认30线程极速探测)
+  const [validateItems, setValidateItems] = useState({
+    search: true,
+    explore: false,
+    detail: true,
+    toc: true,
+    content: true
+  })
+
   const [logs, setLogs] = useState([
     '[系统] 可视化书源工坊与沙盒控制台已就绪。',
     '[提示] 可填写入参后点击【测试解析正文】或【导出规则 JSON】。'
@@ -328,8 +348,8 @@ export function SourceEditorView() {
 
     const startTime = Date.now()
     try {
-      appendModalLog('🚀 阶段 1/3: 正在发起【搜书测试】(关键词: 修仙)...')
-      const searchRes = await window.api.novelTestSingleSource(src.id, '修仙')
+      appendModalLog('🚀 阶段 1/3: 正在发起【智能搜书探测】(自动匹配书源最佳关键词)...')
+      const searchRes = await window.api.novelTestSingleSource(src.id, { keyword: '', timeoutSeconds: 60 })
       const searchTime = Date.now() - startTime
 
       if (!searchRes || !searchRes.success || !Array.isArray(searchRes.results) || searchRes.results.length === 0) {
@@ -383,14 +403,9 @@ export function SourceEditorView() {
     }
   }
 
-  // 一键检测全量/勾选书源可用性 (支持指定线程与自定义目标列表)
-  const handleBatchTestSources = async (customConcurrency = null, customTargetList = null) => {
+  // 打开校验设置弹窗 (对齐阅读 3.0 校验规范)
+  const handleOpenValidateConfigModal = (customTargetList = null, customConc = null) => {
     if (batchTesting) return
-    
-    // 确定检测目标书源列表：
-    // 1. 若传入 customTargetList 则使用
-    // 2. 否则若有勾选，优先检测勾选的书源
-    // 3. 否则检测当前搜索过滤出的列表或全量书源
     let targetList = []
     let isOnlySelected = false
 
@@ -410,17 +425,22 @@ export function SourceEditorView() {
       return
     }
 
-    const CONCURRENCY = customConcurrency !== null && Number(customConcurrency) > 0
-      ? Math.max(1, Math.min(50, Number(customConcurrency)))
-      : Math.max(1, Math.min(50, testConcurrency || 10))
+    if (customConc) {
+      setValidateConcurrency(customConc)
+    }
 
-    const titleText = isOnlySelected ? '检测已勾选书源' : '一键检测书源'
-    const confirmMsg = isOnlySelected
-      ? `即将在后台以 ${CONCURRENCY} 线程并发检测您已选中的 ${targetList.length} 个书源的连通性。\n检测完毕后将自动更新可用状态并保持失效勾选，方便您批量清理或复测！`
-      : `即将在后台以 ${CONCURRENCY} 线程并发检测当前全部 ${targetList.length} 个书源的连通性。\n检测完毕后将【自动勾选所有无法搜到图书的失效书源】，方便您一键批量清理！`
+    setValidateTargetConfig({ targetList, isOnlySelected })
+    setValidateModalOpen(true)
+  }
 
-    const ok = await showConfirm(titleText, confirmMsg)
-    if (!ok) return
+  // 确认校验设置并真正启动多线程并发批量检测
+  const startExecuteBatchValidation = async () => {
+    if (!validateTargetConfig || !validateTargetConfig.targetList) return
+    const { targetList, isOnlySelected } = validateTargetConfig
+    setValidateModalOpen(false)
+
+    const CONCURRENCY = Math.max(1, Math.min(50, Number(validateConcurrency) || 10))
+    const timeoutSec = Math.max(3, Math.min(300, Number(validateTimeout) || 180))
 
     setBatchTesting(true)
     stopBatchRef.current = false
@@ -428,58 +448,93 @@ export function SourceEditorView() {
 
     const nextSelected = new Set(selectedIds)
     const nextInvalid = new Set(invalidIds)
+    const nextErrors = { ...sourceErrors }
 
     let currentDone = 0
     let validCnt = 0
     let invalidCnt = 0
+    let lastFlushTime = Date.now()
 
-    showToast(`正在启动 ${CONCURRENCY} 线程检测 ${targetList.length} 个${isOnlySelected ? '已选' : ''}书源中...`, 'info')
-
-    for (let i = 0; i < targetList.length; i += CONCURRENCY) {
-      if (stopBatchRef.current) {
-        showToast('已中断书源检测', 'info')
-        break
+    // 🚀 实时同步状态到 UI，使用户在检测中和中断后都能瞬间看到失效书源被勾选！
+    const flushUIState = (force = false) => {
+      const now = Date.now()
+      if (force || now - lastFlushTime > 120) {
+        lastFlushTime = now
+        setSelectedIds(new Set(nextSelected))
+        setInvalidIds(new Set(nextInvalid))
+        setSourceErrors({ ...nextErrors })
       }
+    }
 
-      const batch = targetList.slice(i, i + CONCURRENCY)
-      await Promise.allSettled(
-        batch.map(async (src) => {
-          if (stopBatchRef.current) return
-          try {
-            const searchRes = await window.api.novelTestSingleSource(src.id, '修仙')
-            if (searchRes && searchRes.success && Array.isArray(searchRes.results) && searchRes.results.length > 0) {
-              validCnt++
-              // 若之前是失效状态，复测成功后自动解封恢复！
-              nextInvalid.delete(src.id)
-              if (isOnlySelected) {
-                // 如果是针对勾选项复测成功，将其从勾选中移出
-                nextSelected.delete(src.id)
-              }
-            } else {
-              // 搜不到书或超时/报错 ➔ 判定为失效，自动勾选起来！
-              invalidCnt++
-              nextInvalid.add(src.id)
-              nextSelected.add(src.id)
+    showToast(`正在启动 ${CONCURRENCY} 线程极速并发检测 ${targetList.length} 个${isOnlySelected ? '已选' : ''}书源...`, 'info')
+
+    // 🚀 高性能流水线并发池（Worker Pool）：50 个 Worker 永不停歇
+    let taskCursor = 0
+    const workerCount = Math.min(CONCURRENCY, targetList.length)
+
+    async function runValidationWorker() {
+      while (taskCursor < targetList.length) {
+        if (stopBatchRef.current) break
+        const taskIdx = taskCursor++
+        const src = targetList[taskIdx]
+        if (!src) continue
+
+        try {
+          const testRes = await window.api.novelTestSingleSource(src.id, {
+            keyword: '',
+            timeoutSeconds: timeoutSec,
+            checkItems: validateItems
+          })
+          if (testRes && testRes.success) {
+            validCnt++
+            // 若之前是失效状态，复测成功后自动解封恢复并清除错误记录！
+            nextInvalid.delete(src.id)
+            delete nextErrors[src.id]
+            if (isOnlySelected) {
+              nextSelected.delete(src.id)
             }
-          } catch (_) {
+          } else {
+            // 校验不通过 ➔ 判定为失效，实时标记并自动勾选！
             invalidCnt++
             nextInvalid.add(src.id)
             nextSelected.add(src.id)
-          } finally {
-            currentDone++
-            setBatchProgress({ current: currentDone, total: targetList.length, validCount: validCnt, invalidCount: invalidCnt, concurrency: CONCURRENCY })
+            nextErrors[src.id] = testRes?.error || (testRes?.failedStage ? `${testRes.failedStage}阶段请求失败` : '校验未通过 (连接超时或接口异常)')
           }
-        })
-      )
+        } catch (err) {
+          invalidCnt++
+          nextInvalid.add(src.id)
+          nextSelected.add(src.id)
+          nextErrors[src.id] = err.message || '网络连接超时或未知异常'
+        } finally {
+          currentDone++
+          setBatchProgress({ current: currentDone, total: targetList.length, validCount: validCnt, invalidCount: invalidCnt, concurrency: CONCURRENCY })
+          // 🚀 实时流式推送到界面，无须等待全部完成！
+          flushUIState(false)
+        }
+      }
     }
 
-    setSelectedIds(new Set(nextSelected))
-    setInvalidIds(new Set(nextInvalid))
+    // 启动所有并发 Worker
+    const workers = []
+    for (let i = 0; i < workerCount; i++) {
+      workers.push(runValidationWorker())
+    }
+    await Promise.all(workers)
+
+    // 强制做最终同步
+    flushUIState(true)
     setBatchTesting(false)
 
-    if (!stopBatchRef.current) {
-      showToast(`🎉 检测完成！可用: ${validCnt} 个，失效: ${invalidCnt} 个！已自动更新勾选状态！`, invalidCnt > 0 ? 'warning' : 'success')
+    if (stopBatchRef.current) {
+      showToast(`已中断检测！已实时高亮勾选已检测出的 ${invalidCnt} 个失效书源！`, 'info')
+    } else {
+      showToast(`🎉 检测完成！通过: ${validCnt} 个，未通过: ${invalidCnt} 个！已自动标记具体失败原因！`, invalidCnt > 0 ? 'warning' : 'success')
     }
+  }
+
+  // 一键检测全量/勾选书源可用性
+  const handleBatchTestSources = (customConcurrency = null, customTargetList = null) => {
+    handleOpenValidateConfigModal(customTargetList, customConcurrency)
   }
 
   // 针对失效书源专属低速稳健复测
@@ -489,12 +544,10 @@ export function SourceEditorView() {
       return
     }
     const targetConc = customConc !== null && Number(customConc) > 0 ? Number(customConc) : (retestConcurrency || 2)
-    setTestConcurrency(targetConc)
+    setRetestConcurrency(targetConc)
     const invalidList = sources.filter(s => invalidIds.has(s.id))
-    handleBatchTestSources(targetConc, invalidList)
+    handleOpenValidateConfigModal(invalidList, targetConc)
   }
-
-
 
   // 批量删除进度状态
   const [batchDeleting, setBatchDeleting] = useState(false)
@@ -950,119 +1003,174 @@ export function SourceEditorView() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '10px' }}>
-              {filteredSources.map((src, idx) => {
-                const isSelected = selectedIds.has(src.id)
-                const isInvalid = invalidIds.has(src.id)
-                return (
-                  <div
-                    key={src.id || idx}
-                    style={{
-                      background: isSelected ? 'var(--bg-layer2)' : 'var(--bg-layer1)',
-                      borderRadius: '10px',
-                      border: `1px solid ${isInvalid ? '#f87171' : (isSelected ? 'var(--accent)' : 'var(--border-subtle)')}`,
-                      padding: '14px 18px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                      opacity: src.enabled ? 1 : 0.6,
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {/* 序号与多选勾选复选框 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '12px', width: '20px' }}>{idx + 1}</span>
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={(e) => {
-                          const next = new Set(selectedIds)
-                          if (e.target.checked) next.add(src.id)
-                          else next.delete(src.id)
-                          setSelectedIds(next)
-                        }}
-                        title={isSelected ? '取消勾选' : '勾选此书源以便一键删除/清除'}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
-                      />
-                    </div>
+            <>
+              <div style={{ display: 'grid', gap: '10px' }}>
+                {filteredSources.slice(0, displayLimit).map((src, idx) => {
+                  const isSelected = selectedIds.has(src.id)
+                  const isInvalid = invalidIds.has(src.id)
+                  return (
+                    <div
+                      key={src.id || idx}
+                      style={{
+                        background: isSelected ? 'var(--bg-layer2)' : 'var(--bg-layer1)',
+                        borderRadius: '10px',
+                        border: `1px solid ${isInvalid ? '#f87171' : (isSelected ? 'var(--accent)' : 'var(--border-subtle)')}`,
+                        padding: '14px 18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        opacity: src.enabled ? 1 : 0.6,
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {/* 序号与多选勾选复选框 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '12px', width: '20px' }}>{idx + 1}</span>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            const next = new Set(selectedIds)
+                            if (e.target.checked) next.add(src.id)
+                            else next.delete(src.id)
+                            setSelectedIds(next)
+                          }}
+                          title={isSelected ? '取消勾选' : '勾选此书源以便一键删除/清除'}
+                          style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--accent)' }}
+                        />
+                      </div>
 
-                    {/* 书源信息 */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
-                          {src.name}
-                        </span>
-                        {isInvalid && (
-                          <span style={{ fontSize: '11px', padding: '1px 6px', borderRadius: '4px', background: '#f8717120', color: '#f87171', fontWeight: 600 }}>
-                            ⚠️ 检测到失效/搜不到书
+                      {/* 书源信息 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
+                            {src.name}
                           </span>
-                        )}
-                        <span style={{
-                          fontSize: '11px', padding: '1px 6px', borderRadius: '4px',
-                          background: src.isCustom ? '#8b5cf620' : (src.isBuiltin ? '#3b82f620' : '#10b98120'),
-                          color: src.isCustom ? '#a78bfa' : (src.isBuiltin ? '#60a5fa' : '#34d399'),
-                          fontWeight: 500
-                        }}>
-                          {src.isCustom ? '自定义' : (src.isBuiltin ? '核心源' : '规则源')}
-                        </span>
+                          {isInvalid ? (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <span
+                                style={{
+                                  fontSize: '11px',
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  background: 'rgba(239, 68, 68, 0.15)',
+                                  color: '#f87171',
+                                  fontWeight: 600,
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  maxWidth: '420px',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                                title={sourceErrors[src.id] ? `具体失败原因：${sourceErrors[src.id]}` : '连通性或校验未通过'}
+                              >
+                                <span>❌ 失败原因:</span>
+                                <span style={{ color: '#fca5a5' }}>
+                                  {sourceErrors[src.id] || '检测未通过 (连接超时或接口异常)'}
+                                </span>
+                              </span>
+                            </div>
+                          ) : null}
+                          <span style={{
+                            fontSize: '11px', padding: '1px 6px', borderRadius: '4px',
+                            background: src.isCustom ? '#8b5cf620' : (src.isBuiltin ? '#3b82f620' : '#10b98120'),
+                            color: src.isCustom ? '#a78bfa' : (src.isBuiltin ? '#60a5fa' : '#34d399'),
+                            fontWeight: 500
+                          }}>
+                            {src.isCustom ? '自定义' : (src.isBuiltin ? '核心源' : '规则源')}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                          {src.baseUrl || '内置处理'}
+                        </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                        {src.baseUrl || '内置处理'}
+
+                      {/* 操作按钮组 */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => handleRunSourceTest(src)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--accent)',
+                            background: 'var(--bg-layer2)', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '12px', fontWeight: 600
+                          }}
+                          title="对该书源发起全链路连通性与可用性真实测试"
+                        >
+                          🧪 测试
+                        </button>
+                        <button
+                          onClick={() => setViewDetailModal(src)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                            background: 'var(--bg-layer2)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px'
+                          }}
+                        >
+                          查看内容
+                        </button>
+                        <button
+                          onClick={(e) => handleEdit(src, e)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                            background: 'var(--bg-layer2)', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '12px'
+                          }}
+                        >
+                          修改
+                        </button>
+                        <button
+                          onClick={(e) => handleExportSingle(src, e)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                            background: 'var(--bg-layer2)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px'
+                          }}
+                        >
+                          导出
+                        </button>
+                        <button
+                          onClick={(e) => handleDelete(src, e)}
+                          style={{
+                            padding: '6px 12px', borderRadius: '6px', border: '1px solid rgba(248, 113, 113, 0.3)',
+                            background: 'var(--bg-layer2)', color: '#f87171', cursor: 'pointer', fontSize: '12px'
+                          }}
+                        >
+                          {src.isCustom ? '删除' : '停用'}
+                        </button>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
 
-                {/* 操作按钮组 */}
-                <div style={{ display: 'flex', gap: '8px' }}>
+              {/* 底部加载更多与全量展开条 */}
+              {filteredSources.length > displayLimit && (
+                <div style={{
+                  display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px',
+                  padding: '20px 0 10px'
+                }}>
                   <button
-                    onClick={() => handleRunSourceTest(src)}
+                    onClick={() => setDisplayLimit(prev => Math.min(filteredSources.length, prev + 100))}
                     style={{
-                      padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--accent)',
-                      background: 'var(--bg-layer2)', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '12px', fontWeight: 600
+                      padding: '8px 22px', borderRadius: '8px', border: '1px solid var(--accent)',
+                      background: 'var(--bg-layer2)', color: 'var(--accent-light)', cursor: 'pointer',
+                      fontSize: '13px', fontWeight: 600
                     }}
-                    title="对该书源发起全链路连通性与可用性真实测试"
                   >
-                    🧪 测试
+                    📄 加载更多书源 (已显 {displayLimit} / 共 {filteredSources.length})
                   </button>
                   <button
-                    onClick={() => setViewDetailModal(src)}
+                    onClick={() => setDisplayLimit(filteredSources.length)}
                     style={{
-                      padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
-                      background: 'var(--bg-layer2)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '12px'
+                      padding: '8px 18px', borderRadius: '8px', border: '1px solid var(--border)',
+                      background: 'var(--bg-layer2)', color: 'var(--text-secondary)', cursor: 'pointer',
+                      fontSize: '13px'
                     }}
                   >
-                    查看内容
-                  </button>
-                  <button
-                    onClick={(e) => handleEdit(src, e)}
-                    style={{
-                      padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
-                      background: 'var(--bg-layer2)', color: 'var(--accent-light)', cursor: 'pointer', fontSize: '12px'
-                    }}
-                  >
-                    修改
-                  </button>
-                  <button
-                    onClick={(e) => handleExportSingle(src, e)}
-                    style={{
-                      padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
-                      background: 'var(--bg-layer2)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '12px'
-                    }}
-                  >
-                    导出
-                  </button>
-                  <button
-                    onClick={(e) => handleDelete(src, e)}
-                    style={{
-                      padding: '6px 12px', borderRadius: '6px', border: '1px solid rgba(248, 113, 113, 0.3)',
-                      background: 'var(--bg-layer2)', color: '#f87171', cursor: 'pointer', fontSize: '12px'
-                    }}
-                  >
-                    {src.isCustom ? '删除' : '停用'}
+                    ⚡ 一键加载全部
                   </button>
                 </div>
-              </div>
-            )})}
-          </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1772,6 +1880,195 @@ export function SourceEditorView() {
                 }}
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🛠️ 阅读 3.0 风格校验设置弹窗 */}
+      {validateModalOpen && (
+        <div
+          className="source-manager-modal-overlay"
+          style={{ zIndex: 3100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+          onMouseDown={e => {
+            if (e.target === e.currentTarget) setValidateModalOpen(false)
+          }}
+        >
+          <div
+            className="source-manager-modal"
+            style={{
+              width: '420px',
+              maxWidth: '92vw',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              background: 'var(--bg-layer1)',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* 头部：阅读3.0经典天蓝色 Header */}
+            <div style={{
+              background: '#0288d1',
+              color: '#ffffff',
+              padding: '16px 20px',
+              fontSize: '17px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <span>校验设置</span>
+              <span style={{ fontSize: '12px', opacity: 0.85, fontWeight: 400 }}>
+                {validateTargetConfig?.isOnlySelected ? `已选 ${validateTargetConfig.targetList.length} 个书源` : `全量 ${validateTargetConfig?.targetList?.length || sources.length} 个书源`}
+              </span>
+            </div>
+
+            {/* 表单内容 */}
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              {/* 单个书源校验超时 (秒) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#e11d48', fontWeight: 600, marginBottom: '6px' }}>
+                  单个书源校验超时 (秒)
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={validateTimeout}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^\d]/g, '')
+                    setValidateTimeout(val)
+                  }}
+                  onBlur={() => {
+                    const num = parseInt(validateTimeout)
+                    if (isNaN(num) || num < 3) setValidateTimeout('3')
+                    else if (num > 300) setValidateTimeout('300')
+                  }}
+                  placeholder="默认 180 秒"
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-layer2)',
+                    color: 'var(--text-primary)',
+                    fontSize: '15px',
+                    outline: 'none',
+                    fontWeight: 500
+                  }}
+                />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  提示：阅读 3.0 默认超时为 180 秒，底层采用毫秒级极速探活，连接不上会快速跳过。
+                </div>
+              </div>
+
+              {/* 并发检测线程数 */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    并发检测线程数
+                  </label>
+                  <span style={{ fontSize: '12px', color: '#0288d1', fontWeight: 600 }}>
+                    {validateConcurrency} 线程 (极速)
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="2"
+                  max="60"
+                  value={validateConcurrency}
+                  onChange={e => setValidateConcurrency(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#0288d1', cursor: 'pointer' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+                  <span>2 (低速稳健)</span>
+                  <span>30 (阅读3.0极速)</span>
+                  <span>60 (极限并发)</span>
+                </div>
+              </div>
+
+              {/* 校验项目 */}
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#e11d48', fontWeight: 600, marginBottom: '10px' }}>
+                  校验项目
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px 18px' }}>
+                  {[
+                    { key: 'search', label: '搜索' },
+                    { key: 'explore', label: '发现' },
+                    { key: 'detail', label: '详情' },
+                    { key: 'toc', label: '目录' },
+                    { key: 'content', label: '正文' }
+                  ].map(item => (
+                    <label
+                      key={item.key}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '14px',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!validateItems[item.key]}
+                        onChange={e => setValidateItems(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                        style={{
+                          accentColor: '#e11d48',
+                          width: '16px',
+                          height: '16px',
+                          cursor: 'pointer'
+                        }}
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 底部操作按钮 */}
+            <div style={{
+              padding: '14px 24px 18px',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '16px',
+              borderTop: '1px solid var(--border-subtle)'
+            }}>
+              <button
+                onClick={() => setValidateModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#e11d48',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 12px'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={startExecuteBatchValidation}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#e11d48',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '6px 12px'
+                }}
+              >
+                确认
               </button>
             </div>
           </div>
