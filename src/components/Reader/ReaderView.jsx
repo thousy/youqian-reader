@@ -56,6 +56,12 @@ export function ReaderView() {
     if (!showSettings) return
 
     const handleClickOutsideSettings = (event) => {
+      // 若当前正在与系统文件选择框交互或刚完成导入（1.5秒缓冲保护期），绝对不关闭
+      if (window._isFileDialogActive || (window._lastImportTime && Date.now() - window._lastImportTime < 1500)) return
+
+      // 若当前存在确认对话框，或者点击发生在确认对话框/提示框上，不关闭设置面板
+      if (document.querySelector('.confirm-modal-overlay') || event.target?.closest?.('.confirm-modal-overlay, .toast')) return
+
       const settingsPanel = document.getElementById('settings-panel')
       const target = event.target
       if (settingsPanel?.contains(target) || target?.closest?.('#btn-settings')) return

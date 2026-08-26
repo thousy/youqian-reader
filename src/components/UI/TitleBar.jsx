@@ -4,6 +4,7 @@ import logoIcon from '../../logo.png'
 
 export function TitleBar({ windowTitle }) {
   const [maximized, setMaximized] = useState(false)
+  const [appVersion, setAppVersion] = useState('2.0.3')
   const { settings, updateSettings, currentBook } = useStore()
   const isDark = settings.globalTheme !== 'light'
   // Word 主题仅影响阅读器窗口，书库主窗口不应用 Word 样式
@@ -18,6 +19,9 @@ export function TitleBar({ windowTitle }) {
   useEffect(() => {
     window.api?.isMaximized().then(setMaximized)
     window.api?.onMaximized(setMaximized)
+    window.api?.getAppVersion?.().then(v => {
+      if (v) setAppVersion(v)
+    })
   }, [])
 
   return (
@@ -49,7 +53,9 @@ export function TitleBar({ windowTitle }) {
         ) : (
           <>
             <span style={{ fontSize: '16px', display: 'inline-flex', alignItems: 'center', lineHeight: 1 }}>📚</span>
-            <span className="titlebar-title" style={{ marginLeft: '2px' }}>{windowTitle || 'YouQian Reader V2.0'}</span>
+            <span className="titlebar-title" style={{ marginLeft: '2px' }}>
+              {windowTitle || `YouQian Reader v${appVersion}`}
+            </span>
           </>
         )}
       </div>

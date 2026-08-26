@@ -382,7 +382,7 @@ export function Sidebar() {
           userSelect: 'none',
           padding: '4px 0'
         }}>
-          © YouQian Tech V2.0
+          © YouQian Tech
         </div>
       </div>
     </div>

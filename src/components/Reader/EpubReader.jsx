@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react'
 import ePub from 'epubjs'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
+import { injectCustomFontsToIframe } from '../../utils/fontLoader'
 
 export function EpubReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
   const viewerRef = useRef(null)
@@ -470,12 +471,9 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const activeTheme = themes[settingsRef.current.theme] || themes.dark
           const fg = activeTheme.body.color
 
-          const fontUrl = new URL('/ZTEZhengyuan.ttf', window.location.href).href
+          const customFontStyles = document.getElementById('custom-fonts-global-styles')?.textContent || ''
           styleEl.innerHTML = `
-            @font-face {
-              font-family: 'ZTE Zhengyuan';
-              src: url('${fontUrl}') format('truetype');
-            }
+            ${customFontStyles}
             body, p, div, span, li, a, td {
               ${settingsRef.current.fontFamily !== 'BookDefault' ? `font-family: "${settingsRef.current.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
               line-height: ${settingsRef.current.lineHeight} !important;
@@ -713,6 +711,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     // 动态向所有已渲染的视图直接注入/更新 style 标签
     rendition.views().forEach(view => {
       if (view && view.document) {
+        injectCustomFontsToIframe(view.document)
         // 同步更新 iframe 的 overflow 锁定属性 (仅在左右滚动时放开，普通与垂直翻页完全不干预，保持 epubjs 默认)
         const iframeEl = view.iframe || view.document.defaultView?.frameElement
         if (iframeEl && s.layoutMode === 'horizontal-scroll') {
@@ -739,12 +738,9 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         const fg = activeTheme.body.color
         const isHorizontalScroll = s.layoutMode === 'horizontal-scroll'
 
-        const fontUrl = new URL('/ZTEZhengyuan.ttf', window.location.href).href
+        const customFontStyles = document.getElementById('custom-fonts-global-styles')?.textContent || ''
         styleEl.innerHTML = `
-          @font-face {
-            font-family: 'ZTE Zhengyuan';
-            src: url('${fontUrl}') format('truetype');
-          }
+          ${customFontStyles}
           body, p, div, span, li, a, td {
             ${s.fontFamily !== 'BookDefault' ? `font-family: "${s.fontFamily}", Georgia, "Noto Serif SC", serif !important;` : ''}
             line-height: ${s.lineHeight} !important;

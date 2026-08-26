@@ -10,6 +10,7 @@ import { SourceEditorView } from './components/Novel/SourceEditorView'
 import { Toast } from './components/UI/Toast'
 import { ConfirmModal } from './components/UI/ConfirmModal'
 import { DropOverlay } from './components/UI/DropOverlay'
+import { initCustomFonts } from './utils/fontLoader'
 
 export default function App() {
   const { currentView, currentBook, toast, confirm, setBooks, openBook, showToast, settings, updateSettings, setCategories, showConfirm } = useStore()
@@ -27,11 +28,12 @@ export default function App() {
 
     async function init() {
       try {
-        // 并行加载设置、书库、分类（无依赖关系，无需串行等待）
+        // 并行加载设置、书库、分类与自定义字体（无依赖关系，无需串行等待）
         const [savedSettings, books, categories] = await Promise.all([
           window.api.getSettings(),
           window.api.getAllBooks(),
-          window.api.getCategories()
+          window.api.getCategories(),
+          initCustomFonts()
         ])
         if (!mounted) return
 

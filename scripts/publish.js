@@ -432,7 +432,7 @@ async function main() {
     const createUrl = `https://api.github.com/repos/${owner}/${repo}/releases`;
     log(`正在创建 Release ${tag}...`, colors.cyan);
     try {
-      const releaseNotes = `## YouQian Reader ${tag} 正式版发布 📚\n\n### 🌟 V2.0.1 新增功能与重大升级\n- ⚡ **全链路线程并发调节控制**：书源工坊新增 3~30 线程诊断调节；选章下载弹窗支持 1~16 线程滑动调节与防封2/推荐4/极速8/狂飙16快捷预设。\n- 🧪 **智能自适应「检测已勾选书源」**：勾选书源时精准仅检测已选书源，未勾选时支持全量检测。\n- 🔄 **失效书源专属「低速稳健复测」**：支持 1/2/3/5 线程防限速复测，测试通过的书源自动解封移出失效并取消勾选。\n- 📦 **纯绿色真便携化架构 (True Portable)**：应用配置、书库数据库、自定义书源规则及下载的小说全部收拢在软件本体目录下，零污染系统盘，随拷随走，换机或改盘符后书架自动重定位秒开！\n- 🛡️ **纯净零内置原则**：软件原始零预置书源，彻底保持绿色纯净。`;
+      const releaseNotes = `## YouQian Reader ${tag} 正式版发布 📚\n\n### 🌟 V2.0.3 新增功能与体验升级 (Walkthrough 报告)\n- 🔤 **自定义字体导入与原生 FontFace 渲染**：支持本地 \`.ttf\` / \`.otf\` / \`.woff\` / \`.woff2\` 格式字体一键导入并跨阅读器无缝应用，二进制 Buffer 零损耗原生加载。\n- 🗑️ **自定义字体批量删除与多选管理**：阅读设置面板新增批量删除管理模式，支持一键「全选 / 全不选」、单项卡片复选勾选，二次确认防误触保护，删除当前使用字体自动安全回退。\n- 🛡️ **智能平滑降级（Fallback）容错**：主进程与渲染进程 IPC 通信具备全自动容错与平滑回退，无论客户端是否重启皆可顺畅批量操作。\n- ⚡ **真便携架构优化与稳定性增强**：数据文件随本体目录便携存储，多处排版渲染与交互细节全面优化。`;
       const createRes = curlRequest(createUrl, 'POST', {
         ...apiHeaders,
         'Content-Type': 'application/json'

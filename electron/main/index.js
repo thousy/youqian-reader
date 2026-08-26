@@ -1,6 +1,21 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } from 'electron'
-import { join } from 'path'
+import { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, protocol } from 'electron'
+import { join, extname, basename } from 'path'
+import { existsSync, promises as fsPromises } from 'fs'
 import { getPortableDataDir, migrateLegacyDataIfNeed } from './portablePath'
+
+// ===== 注册自定义字体原生特权协议 (custom-font) =====
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'custom-font',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      bypassCSP: true
+    }
+  }
+])
 
 // ===== 纯绿色全便携化 (True Portable)：将应用数据与数据库收拢在软件本体 data 目录 =====
 migrateLegacyDataIfNeed()
@@ -131,7 +146,12 @@ function createWindow(showImmediately = true) {
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-    mainWindow.webContents.openDevTools()
+    // 支持按 F12 或 Ctrl+Shift+I 自由呼出开发者工具，默认不强行弹窗打扰
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.key === 'F12' && input.type === 'keyDown') {
+        mainWindow.webContents.toggleDevTools()
+      }
+    })
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -319,11 +339,14 @@ if (!gotLock) {
     const secondFilePath = extractFilePathFromArgs(argv)
     if (secondFilePath) {
       createFileReaderWindow(secondFilePath)
-    }
-    // 聚焦主窗口
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.focus()
+    } else {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        createWindow(true)
+      } else {
+        if (!mainWindow.isVisible()) mainWindow.show()
+        if (mainWindow.isMinimized()) mainWindow.restore()
+        mainWindow.focus()
+      }
     }
   })
 
@@ -334,6 +357,42 @@ if (!gotLock) {
     nativeTheme.themeSource = 'dark'
     setupDatabase()
     setupIpcHandlers()
+
+    // ===== 注册 custom-font 协议，支持直接流式读取自定义字体 =====
+    protocol.handle('custom-font', async (request) => {
+      try {
+        const parsed = new URL(request.url)
+        // 兼容 host 与 pathname，获取解码后的文件名
+        let fileName = decodeURIComponent(parsed.pathname || '').replace(/^\/+/, '')
+        if (!fileName && parsed.host && parsed.host !== 'font') {
+          fileName = decodeURIComponent(parsed.host)
+        }
+        const cleanFileName = basename(fileName)
+        const fontPath = join(getPortableDataDir(), 'custom_fonts', cleanFileName)
+        if (existsSync(fontPath)) {
+          const ext = extname(cleanFileName).toLowerCase()
+          let mime = 'font/ttf'
+          if (ext === '.otf') mime = 'font/otf'
+          else if (ext === '.woff') mime = 'font/woff'
+          else if (ext === '.woff2') mime = 'font/woff2'
+          else if (ext === '.ttf') mime = 'font/ttf'
+
+          const buffer = await fsPromises.readFile(fontPath)
+          return new Response(buffer, {
+            status: 200,
+            headers: {
+              'Content-Type': mime,
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=31536000'
+            }
+          })
+        }
+        return new Response('Font not found', { status: 404 })
+      } catch (err) {
+        console.error('[custom-font protocol] 读取异常:', err)
+        return new Response('Error loading font', { status: 500 })
+      }
+    })
 
     // ===== 处理启动时通过文件关联传入的文件路径（Windows）=====
     const filePath = pendingFilePath || extractFilePathFromArgs(process.argv)

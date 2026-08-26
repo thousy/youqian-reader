@@ -4,6 +4,7 @@ import logoIcon from '../../logo.png'
 import { BookCard } from './BookCard'
 import { BookListItem } from './BookListItem'
 import { BookInfoModal } from '../UI/BookInfoModal'
+import { SettingsPanel } from '../Reader/SettingsPanel'
 
 export function LibraryView({ onImport }) {
   const {
@@ -15,7 +16,15 @@ export function LibraryView({ onImport }) {
 
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [infoBook, setInfoBook] = useState(null)
+  const [showReaderSettings, setShowReaderSettings] = useState(false)
+  const [appVersion, setAppVersion] = useState('2.0.3')
   const settingsMenuRef = useRef(null)
+
+  useEffect(() => {
+    window.api?.getAppVersion?.().then(v => {
+      if (v) setAppVersion(v)
+    })
+  }, [])
 
   // 外部点击关闭下拉菜单
   useEffect(() => {
@@ -141,7 +150,21 @@ export function LibraryView({ onImport }) {
   return (
     <div className="library-view">
       <div className="library-toolbar">
-        <h1 className="library-title">我的书库</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h1 className="library-title">我的书库</h1>
+          <span className="library-version-badge" style={{
+            fontSize: '11px',
+            fontWeight: '600',
+            color: 'var(--accent-light)',
+            background: 'var(--accent-glow)',
+            padding: '2px 6px',
+            borderRadius: '6px',
+            border: '1px solid var(--border)',
+            userSelect: 'none'
+          }}>
+            v{appVersion}
+          </span>
+        </div>
         <span className="library-count">{filteredBooks.length} 本</span>
 
         <div className="search-bar">
@@ -211,6 +234,21 @@ export function LibraryView({ onImport }) {
 
           {showSettingsMenu && (
             <div className="settings-dropdown-menu">
+              <button
+                className="settings-dropdown-item"
+                onClick={() => {
+                  setShowSettingsMenu(false)
+                  setShowReaderSettings(true)
+                }}
+                id="menu-reader-settings-btn"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                </svg>
+                阅读设置
+              </button>
+              <div className="settings-dropdown-divider" />
               <button className="settings-dropdown-item" onClick={handleExportBackup}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
@@ -227,7 +265,7 @@ export function LibraryView({ onImport }) {
               <button className="settings-dropdown-item danger" onClick={handleResetDatabase}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <polyline points="3 6 5 6 21 6"/>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                   <line x1="10" y1="11" x2="10" y2="17"/>
                   <line x1="14" y1="11" x2="14" y2="17"/>
                 </svg>
@@ -293,6 +331,36 @@ export function LibraryView({ onImport }) {
         </div>
       )}
       {infoBook && <BookInfoModal book={infoBook} onClose={() => setInfoBook(null)} />}
+      
+      {/* 书库阅读设置模态弹窗 */}
+      {showReaderSettings && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (window._isFileDialogActive || (window._lastImportTime && Date.now() - window._lastImportTime < 1500)) return
+            if (document.querySelector('.confirm-modal-overlay')) return
+            if (e.target === e.currentTarget) {
+              setShowReaderSettings(false)
+            }
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(6, 6, 10, 0.65)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        >
+          <div onClick={e => e.stopPropagation()}>
+            <SettingsPanel onClose={() => setShowReaderSettings(false)} isModal={true} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,6 @@
-# YouQian书籍阅读器 📚 (V2.0.2)
+# YouQian书籍阅读器 📚 (V2.0.3)
 
-[![Version](https://img.shields.io/badge/version-2.0.2-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.0.3-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
@@ -8,7 +8,22 @@
 
 ---
 
-## 🚀 V2.0.2 核心功能更新与完成报告 (Release Notes & Walkthrough)
+## 🚀 V2.0.3 核心功能更新与完成报告 (Release Notes & Walkthrough)
+
+### 1. 🔤 自定义字体管理与原生 FontFace 渲染
+* **多格式全覆盖**：支持电脑本地 `.ttf`、`.otf`、`.woff`、`.woff2` 格式字体一键导入。
+* **零损耗原生加载**：采用二进制 Buffer 直接注册原生 `FontFace`，全局与阅读器内嵌 iframe 均可实时无缝渲染。
+* **便携化存储**：自定义字体文件随项目 `data/custom_fonts` 绿色便携存储，移动软件目录不丢失。
+
+### 2. 🗑️ 自定义字体批量删除与多选管理
+* **一键批量管理**：阅读设置面板新增「**批量删除**」管理入口，一键进入批量多选操作模式。
+* **灵活多选与全选**：支持单项点击勾选/取消勾选、一键「**全选 / 全不选**」，卡片清晰显示 `☑ / ☐` 状态与醒目红框。
+* **安全防误触与智能回退**：二次确认删除弹窗保障数据安全；若删除的字体恰好为当前正在使用的阅读字体，系统自动安全回退至默认字体。
+* **智能平滑降级（Fallback）**：前端具备主进程 IPC 通信自动容错与平滑回退，无论客户端是否重启皆可即时正常批量删除。
+
+---
+
+## 🚀 V2.0.2 历史功能更新 (Historical Release Notes)
 
 ### 1. 🛡️ 严格健康小说站点认证与木马重定向（Trojan/Redirector）深度拦截
 * **木马挂马与恶意跳转拦截**：

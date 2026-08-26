@@ -102,9 +102,18 @@ const api = {
   novelOpenDownloadDir: (path) => ipcRenderer.invoke('novel-open-download-dir', path),
   // 监听下载进度推送
   onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_, data) => cb(data)),
-  offDownloadProgress: (cb) => ipcRenderer.removeListener('download-progress', cb),
   onSearchPartial: (cb) => ipcRenderer.on('novel-search-partial', (_, data) => cb(data)),
   offSearchPartial: (cb) => ipcRenderer.removeListener('novel-search-partial', cb),
+  // 自定义本地字体管理 (Custom Font Management)
+  customFontGetList: () => ipcRenderer.invoke('custom-font-get-list'),
+  customFontImport: () => ipcRenderer.invoke('custom-font-import'),
+  customFontDelete: (fileName) => ipcRenderer.invoke('custom-font-delete', fileName),
+  customFontBatchDelete: (fileNames) => ipcRenderer.invoke('custom-font-batch-delete', fileNames),
+  customFontReadData: (fileName) => ipcRenderer.invoke('custom-font-read-data', fileName),
+  customFontReadBuffer: (fileName) => ipcRenderer.invoke('custom-font-read-buffer', fileName),
+
+  // 应用版本信息
+  getAppVersion: () => ipcRenderer.invoke('get-app-version')
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, app } from 'electron'
 import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'fs'
 import { extname, basename } from 'path'
 import { getPortableDownloadsDir, resolveBookPath } from './portablePath.js'
@@ -23,6 +23,9 @@ import {
   startDownload, cancelDownload, getTaskStatus, getAllTasks,
   getDownloadConfig, saveDownloadConfig
 } from './novel/downloader'
+import {
+  getCustomFonts, openAndImportFontFiles, deleteCustomFont, deleteCustomFonts, readCustomFontDataUrl, readCustomFontBuffer
+} from './fontManager.js'
 import { randomUUID } from 'crypto'
 
 export function setupIpcHandlers() {
@@ -458,6 +461,36 @@ export function setupIpcHandlers() {
     } catch (err) {
       return { success: false, error: err.message }
     }
+  })
+
+  // ===== 系统与版本信息 =====
+  ipcMain.handle('get-app-version', () => {
+    return app.getVersion() || '2.0.3'
+  })
+
+  // ===== 用户自定义字体管理 (Custom Font Management) =====
+  ipcMain.handle('custom-font-get-list', async () => {
+    return getCustomFonts()
+  })
+
+  ipcMain.handle('custom-font-import', async () => {
+    return await openAndImportFontFiles()
+  })
+
+  ipcMain.handle('custom-font-delete', async (_, fileName) => {
+    return deleteCustomFont(fileName)
+  })
+
+  ipcMain.handle('custom-font-batch-delete', async (_, fileNames) => {
+    return deleteCustomFonts(fileNames)
+  })
+
+  ipcMain.handle('custom-font-read-data', async (_, fileName) => {
+    return readCustomFontDataUrl(fileName)
+  })
+
+  ipcMain.handle('custom-font-read-buffer', async (_, fileName) => {
+    return readCustomFontBuffer(fileName)
   })
 }
 

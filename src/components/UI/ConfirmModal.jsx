@@ -12,7 +12,7 @@ export function ConfirmModal({ title, message, buttons }) {
   const actionButtons = buttons || defaultButtons
 
   return (
-    <div className="modal-overlay" onClick={() => closeConfirm(false)}>
+    <div className="modal-overlay confirm-modal-overlay" style={{ zIndex: 99999 }} onClick={() => closeConfirm(false)}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <h3>{title}</h3>
         <p style={{ whiteSpace: 'pre-wrap' }}>{message}</p>

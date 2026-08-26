@@ -24,6 +24,19 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    server: {
+      watch: {
+        ignored: [
+          '**/data/**',
+          '**/downloads/**',
+          '**/release/**',
+          '**/custom_rules/**',
+          '**/scratch/**',
+          '**/*.tmp',
+          '**/*.tmp.*'
+        ]
+      }
+    },
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'index.html')
