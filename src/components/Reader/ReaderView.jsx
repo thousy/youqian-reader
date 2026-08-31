@@ -7,16 +7,24 @@ const TxtReader = React.lazy(() => import('./TxtReader').then(m => ({ default: m
 const MobiReader = React.lazy(() => import('./MobiReader').then(m => ({ default: m.MobiReader })))
 const Azw3Reader = React.lazy(() => import('./Azw3Reader').then(m => ({ default: m.Azw3Reader })))
 import { BookmarkPanel } from './BookmarkPanel'
+import { AnnotationPanel } from './AnnotationPanel'
+import { TextSelectionToolbar } from './TextSelectionToolbar'
 import { SettingsPanel } from './SettingsPanel'
 import { BookInfoModal } from '../UI/BookInfoModal'
+import { InBookSearchModal } from './InBookSearchModal'
+import { TtsPlayerBar } from './TtsPlayerBar'
 
 export function ReaderView() {
   const {
     currentBook, closeBook,
     showToc, setShowToc,
     showBookmarks, setShowBookmarks,
+    showAnnotations, setShowAnnotations,
+    showSearch, setShowSearch,
+    showTts, setShowTts,
     showSettings, setShowSettings,
     bookmarks, setBookmarks, addBookmarkToStore, removeBookmarkFromStore,
+    annotations, setAnnotations, addAnnotationToStore, updateAnnotationInStore, removeAnnotationFromStore,
     readingProgress, setReadingProgress,
     showToast, settings,
     updateSettings
@@ -24,8 +32,268 @@ export function ReaderView() {
 
   const [progress, setProgress] = useState(0)
   const [showInfoModal, setShowInfoModal] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
   const getPositionRef = useRef(null)
+  const searchProviderRef = useRef(null)
+  const jumpToRef = useRef(null)
+  const getTtsBlocksRef = useRef(null)
   const saveProgressTimeoutRef = useRef(null)
+
+  // 全局快捷键监听 Ctrl+F 唤起书内搜索
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault()
+        setShowSearch(!useStore.getState().showSearch)
+      }
+    }
+    window.addEventListener('keydown', handleGlobalKeyDown)
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown)
+  }, [setShowSearch])
+
+  const handleDoSearch = async (kw) => {
+    if (!searchProviderRef.current?.search) return []
+    setIsSearching(true)
+    try {
+      return await searchProviderRef.current.search(kw)
+    } catch (err) {
+      console.error('书内搜索失败:', err)
+      return []
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const handleJumpToSearchResult = (result) => {
+    if (searchProviderRef.current?.jumpTo) {
+      searchProviderRef.current.jumpTo(result)
+    }
+  }
+
+  // ===== 划词高亮与想法批注逻辑 =====
+  const [selectionState, setSelectionState] = useState(null)
+
+  useEffect(() => {
+    const handleMouseUp = (e) => {
+      // 避免在工具条内部或其子元素操作时被误当作重新划词
+      if (e.target && e.target.closest && e.target.closest('.text-selection-toolbar')) {
+        return
+      }
+
+      setTimeout(() => {
+        const sel = window.getSelection()
+        if (!sel || sel.isCollapsed) return
+        const text = sel.toString().trim()
+        if (text.length >= 1 && text.length <= 1500) {
+          try {
+            const range = sel.getRangeAt(0)
+            const rect = range.getBoundingClientRect()
+            if (rect.width > 0 && rect.height > 0) {
+              setSelectionState({
+                position: {
+                  x: Math.max(120, Math.min(window.innerWidth - 120, rect.left + rect.width / 2)),
+                  y: Math.max(80, rect.top)
+                },
+                selectedText: text,
+                existingAnnotation: null
+              })
+            }
+          } catch (err) {}
+        }
+      }, 60)
+    }
+
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
+  }, [])
+
+  // 点击正文中已有划线触发工具条编辑或删除
+  const handleAnnotationClick = (ann, e) => {
+    if (!ann) return
+    const rect = e?.currentTarget?.getBoundingClientRect?.()
+    const pos = rect ? {
+      x: Math.max(120, Math.min(window.innerWidth - 120, rect.left + rect.width / 2)),
+      y: Math.max(80, rect.top)
+    } : { x: window.innerWidth / 2, y: 150 }
+
+    setSelectionState({
+      position: pos,
+      selectedText: ann.selectedText,
+      existingAnnotation: ann
+    })
+  }
+
+  // 添加或修改高亮标注
+  const handleHighlight = async (colorObj) => {
+    if (!selectionState?.selectedText || !currentBook?.id) return
+
+    if (selectionState.existingAnnotation) {
+      const annId = selectionState.existingAnnotation.id
+      await window.api.updateAnnotation(currentBook.id, annId, { color: colorObj.color })
+      updateAnnotationInStore(annId, { color: colorObj.color })
+      showToast('已更新划线颜色', 'success')
+      setSelectionState(null)
+      return
+    }
+
+    const pos = getPositionRef.current ? getPositionRef.current() : null
+    const newAnn = {
+      bookId: currentBook.id,
+      selectedText: selectionState.selectedText,
+      cfiRange: selectionState.cfiRange || null,
+      color: colorObj.color,
+      chapterTitle: pos?.label || '正文',
+      location: pos,
+      note: ''
+    }
+
+    const saved = await window.api.addAnnotation(currentBook.id, newAnn)
+    addAnnotationToStore(saved)
+    showToast('已完成高亮划线', 'success')
+    setSelectionState(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
+  // 保存想法笔记
+  const handleSaveNote = async (noteText) => {
+    if (!selectionState?.selectedText || !currentBook?.id) return
+
+    if (selectionState.existingAnnotation) {
+      const annId = selectionState.existingAnnotation.id
+      await window.api.updateAnnotation(currentBook.id, annId, { note: noteText })
+      updateAnnotationInStore(annId, { note: noteText })
+      showToast('想法已更新', 'success')
+      setSelectionState(null)
+      return
+    }
+
+    const pos = getPositionRef.current ? getPositionRef.current() : null
+    const newAnn = {
+      bookId: currentBook.id,
+      selectedText: selectionState.selectedText,
+      cfiRange: selectionState.cfiRange || null,
+      color: '#ffe066',
+      chapterTitle: pos?.label || '正文',
+      location: pos,
+      note: noteText
+    }
+
+    const saved = await window.api.addAnnotation(currentBook.id, newAnn)
+    addAnnotationToStore(saved)
+    showToast('想法已记录', 'success')
+    setSelectionState(null)
+    window.getSelection()?.removeAllRanges()
+  }
+
+  // 复制文本
+  const handleCopySelection = () => {
+    if (selectionState?.selectedText) {
+      navigator.clipboard.writeText(selectionState.selectedText)
+      showToast('已复制选中文本', 'info')
+      setSelectionState(null)
+    }
+  }
+
+  // 删除单条划线笔记
+  const handleRemoveAnnotation = async (annId) => {
+    await window.api.removeAnnotation(currentBook.id, annId)
+    removeAnnotationFromStore(annId)
+    setSelectionState(null)
+    showToast('划线笔记已删除', 'success')
+  }
+
+  // 点击笔记列表中的单项跳转定位
+  const handleSelectAnnotation = (ann) => {
+    if (!ann) return
+    const target = ann.location || {
+      cfiRange: ann.cfiRange,
+      cfi: ann.cfiRange,
+      chapterTitle: ann.chapterTitle,
+      selectedText: ann.selectedText
+    }
+
+    if (ann.location) {
+      setReadingProgress(ann.location)
+    }
+
+    let jumped = false
+    if (jumpToRef.current) {
+      jumpToRef.current(target)
+      jumped = true
+    } else if (searchProviderRef.current?.jumpTo) {
+      searchProviderRef.current.jumpTo(target)
+      jumped = true
+    }
+
+    if (!jumped && searchProviderRef.current?.search && ann.selectedText) {
+      searchProviderRef.current.search(ann.selectedText.slice(0, 30)).then(results => {
+        if (results && results.length > 0) {
+          searchProviderRef.current.jumpTo(results[0])
+        }
+      })
+    }
+
+    showToast(`跳转至：${ann.chapterTitle || '目标划线'}`, 'info')
+  }
+
+  // 导出全部笔记为 Markdown
+  const handleExportAnnotations = async () => {
+    if (!annotations || annotations.length === 0) {
+      showToast('当前书籍暂无划线或笔记', 'info')
+      return
+    }
+    const res = await window.api.exportAnnotationsMarkdown({
+      bookTitle: currentBook.title,
+      bookAuthor: currentBook.author,
+      annotations
+    })
+    if (res.success) {
+      showToast('读书笔记已成功导出为 Markdown', 'success')
+    } else if (res.error && res.error !== '用户取消了导出') {
+      showToast('导出失败: ' + res.error, 'error')
+    }
+  }
+
+  // ===== 听书模式与跟读高亮联动 =====
+  const lastHighlightedElRef = useRef(null)
+
+  const handleTtsParagraphChange = (idx, text) => {
+    if (lastHighlightedElRef.current) {
+      lastHighlightedElRef.current.classList.remove('tts-speaking-highlight')
+      lastHighlightedElRef.current = null
+    }
+
+    if (!text) return
+
+    // 优先通过 data-para-idx 寻找当前阅读器精准段落
+    let targetEl = document.querySelector(`[data-para-idx="${idx}"]`)
+
+    // 兜底：通过文本模糊匹配视口内的段落
+    if (!targetEl) {
+      const candidates = document.querySelectorAll('.reader-content-area p, #txt-content p, #mobi-scroll-content p')
+      const snippet = text.slice(0, 15).trim()
+      for (const el of candidates) {
+        if (el.textContent && el.textContent.includes(snippet)) {
+          targetEl = el
+          break
+        }
+      }
+    }
+
+    if (targetEl) {
+      targetEl.classList.add('tts-speaking-highlight')
+      lastHighlightedElRef.current = targetEl
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+
+  // 关闭听书时清除所有高亮
+  useEffect(() => {
+    if (!showTts && lastHighlightedElRef.current) {
+      lastHighlightedElRef.current.classList.remove('tts-speaking-highlight')
+      lastHighlightedElRef.current = null
+    }
+  }, [showTts])
 
   // 卸载时清理防抖定时器
   useEffect(() => {
@@ -36,10 +304,14 @@ export function ReaderView() {
     }
   }, [])
 
-  // 加载书签和进度
+  // 加载书签、笔记和进度
   useEffect(() => {
-    if (!currentBook) return
+    if (!currentBook || !currentBook.id) {
+      setAnnotations([])
+      return
+    }
     window.api.getBookmarks(currentBook.id).then(setBookmarks)
+    window.api.getAnnotations(currentBook.id).then(setAnnotations)
     window.api.getReadingProgress(currentBook.id).then(p => {
       if (p) {
         setReadingProgress(p)
@@ -99,12 +371,13 @@ export function ReaderView() {
 
   const handleSelectBookmark = (bm) => {
     if (!bm) return
-    if (format === 'PDF' && bm.page) {
-      setReadingProgress({ page: bm.page })
-      showToast(`已跳至书签位置：第 ${bm.page} 页`, 'info')
-    } else if (bm.cfi || bm.percentage !== undefined || bm.pageIndex !== undefined) {
-      setReadingProgress(bm)
-      showToast('已跳至书签位置', 'info')
+    setReadingProgress(bm)
+    if (jumpToRef.current) {
+      jumpToRef.current(bm)
+      showToast(bm.label ? `已跳至：${bm.label}` : '已跳至书签位置', 'info')
+    } else if (searchProviderRef.current?.jumpTo) {
+      searchProviderRef.current.jumpTo(bm)
+      showToast(bm.label ? `已跳至：${bm.label}` : '已跳至书签位置', 'info')
     }
   }
 
@@ -132,6 +405,12 @@ export function ReaderView() {
         }, 200)
       },
       registerGetPosition: (fn) => { getPositionRef.current = fn },
+      registerSearchProvider: (provider) => { searchProviderRef.current = provider },
+      registerJumpTo: (fn) => { jumpToRef.current = fn },
+      registerGetTtsBlocks: (fn) => { getTtsBlocksRef.current = fn },
+      annotations,
+      onAnnotationClick: handleAnnotationClick,
+      onTextSelected: setSelectionState,
       showToc,
       onTocItemClick: () => {}
     }
@@ -215,6 +494,20 @@ export function ReaderView() {
                 </button>
               )}
 
+              {/* 书内搜索 */}
+              <button
+                className={`reader-toolbar-btn ${showSearch ? 'active' : ''}`}
+                onClick={() => setShowSearch(!showSearch)}
+                title="书内搜索 (Ctrl+F)"
+                id="btn-inbook-search"
+                style={{ background: '#ffffff', border: '1px solid #d0d0d0', color: '#333333' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+              </button>
+
               <button 
                 className="reader-toolbar-btn" 
                 onClick={handleAddBookmark} 
@@ -246,6 +539,54 @@ export function ReaderView() {
                     fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
                   }}>{bookmarks.length}</span>
                 )}
+              </button>
+
+              {/* 划线与读书笔记 */}
+              <button
+                className={`reader-toolbar-btn ${showAnnotations ? 'active' : ''}`}
+                onClick={() => {
+                  setShowAnnotations(!showAnnotations)
+                  if (showBookmarks) setShowBookmarks(false)
+                }}
+                title="划线与读书笔记"
+                id="btn-annotations"
+                style={{
+                  background: showAnnotations ? '#e8f0fe' : '#ffffff',
+                  border: showAnnotations ? '1px solid #185abd' : '1px solid #d0d0d0',
+                  color: showAnnotations ? '#185abd' : '#333333',
+                  position: 'relative'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+                {annotations.length > 0 && (
+                  <span style={{
+                    position:'absolute', top:'-4px', right:'-4px',
+                    background:'#185abd', color:'white',
+                    borderRadius:'50%', width:'14px', height:'14px',
+                    fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
+                  }}>{annotations.length}</span>
+                )}
+              </button>
+
+              {/* 听书朗读 */}
+              <button
+                className={`reader-toolbar-btn ${showTts ? 'active' : ''}`}
+                onClick={() => setShowTts(!showTts)}
+                title="听书朗读模式"
+                id="btn-tts"
+                style={{
+                  background: showTts ? '#e8f0fe' : '#ffffff',
+                  border: showTts ? '1px solid #185abd' : '1px solid #d0d0d0',
+                  color: showTts ? '#185abd' : '#333333'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+                  <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+                </svg>
               </button>
 
               <button
@@ -343,6 +684,19 @@ export function ReaderView() {
             </button>
           )}
 
+          {/* 书内搜索 */}
+          <button
+            className={`reader-toolbar-btn ${showSearch ? 'active' : ''}`}
+            onClick={() => setShowSearch(!showSearch)}
+            title="书内搜索 (Ctrl+F)"
+            id="btn-inbook-search"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+          </button>
+
           {/* 添加书签 */}
           <button className="reader-toolbar-btn" onClick={handleAddBookmark} title="添加书签" id="btn-add-bookmark">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -369,6 +723,44 @@ export function ReaderView() {
                 fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
               }}>{bookmarks.length}</span>
             )}
+          </button>
+
+          {/* 划线与读书笔记 */}
+          <button
+            className={`reader-toolbar-btn ${showAnnotations ? 'active' : ''}`}
+            onClick={() => {
+              setShowAnnotations(!showAnnotations)
+              if (showBookmarks) setShowBookmarks(false)
+            }}
+            title="划线与读书笔记"
+            id="btn-annotations"
+            style={{ position: 'relative' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 20h9"/>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+            </svg>
+            {annotations.length > 0 && (
+              <span style={{
+                position:'absolute', top:'-4px', right:'-4px',
+                background:'var(--accent, #4f46e5)', color:'white',
+                borderRadius:'50%', width:'14px', height:'14px',
+                fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
+              }}>{annotations.length}</span>
+            )}
+          </button>
+
+          {/* 听书朗读 */}
+          <button
+            className={`reader-toolbar-btn ${showTts ? 'active' : ''}`}
+            onClick={() => setShowTts(!showTts)}
+            title="听书朗读模式"
+            id="btn-tts"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6"/>
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>
+            </svg>
           </button>
 
           {/* 书籍信息 */}
@@ -453,8 +845,44 @@ export function ReaderView() {
             onSelect={handleSelectBookmark}
           />
         )}
+        {showAnnotations && (
+          <AnnotationPanel
+            annotations={annotations}
+            onRemove={handleRemoveAnnotation}
+            onSelect={handleSelectAnnotation}
+            onExport={handleExportAnnotations}
+            bookTitle={currentBook?.title}
+          />
+        )}
         {showSettings && <SettingsPanel />}
         {showInfoModal && <BookInfoModal book={currentBook} onClose={() => setShowInfoModal(false)} />}
+        <InBookSearchModal
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          onSearch={handleDoSearch}
+          onJumpTo={handleJumpToSearchResult}
+          isSearching={isSearching}
+        />
+        {selectionState && (
+          <TextSelectionToolbar
+            position={selectionState.position}
+            selectedText={selectionState.selectedText}
+            existingAnnotation={selectionState.existingAnnotation}
+            onHighlight={handleHighlight}
+            onSaveNote={handleSaveNote}
+            onCopy={handleCopySelection}
+            onAddBookmark={handleAddBookmark}
+            onDeleteAnnotation={() => handleRemoveAnnotation(selectionState.existingAnnotation?.id)}
+            onClose={() => setSelectionState(null)}
+          />
+        )}
+        <TtsPlayerBar
+          isOpen={showTts}
+          onClose={() => setShowTts(false)}
+          onParagraphChange={handleTtsParagraphChange}
+          getTtsContext={() => (getTtsBlocksRef.current ? getTtsBlocksRef.current() : null)}
+          readingProgress={readingProgress}
+        />
       </div>
     </div>
   )

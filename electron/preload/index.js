@@ -50,6 +50,14 @@ const api = {
   addBookmark: (bookId, bookmark) => ipcRenderer.invoke('add-bookmark', bookId, bookmark),
   removeBookmark: (bookId, bookmarkId) => ipcRenderer.invoke('remove-bookmark', bookId, bookmarkId),
 
+  // 划线高亮与笔记 (Annotations)
+  getAnnotations: (bookId) => ipcRenderer.invoke('get-annotations', bookId),
+  addAnnotation: (bookId, annotation) => ipcRenderer.invoke('add-annotation', bookId, annotation),
+  updateAnnotation: (bookId, annotationId, updates) => ipcRenderer.invoke('update-annotation', bookId, annotationId, updates),
+  removeAnnotation: (bookId, annotationId) => ipcRenderer.invoke('remove-annotation', bookId, annotationId),
+  clearAnnotations: (bookId) => ipcRenderer.invoke('clear-annotations', bookId),
+  exportAnnotationsMarkdown: (data) => ipcRenderer.invoke('export-annotations-markdown', data),
+
   // 设置
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (s) => ipcRenderer.invoke('save-settings', s),
@@ -60,6 +68,13 @@ const api = {
   exportBackup: () => ipcRenderer.invoke('export-backup'),
   importBackup: () => ipcRenderer.invoke('import-backup'),
   resetDatabase: () => ipcRenderer.invoke('reset-database'),
+
+  // WebDAV 云端同步
+  webdavGetConfig: () => ipcRenderer.invoke('webdav-get-config'),
+  webdavSaveConfig: (cfg) => ipcRenderer.invoke('webdav-save-config', cfg),
+  webdavTestConnection: (cfg) => ipcRenderer.invoke('webdav-test-connection', cfg),
+  webdavSyncUpload: (cfg) => ipcRenderer.invoke('webdav-sync-upload', cfg),
+  webdavSyncDownload: (cfg) => ipcRenderer.invoke('webdav-sync-download', cfg),
 
   // 分类管理
   getCategories: () => ipcRenderer.invoke('get-categories'),
@@ -100,6 +115,9 @@ const api = {
   novelSaveDownloadConfig: (cfg) => ipcRenderer.invoke('novel-save-download-config', cfg),
   novelSelectDownloadDir: () => ipcRenderer.invoke('novel-select-download-dir'),
   novelOpenDownloadDir: (path) => ipcRenderer.invoke('novel-open-download-dir', path),
+  novelCheckBookUpdate: (bookId) => ipcRenderer.invoke('novel-check-book-update', bookId),
+  novelCheckAllUpdates: () => ipcRenderer.invoke('novel-check-all-updates'),
+  novelPerformUpdate: (bookId) => ipcRenderer.invoke('novel-perform-update', bookId),
   // 监听下载进度推送
   onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_, data) => cb(data)),
   onSearchPartial: (cb) => ipcRenderer.on('novel-search-partial', (_, data) => cb(data)),

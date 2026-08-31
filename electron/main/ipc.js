@@ -6,10 +6,13 @@ import {
   getAllBooks, addBook, removeBook, updateBook, getBookById,
   getReadingProgress, saveReadingProgress,
   getBookmarks, addBookmark, removeBookmark,
+  getAnnotations, addAnnotation, updateAnnotation, removeAnnotation, clearAnnotations,
   getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook,
   getStore, getEpubLocations, saveEpubLocations,
+  getWebdavConfig, saveWebdavConfig,
   exportBackupData, importBackupData, resetDatabase
 } from './database'
+import { testWebdavConnection, uploadBackupToWebdav, downloadBackupFromWebdav } from './webdavClient.js'
 import { extractEpubMeta } from './parsers/epub'
 import { extractPdfMeta } from './parsers/pdf'
 import { extractMobiMeta, extractMobiContent } from './parsers/mobi'
@@ -23,6 +26,7 @@ import {
   startDownload, cancelDownload, getTaskStatus, getAllTasks,
   getDownloadConfig, saveDownloadConfig
 } from './novel/downloader'
+import { checkBookUpdate, checkAllBooksUpdate, performIncrementalUpdate } from './novel/novelUpdater.js'
 import {
   getCustomFonts, openAndImportFontFiles, deleteCustomFont, deleteCustomFonts, readCustomFontDataUrl, readCustomFontBuffer
 } from './fontManager.js'
@@ -138,6 +142,60 @@ export function setupIpcHandlers() {
   ipcMain.handle('get-bookmarks', (_, bookId) => getBookmarks(bookId))
   ipcMain.handle('add-bookmark', (_, bookId, bookmark) => addBookmark(bookId, bookmark))
   ipcMain.handle('remove-bookmark', (_, bookId, bookmarkId) => removeBookmark(bookId, bookmarkId))
+
+  // ===== 划线高亮与笔记 (Annotations) =====
+  ipcMain.handle('get-annotations', (_, bookId) => getAnnotations(bookId))
+  ipcMain.handle('add-annotation', (_, bookId, annotation) => addAnnotation(bookId, annotation))
+  ipcMain.handle('update-annotation', (_, bookId, annotationId, updates) => updateAnnotation(bookId, annotationId, updates))
+  ipcMain.handle('remove-annotation', (_, bookId, annotationId) => removeAnnotation(bookId, annotationId))
+  ipcMain.handle('clear-annotations', (_, bookId) => clearAnnotations(bookId))
+
+  // 导出划线笔记为 Markdown 文件
+  ipcMain.handle('export-annotations-markdown', async (_, { bookTitle, bookAuthor, annotations }) => {
+    try {
+      const defaultFileName = `${(bookTitle || '阅读笔记').replace(/[\\/:*?"<>|]/g, '_')}_笔记.md`
+      const result = await dialog.showSaveDialog({
+        title: '导出划线与读书笔记',
+        defaultPath: defaultFileName,
+        filters: [{ name: 'Markdown 文档', extensions: ['md'] }]
+      })
+      if (result.canceled || !result.filePath) return { success: false, error: '用户取消了导出' }
+
+      let content = `# 📖 《${bookTitle || '未命名书籍'}》读书笔记\n\n`
+      if (bookAuthor) content += `> **作者**：${bookAuthor}\n`
+      content += `> **导出时间**：${new Date().toLocaleString()}\n`
+      content += `> **划线与笔记总数**：${annotations.length} 条\n\n---\n\n`
+
+      // 按章节名称/索引聚合
+      const grouped = {}
+      for (const ann of annotations) {
+        const key = ann.chapterTitle || '正文摘录'
+        if (!grouped[key]) grouped[key] = []
+        grouped[key].push(ann)
+      }
+
+      for (const [chapter, items] of Object.entries(grouped)) {
+        content += `## 📌 ${chapter}\n\n`
+        for (const item of items) {
+          content += `> ${item.selectedText.trim().replace(/\n+/g, '\n> ')}\n\n`
+          if (item.note && item.note.trim()) {
+            content += `💭 **想法**：${item.note.trim()}\n\n`
+          }
+          const time = item.createdAt ? new Date(item.createdAt).toLocaleString() : ''
+          if (time) {
+            content += `*⏱ 记录于 ${time}*\n\n`
+          }
+          content += `---\n\n`
+        }
+      }
+
+      writeFileSync(result.filePath, content, 'utf-8')
+      return { success: true, filePath: result.filePath }
+    } catch (e) {
+      console.error('导出笔记失败:', e)
+      return { success: false, error: e.message }
+    }
+  })
 
   // ===== 设置 =====
   ipcMain.handle('get-settings', () => getSettings())
@@ -275,6 +333,41 @@ export function setupIpcHandlers() {
   })
 
   ipcMain.handle('reset-database', () => resetDatabase())
+
+  // ===== WebDAV 云端同步 =====
+  ipcMain.handle('webdav-get-config', () => getWebdavConfig())
+  ipcMain.handle('webdav-save-config', (_, config) => { saveWebdavConfig(config); return true })
+  ipcMain.handle('webdav-test-connection', async (_, config) => testWebdavConnection(config))
+  ipcMain.handle('webdav-sync-upload', async (_, config) => {
+    try {
+      const cfg = config || getWebdavConfig()
+      if (!cfg || !cfg.url) return { success: false, error: '未配置 WebDAV 服务器地址' }
+      const backupData = exportBackupData()
+      const uploadRes = await uploadBackupToWebdav(cfg, backupData)
+      if (uploadRes.success) {
+        saveWebdavConfig({ lastSyncTime: uploadRes.uploadedAt })
+      }
+      return uploadRes
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
+  ipcMain.handle('webdav-sync-download', async (_, config) => {
+    try {
+      const cfg = config || getWebdavConfig()
+      if (!cfg || !cfg.url) return { success: false, error: '未配置 WebDAV 服务器地址' }
+      const downloadRes = await downloadBackupFromWebdav(cfg)
+      if (!downloadRes.success) return downloadRes
+
+      const importRes = importBackupData(downloadRes.backup)
+      if (importRes.success) {
+        saveWebdavConfig({ lastSyncTime: new Date().toISOString() })
+      }
+      return importRes
+    } catch (e) {
+      return { success: false, error: e.message }
+    }
+  })
 
   // ===== 在线小说：书源管理 =====
   ipcMain.handle('novel-get-sources', () => getAllSourcesInfo())
@@ -429,6 +522,11 @@ export function setupIpcHandlers() {
     return true
   })
 
+  // ===== 连载小说：一键追更与增量更新 =====
+  ipcMain.handle('novel-check-book-update', (_, bookId) => checkBookUpdate(bookId))
+  ipcMain.handle('novel-check-all-updates', () => checkAllBooksUpdate())
+  ipcMain.handle('novel-perform-update', (_, bookId) => performIncrementalUpdate(bookId))
+
   // ===== 在线小说：下载完成后导入书库 =====
   ipcMain.handle('novel-import-after-download', async (_, filePath) => {
     try {
@@ -465,7 +563,7 @@ export function setupIpcHandlers() {
 
   // ===== 系统与版本信息 =====
   ipcMain.handle('get-app-version', () => {
-    return app.getVersion() || '2.0.3'
+    return app.getVersion() || '2.0.4'
   })
 
   // ===== 用户自定义字体管理 (Custom Font Management) =====

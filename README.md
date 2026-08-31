@@ -1,6 +1,6 @@
-# YouQian书籍阅读器 📚 (V2.0.3)
+# YouQian书籍阅读器 📚 (V2.0.4)
 
-[![Version](https://img.shields.io/badge/version-2.0.3-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
@@ -8,7 +8,32 @@
 
 ---
 
-## 🚀 V2.0.3 核心功能更新与完成报告 (Release Notes & Walkthrough)
+## 🚀 V2.0.4 核心功能更新与完成报告 (Release Notes & Walkthrough)
+
+### 1. 🎨 新增“阅读 3.0 (Legado)”广受好评的经典预设背景
+* **6 款经典护眼预设全量引入**：羊皮纸（Sepia）、护眼绿（Green）、远山黛（Cyan）、落霞粉（Peach）、象牙白（Ivory）、暗褐咖啡（Coffee）。
+* **全格式智能适配**：EPUB、TXT、MOBI、AZW3、PDF 五大阅读器及全局浮层统一适配，明暗主题下字体对比度自动达到 WCAG AAA 舒适标准。
+* **5 列自适应流式网格**：设置面板提供直观颜色预览圆盘与即时选中反馈。
+
+### 2. 🎵 听书朗读沉浸背景伴奏与自然声景系统 (Web Audio API)
+* **4 款物理声学纯净声景**：窗外夜雨（Rain on Window）、温暖壁炉（Warm Fireplace）、深林微风（Forest Breeze）、静心和弦（Zen Ambient Chords），基于 Web Audio API 物理信号程序合成，零网络依赖、零延迟、纯净无限平滑循环。
+* **伴奏独立音量微调**：支持 5%~80% 细致微调，默认 20% 柔和背景微弱衬托人声，类型与音量本地自动持久化记忆。
+* **智能平滑淡入淡出**：朗读开始时伴奏平滑淡入，暂停与停止时轻柔淡出至静音，告别突兀打断。
+
+### 3. 🚀 内生页码专属通道彻底根治听书与翻页联动
+* **解决多栏排版（CSS Columns）视口误判**：由阅读器内部直接提供真实页码、总页数与精确段落映射（`registerGetTtsBlocks`），彻底杜绝跳回章节第一句的问题。
+* **暂停期间翻页再播放智能感知**：在听书浮岛开启、暂停状态下，读者任意翻页后再次点击播放，系统自动识别并精准从翻到的新页面第一句开读；同一页内暂停则无缝连贯继续。
+
+### 4. ✏️ 划线高亮笔记与跨格式毫秒级精准定位跳转
+* **划线系统闭环打通**：解除底层容器禁止选中文本限制，支持多色彩荧光高亮实时渲染与正文点击已有高亮直接修改批注/删除。
+* **统一高精度跳转定位器 (`registerJumpTo`)**：书签列表与划线笔记支持在 TXT/EPUB/MOBI/AZW3/PDF 跨格式下秒级精准定位翻页并自动平滑居中展示。
+
+### 5. ☁️ WebDAV 云端同步全系统主题与深色模式跟随
+* 同步设置与全量弹窗样式完全跟随当前应用全局主题，无缝融入阅读器视觉体系。
+
+---
+
+## 🚀 V2.0.3 历史功能更新 (Historical Release Notes)
 
 ### 1. 🔤 自定义字体管理与原生 FontFace 渲染
 * **多格式全覆盖**：支持电脑本地 `.ttf`、`.otf`、`.woff`、`.woff2` 格式字体一键导入。

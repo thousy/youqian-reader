@@ -4,7 +4,7 @@ import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
 import { injectCustomFontsToIframe } from '../../utils/fontLoader'
 
-export function EpubReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
+export function EpubReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, registerSearchProvider, registerJumpTo, registerGetTtsBlocks, showToc, annotations = [], onAnnotationClick, onTextSelected }) {
   const viewerRef = useRef(null)
   const renditionRef = useRef(null)
   const bookRef = useRef(null)
@@ -33,6 +33,11 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
+    green: '#e3ece0',
+    cyan: '#e0ede9',
+    peach: '#faecea',
+    ivory: '#f6f5ec',
+    coffee: '#231f20',
     dark: '#12121c',
     night: '#05050a',
     word: '#ffffff'
@@ -298,6 +303,35 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
 
         // 点击 EPUB iframe 中的正文同样视为点击设置面板外。
         rendition.on('click', () => setShowSettings(false))
+
+        // 监听 EPUB 内部 iframe 划词选区
+        rendition.on('selected', (cfiRange) => {
+          try {
+            const range = rendition.getRange(cfiRange)
+            if (!range) return
+            const text = range.toString().trim()
+            if (!text || text.length > 1500) return
+
+            const iframe = viewerRef.current?.querySelector('iframe')
+            const iframeRect = iframe ? iframe.getBoundingClientRect() : { left: 0, top: 0 }
+            const rect = range.getBoundingClientRect()
+
+            const clientX = iframeRect.left + rect.left + rect.width / 2
+            const clientY = iframeRect.top + rect.top
+
+            onTextSelected?.({
+              position: {
+                x: Math.max(120, Math.min(window.innerWidth - 120, clientX)),
+                y: Math.max(80, clientY)
+              },
+              selectedText: text,
+              cfiRange: cfiRange,
+              existingAnnotation: null
+            })
+          } catch (e) {
+            console.warn('EPUB 选区处理告警:', e)
+          }
+        })
 
         // 进度追踪
         rendition.on('relocated', (location) => {
@@ -638,6 +672,89 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }, [])
 
+  // 同步 annotations 高亮到 EPUB 内部
+  useEffect(() => {
+    const rendition = renditionRef.current
+    if (!rendition || !rendition.annotations || !annotations) return
+
+    annotations.forEach(ann => {
+      if (ann.cfiRange) {
+        try {
+          rendition.annotations.add(
+            'highlight',
+            ann.cfiRange,
+            {},
+            (e) => {
+              onAnnotationClick?.(ann, e)
+            },
+            'epub-user-highlight',
+            {
+              fill: ann.color || '#ffe066',
+              'fill-opacity': '0.45'
+            }
+          )
+        } catch (_) {}
+      }
+    })
+  }, [annotations, onAnnotationClick])
+
+  // 注册统一精准跳转定位器 (支持 cfiRange, cfi, href, percentage)
+  useEffect(() => {
+    if (!registerJumpTo) return
+    registerJumpTo((target) => {
+      if (!target || !renditionRef.current) return
+      if (target.cfiRange) {
+        renditionRef.current.display(target.cfiRange)
+      } else if (target.cfi) {
+        renditionRef.current.display(target.cfi)
+      } else if (target.href) {
+        renditionRef.current.display(target.href)
+      } else if (target.percentage != null && bookRef.current?.locations) {
+        try {
+          const cfi = bookRef.current.locations.cfiFromPercentage(target.percentage)
+          if (cfi) renditionRef.current.display(cfi)
+        } catch (_) {}
+      }
+    })
+  }, [registerJumpTo])
+
+  // 注册 EPUB 听书段落与当前页精准定位获取器
+  useEffect(() => {
+    if (!registerGetTtsBlocks) return
+    registerGetTtsBlocks(() => {
+      const iframe = viewerRef.current?.querySelector('iframe')
+      const doc = iframe?.contentDocument
+      if (!doc) return null
+
+      const pElements = Array.from(doc.querySelectorAll('p, div.text, section p'))
+      const paras = []
+      let firstVisibleIdx = -1
+      const viewW = iframe.clientWidth || doc.documentElement.clientWidth || 800
+
+      pElements.forEach((el) => {
+        const text = el.textContent?.trim()
+        if (!text || text.length < 2) return
+
+        const idx = paras.length
+        paras.push(text)
+
+        if (firstVisibleIdx === -1) {
+          const r = el.getBoundingClientRect()
+          if (r.width > 0 && r.height > 0) {
+            if (r.right > 20 && r.left < viewW - 20) {
+              firstVisibleIdx = idx
+            }
+          }
+        }
+      })
+
+      return {
+        paragraphs: paras,
+        startIndex: firstVisibleIdx >= 0 ? firstVisibleIdx : 0
+      }
+    })
+  }, [registerGetTtsBlocks])
+
   // 等待容器有物理尺寸的辅助函数
   function waitForContainerSize(el, timeoutMs = 5000) {
     return new Promise((resolve) => {
@@ -680,6 +797,11 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
       dark: { body: { background: '#12121c', color: '#d4d4e8' }, a: { color: '#a78bfa' } },
       light: { body: { background: '#fafafa', color: '#1a1a2e' }, a: { color: '#6d28d9' } },
       sepia: { body: { background: '#f4ede0', color: '#3d2b1f' }, a: { color: '#78350f' } },
+      green: { body: { background: '#e3ece0', color: '#1a301a' }, a: { color: '#2d6a4f' } },
+      cyan: { body: { background: '#e0ede9', color: '#1a3038' }, a: { color: '#0077b6' } },
+      peach: { body: { background: '#faecea', color: '#3e2828' }, a: { color: '#b91c1c' } },
+      ivory: { body: { background: '#f6f5ec', color: '#222222' }, a: { color: '#4338ca' } },
+      coffee: { body: { background: '#231f20', color: '#a89b91' }, a: { color: '#d97706' } },
       night: { body: { background: '#05050a', color: '#8888a8' }, a: { color: '#6d28d9' } },
       word: { body: { background: '#ffffff', color: '#111111' }, a: { color: '#185abd' } }
     }
@@ -866,6 +988,61 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
+
+  // 注册 EPUB 书内检索能力
+  useEffect(() => {
+    if (!registerSearchProvider) return
+    registerSearchProvider({
+      search: async (keyword) => {
+        const book = bookRef.current
+        if (!keyword || !book || !book.spine) return []
+        const kw = keyword.toLowerCase()
+        const results = []
+
+        const spineList = book.spine.spineItems || []
+        for (let i = 0; i < spineList.length; i++) {
+          const item = spineList[i]
+          try {
+            await item.load(book.load.bind(book))
+            const text = item.document?.body?.textContent || ''
+            const lower = text.toLowerCase()
+            let pos = lower.indexOf(kw)
+            while (pos !== -1) {
+              const start = Math.max(0, pos - 20)
+              const end = Math.min(text.length, pos + keyword.length + 30)
+              const excerpt = (start > 0 ? '...' : '') + text.substring(start, end) + (end < text.length ? '...' : '')
+
+              let chapterTitle = `章节 ${i + 1}`
+              if (item.href) {
+                const matched = toc.find(t => t.href && (item.href.includes(t.href) || t.href.includes(item.href)))
+                if (matched?.label) chapterTitle = matched.label
+              }
+
+              results.push({
+                href: item.href,
+                chapterTitle,
+                excerpt
+              })
+
+              if (results.length >= 200) return results
+              pos = lower.indexOf(kw, pos + keyword.length)
+            }
+          } catch (e) {
+            // 忽略单个分卷加载异常
+          }
+        }
+        return results
+      },
+      jumpTo: (res) => {
+        if (!res || !renditionRef.current) return
+        if (res.cfi) {
+          renditionRef.current.display(res.cfi)
+        } else if (res.href) {
+          renditionRef.current.display(res.href)
+        }
+      }
+    })
+  }, [toc, registerSearchProvider])
 
   // 统一圆形悬浮按钮样式
   const navButtonStyle = (side) => {

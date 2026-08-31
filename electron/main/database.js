@@ -13,12 +13,20 @@ export function setupDatabase() {
       categories: [],
       readingProgress: {},
       bookmarks: {},
+      annotations: {},
       settings: {
         fontSize: 18,
         fontFamily: 'Georgia',
         theme: 'dark',
         lineHeight: 1.8,
         lastOpenedBook: null
+      },
+      webdavConfig: {
+        url: '',
+        username: '',
+        password: '',
+        autoSync: false,
+        lastSyncTime: null
       }
     }
   })
@@ -72,15 +80,18 @@ export function updateBook(id, updates) {
 export function removeBook(id) {
   const books = store.get('books', []).filter(b => b.id !== id)
   store.set('books', books)
-  // 清理对应的阅读进度、书签和 locations
+  // 清理对应的阅读进度、书签、笔记和 locations
   const progress = store.get('readingProgress', {})
   const bookmarks = store.get('bookmarks', {})
+  const annotations = store.get('annotations', {})
   const epubLocations = store.get('epubLocations', {})
   delete progress[id]
   delete bookmarks[id]
+  delete annotations[id]
   delete epubLocations[id]
   store.set('readingProgress', progress)
   store.set('bookmarks', bookmarks)
+  store.set('annotations', annotations)
   store.set('epubLocations', epubLocations)
   return true
 }
@@ -139,6 +150,51 @@ export function removeBookmark(bookId, bookmarkId) {
   store.set(`bookmarks.${bookId}`, bookmarks)
 }
 
+// ===== 划线高亮与笔记 (Annotations) =====
+
+export function getAnnotations(bookId) {
+  return store.get(`annotations.${bookId}`, [])
+}
+
+export function addAnnotation(bookId, annotation) {
+  const list = getAnnotations(bookId)
+  const newAnnotation = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    color: '#ffe066', // 默认高亮黄色
+    note: '',
+    ...annotation
+  }
+  list.push(newAnnotation)
+  store.set(`annotations.${bookId}`, list)
+  return newAnnotation
+}
+
+export function updateAnnotation(bookId, annotationId, updates) {
+  const list = getAnnotations(bookId)
+  const idx = list.findIndex(a => a.id === annotationId)
+  if (idx === -1) return null
+  list[idx] = {
+    ...list[idx],
+    ...updates,
+    updatedAt: new Date().toISOString()
+  }
+  store.set(`annotations.${bookId}`, list)
+  return list[idx]
+}
+
+export function removeAnnotation(bookId, annotationId) {
+  const list = getAnnotations(bookId).filter(a => a.id !== annotationId)
+  store.set(`annotations.${bookId}`, list)
+  return true
+}
+
+export function clearAnnotations(bookId) {
+  store.set(`annotations.${bookId}`, [])
+  return true
+}
+
 // ===== 设置 =====
 
 export function getSettings() {
@@ -168,6 +224,24 @@ export function saveEpubLocations(bookId, locations) {
   store.set(`epubLocations.${bookId}`, locations)
 }
 
+// ===== WebDAV 云同步配置 =====
+
+export function getWebdavConfig() {
+  return store.get('webdavConfig', {
+    url: '',
+    username: '',
+    password: '',
+    autoSync: false,
+    lastSyncTime: null
+  })
+}
+
+export function saveWebdavConfig(config) {
+  const current = getWebdavConfig()
+  store.set('webdavConfig', { ...current, ...config })
+  return true
+}
+
 // ===== 数据备份与恢复 =====
 
 export function exportBackupData() {
@@ -175,10 +249,11 @@ export function exportBackupData() {
   const categories = store.get('categories', [])
   const readingProgress = store.get('readingProgress', {})
   const bookmarks = store.get('bookmarks', {})
+  const annotations = store.get('annotations', {})
   const settings = store.get('settings', {})
 
   return {
-    version: '1.6.1',
+    version: '2.1.0',
     exportedAt: new Date().toISOString(),
     settings,
     categories,
@@ -189,7 +264,8 @@ export function exportBackupData() {
       filePath: b.filePath
     })),
     readingProgress,
-    bookmarks
+    bookmarks,
+    annotations
   }
 }
 
@@ -312,6 +388,37 @@ export function importBackupData(backup) {
     store.set('bookmarks', currentBookmarks)
   }
 
+  // 合并划线高亮与笔记 (Annotations)
+  const currentAnnotations = store.get('annotations', {})
+  if (backup.annotations && typeof backup.annotations === 'object') {
+    for (const [oldId, oldAnnotations] of Object.entries(backup.annotations)) {
+      const newId = idMap[oldId]
+      if (newId && Array.isArray(oldAnnotations)) {
+        if (!currentAnnotations[newId]) {
+          currentAnnotations[newId] = []
+        }
+        const existingAnnotations = currentAnnotations[newId]
+        for (const oa of oldAnnotations) {
+          const isDuplicate = existingAnnotations.some(ea => {
+            if (oa.cfi && ea.cfi) return oa.cfi === ea.cfi
+            if (oa.page !== undefined && ea.page !== undefined) return oa.page === ea.page && oa.selectedText === ea.selectedText
+            if (oa.index !== undefined && ea.index !== undefined) return oa.index === ea.index && oa.selectedText === ea.selectedText
+            return oa.selectedText === ea.selectedText && oa.chapterTitle === ea.chapterTitle
+          })
+
+          if (!isDuplicate) {
+            const newAnnotationId = Date.now().toString() + Math.random().toString(36).substr(2, 6)
+            existingAnnotations.push({
+              ...oa,
+              id: newAnnotationId
+            })
+          }
+        }
+      }
+    }
+    store.set('annotations', currentAnnotations)
+  }
+
   return { success: true, restoredBookIds }
 }
 
@@ -320,6 +427,7 @@ export function resetDatabase() {
   store.set('categories', [])
   store.set('readingProgress', {})
   store.set('bookmarks', {})
+  store.set('annotations', {})
   store.set('epubLocations', {})
   store.set('settings', {
     fontSize: 18,

@@ -1,9 +1,29 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
 
-export function MobiReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function injectAnnotationsToHtml(htmlContent, annotations = []) {
+  if (!htmlContent || !annotations || annotations.length === 0) return htmlContent
+  let result = htmlContent
+  for (const ann of annotations) {
+    if (ann.selectedText && ann.selectedText.length >= 1) {
+      try {
+        const safeEscaped = escapeRegExp(ann.selectedText)
+        const regex = new RegExp(`(?![^<]*>)${safeEscaped}`, 'g')
+        const markTag = `<mark class="user-annotation-highlight" data-ann-id="${ann.id}" style="background-color: ${ann.color || '#ffe066'}; color: #1a1a2e; border-radius: 2px; padding: 1px 2px; cursor: pointer;">${ann.selectedText}</mark>`
+        result = result.replace(regex, markTag)
+      } catch (_) {}
+    }
+  }
+  return result
+}
+
+export function MobiReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, registerSearchProvider, registerJumpTo, registerGetTtsBlocks, showToc, annotations = [], onAnnotationClick }) {
   const [content, setContent] = useState('')
   const [title, setTitle] = useState('')
   const [loading, setLoading] = useState(true)
@@ -17,6 +37,11 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const [currentTocItem, setCurrentTocItem] = useState(null)
   const [isMeasured, setIsMeasured] = useState(false)
   const [measureTrigger, setMeasureTrigger] = useState(0)
+
+  const displayHtml = useMemo(() => {
+    if (!content || !annotations || annotations.length === 0) return content
+    return injectAnnotationsToHtml(content, annotations)
+  }, [content, annotations])
 
   // 当排版参数变化时，重置测算状态并递增触发器以进入 Loading 重算
   useEffect(() => {
@@ -175,10 +200,10 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
       width: '44px',
       height: '44px',
       borderRadius: '50%',
-      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
-      border: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+      border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
       boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
       color: settings.theme === 'word' ? '#333333' : 'var(--text-primary)',
       cursor: 'pointer',
@@ -195,13 +220,13 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const handleBtnMouseEnter = (e) => {
     e.currentTarget.style.opacity = '1'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1.12)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
+    e.currentTarget.style.backgroundColor = isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
   }
 
   const handleBtnMouseLeave = (e) => {
     e.currentTarget.style.opacity = '0.5'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
+    e.currentTarget.style.backgroundColor = isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
 
   const paddingY = isHorizontalScroll ? 60 : 40
@@ -222,9 +247,15 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
 
   const desktopBg = settings.theme === 'word' ? '#f3f3f3' : (settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
   const outerBg = settings.theme === 'word' ? '#f3f3f3' : (isCardStyle ? desktopBg : 'transparent')
+  const isLight = ['light', 'sepia', 'green', 'cyan', 'peach', 'ivory', 'word'].includes(settings.theme)
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
+    green: '#e3ece0',
+    cyan: '#e0ede9',
+    peach: '#faecea',
+    ivory: '#f6f5ec',
+    coffee: '#231f20',
     dark: '#12121c',
     night: '#05050a',
     word: '#ffffff'
@@ -1136,6 +1167,96 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     })
   }, [pageIndex, totalPages])
 
+  // 注册 MOBI 书内全文检索能力
+  useEffect(() => {
+    if (!registerSearchProvider) return
+    registerSearchProvider({
+      search: async (keyword) => {
+        if (!content || !keyword || totalPages <= 0) return []
+        const kw = keyword.toLowerCase()
+        const results = []
+
+        const plainText = content.replace(/<[^>]+>/g, ' ')
+        const lower = plainText.toLowerCase()
+        let pos = lower.indexOf(kw)
+        while (pos !== -1) {
+          const start = Math.max(0, pos - 20)
+          const end = Math.min(plainText.length, pos + keyword.length + 30)
+          const excerpt = (start > 0 ? '...' : '') + plainText.substring(start, end).replace(/\s+/g, ' ') + (end < plainText.length ? '...' : '')
+
+          const approxPage = Math.max(0, Math.min(totalPages - 1, Math.floor((pos / plainText.length) * totalPages)))
+
+          results.push({
+            pageIndex: approxPage,
+            chapterTitle: `第 ${approxPage + 1} 页附近`,
+            excerpt
+          })
+
+          if (results.length >= 200) return results
+          pos = lower.indexOf(kw, pos + keyword.length)
+        }
+        return results
+      },
+      jumpTo: (res) => {
+        if (res && res.pageIndex != null) {
+          goToPage(res.pageIndex)
+        }
+      }
+    })
+  }, [content, totalPages, goToPage, registerSearchProvider])
+
+  // 注册统一精准跳转定位器 (书签、笔记)
+  useEffect(() => {
+    if (!registerJumpTo) return
+    registerJumpTo((target) => {
+      if (!target) return
+      if (target.pageIndex != null) {
+        goToPage(target.pageIndex)
+      } else if (target.percentage != null && totalPages > 1) {
+        const targetPage = Math.max(0, Math.min(totalPages - 1, Math.round(target.percentage * (totalPages - 1))))
+        goToPage(targetPage)
+      }
+    })
+  }, [totalPages, goToPage, registerJumpTo])
+
+  // 注册 MOBI 听书段落与当前页精准定位获取器
+  useEffect(() => {
+    if (!registerGetTtsBlocks) return
+    registerGetTtsBlocks(() => {
+      const container = containerRef.current
+      if (!container) return null
+
+      const pElements = Array.from(container.querySelectorAll('p, div.text, blockquote'))
+      const paras = []
+      let firstVisibleIdx = -1
+      const offsetW = container.offsetWidth || 800
+      const currentScroll = pageIndex * offsetW
+
+      pElements.forEach((el) => {
+        const text = el.textContent?.trim()
+        if (!text || text.length < 2) return
+
+        const idx = paras.length
+        paras.push(text)
+
+        if (firstVisibleIdx === -1) {
+          if (el.offsetLeft >= currentScroll - 15 && el.offsetLeft < currentScroll + offsetW - 15) {
+            firstVisibleIdx = idx
+          }
+        }
+      })
+
+      if (firstVisibleIdx === -1 && totalPages > 1) {
+        firstVisibleIdx = Math.min(paras.length - 1, Math.floor((pageIndex / totalPages) * paras.length))
+      }
+
+      return {
+        paragraphs: paras,
+        startIndex: firstVisibleIdx >= 0 ? firstVisibleIdx : 0
+      }
+    })
+  }, [pageIndex, totalPages, registerGetTtsBlocks])
+
   // 目录项跳转定位方法（支持高精度物理 offsetLeft 偏移定位、前置假锚点甄别过滤与文本倒序检索“物理过滤装甲”！）
   // 极致 O(1) 性能优化：跳转时直接读取 Map 缓存指针，零重新检索！
   const jumpToToc = useCallback((targetItem) => {
@@ -1417,8 +1538,19 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
     }, 200)
   }, [settings.layoutMode, onProgressChange, updateChapterNameAndToc, rect.width, cycleW])
 
-  // 全局拦截正文内嵌入目录超链接的点击事件（事件委托）
+  // 全局拦截正文内嵌入目录超链接与划线高亮的点击事件（事件委托）
   const handleContentClick = useCallback((e) => {
+    const mark = e.target.closest?.('.user-annotation-highlight')
+    if (mark) {
+      const annId = mark.getAttribute('data-ann-id')
+      const found = annotations.find(a => a.id === annId)
+      if (found) {
+        e.stopPropagation()
+        onAnnotationClick?.(found, e)
+        return
+      }
+    }
+
     const anchor = e.target.closest('a')
     if (!anchor) return
     
@@ -1813,7 +1945,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                       ...fontStyle,
                       transition: (totalPages > 350 || (content && content.length > 600000)) ? 'none' : 'transform 0.22s cubic-bezier(0.25, 1, 0.5, 1)'
                     }}
-                    dangerouslySetInnerHTML={{ __html: content }}
+                    dangerouslySetInnerHTML={{ __html: displayHtml }}
                   />
                 </div>
               </div>
@@ -1936,7 +2068,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                   onClick={handleContentClick}
                   onMouseMove={handleMouseMove}
                   onMouseLeave={handleMouseLeave}
-                  dangerouslySetInnerHTML={{ __html: content }}
+                  dangerouslySetInnerHTML={{ __html: displayHtml }}
                 />
               </div>
             ) : (
@@ -1953,7 +2085,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
                 onClick={handleContentClick}
                 onMouseMove={handleMouseMove}
                 onMouseLeave={handleMouseLeave}
-                dangerouslySetInnerHTML={{ __html: content }}
+                dangerouslySetInnerHTML={{ __html: displayHtml }}
               />
             )}
 

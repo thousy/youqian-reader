@@ -17,8 +17,37 @@ export function LibraryView({ onImport }) {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [infoBook, setInfoBook] = useState(null)
   const [showReaderSettings, setShowReaderSettings] = useState(false)
-  const [appVersion, setAppVersion] = useState('2.0.3')
+  const [appVersion, setAppVersion] = useState('2.0.4')
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const settingsMenuRef = useRef(null)
+
+  // 一键检查所有连载小说更新并批量拉取
+  const handleCheckAllUpdates = async () => {
+    setIsCheckingUpdates(true)
+    try {
+      showToast('正在检查书架连载小说更新...', 'info')
+      const updates = await window.api.novelCheckAllUpdates()
+      if (!updates || updates.length === 0) {
+        showToast('所有连载小说均已是最新章节', 'info')
+        return
+      }
+
+      showToast(`检测到 ${updates.length} 本小说有新章节，正在批量更新...`, 'info')
+      let successCount = 0
+      for (const u of updates) {
+        const res = await window.api.novelPerformUpdate(u.bookId)
+        if (res.success) successCount++
+      }
+
+      const all = await window.api.getAllBooks()
+      setBooks(all)
+      showToast(`一键追更完成！成功更新了 ${successCount} 本小说`, 'success')
+    } catch (err) {
+      showToast('一键追更失败: ' + err.message, 'error')
+    } finally {
+      setIsCheckingUpdates(false)
+    }
+  }
 
   useEffect(() => {
     window.api?.getAppVersion?.().then(v => {
@@ -217,6 +246,30 @@ export function LibraryView({ onImport }) {
             </svg>
           </button>
         </div>
+
+        {/* 一键追更按钮 */}
+        <button
+          className="btn btn-secondary"
+          onClick={handleCheckAllUpdates}
+          disabled={isCheckingUpdates}
+          title="检查所有连载小说的最新章节"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '5px 10px',
+            fontSize: '12px',
+            borderRadius: '6px',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-layer2)',
+            color: 'var(--text-primary)',
+            cursor: isCheckingUpdates ? 'default' : 'pointer',
+            opacity: isCheckingUpdates ? 0.7 : 1
+          }}
+        >
+          <span style={{ fontSize: '13px', display: 'inline-block', animation: isCheckingUpdates ? 'spin 1s linear infinite' : 'none' }}>⚡</span>
+          {isCheckingUpdates ? '正在追更...' : '一键追更'}
+        </button>
 
         {/* 齿轮数据设置按钮及下拉菜单 */}
         <div className="settings-menu-container" ref={settingsMenuRef}>

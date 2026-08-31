@@ -4,7 +4,7 @@ import logoIcon from '../../logo.png'
 
 export function TitleBar({ windowTitle }) {
   const [maximized, setMaximized] = useState(false)
-  const [appVersion, setAppVersion] = useState('2.0.3')
+  const [appVersion, setAppVersion] = useState('2.0.4')
   const { settings, updateSettings, currentBook } = useStore()
   const isDark = settings.globalTheme !== 'light'
   // Word 主题仅影响阅读器窗口，书库主窗口不应用 Word 样式

@@ -340,7 +340,12 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
           cover: novelInfo.cover || null,
           description: novelInfo.description || '',
           publisher: 'YouQian Reader 下载器',
-          language: 'zh'
+          language: 'zh',
+          novelSourceId: novelInfo.sourceId || sourceId,
+          novelUrl: novelInfo.url || null,
+          totalChapters: chapters.length,
+          latestChapterTitle: chapters[chapters.length - 1]?.title || '',
+          isSerializing: true
         })
 
         // 若为 PDF 电子书，自动将全书章节添加为初始书签，方便点击直接跳转章节

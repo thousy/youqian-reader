@@ -8,7 +8,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-export function PdfReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
+export function PdfReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, registerSearchProvider, registerJumpTo, showToc }) {
   const [pdf, setPdf] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
@@ -28,8 +28,14 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
+    green: '#e3ece0',
+    cyan: '#e0ede9',
+    peach: '#faecea',
+    ivory: '#f6f5ec',
+    coffee: '#231f20',
     dark: '#12121c',
-    night: '#05050a'
+    night: '#05050a',
+    word: '#ffffff'
   }[settings.theme] || '#12121c'
 
   const layoutWidth = isCardStyle ? Math.min(840, rect.width - 40) : rect.width
@@ -187,6 +193,73 @@ export function PdfReader({ book, savedProgress, settings, onProgressChange, reg
       }
     })
   }, [currentPage, toc, getCurrentChapterTitle])
+
+  // 注册 PDF 全文检索能力
+  useEffect(() => {
+    if (!registerSearchProvider) return
+    registerSearchProvider({
+      search: async (keyword) => {
+        if (!pdf || !keyword || totalPages <= 0) return []
+        const kw = keyword.toLowerCase()
+        const results = []
+
+        for (let p = 1; p <= totalPages; p++) {
+          try {
+            const pageObj = await pdf.getPage(p)
+            const textContent = await pageObj.getTextContent()
+            const pageText = textContent.items.map(it => it.str).join(' ')
+            const lower = pageText.toLowerCase()
+            let pos = lower.indexOf(kw)
+            while (pos !== -1) {
+              const start = Math.max(0, pos - 20)
+              const end = Math.min(pageText.length, pos + keyword.length + 30)
+              const excerpt = (start > 0 ? '...' : '') + pageText.substring(start, end) + (end < pageText.length ? '...' : '')
+
+              let chapterTitle = `第 ${p} 页`
+              if (toc && toc.length > 0) {
+                for (let i = toc.length - 1; i >= 0; i--) {
+                  if (p >= toc[i].page) {
+                    chapterTitle = `${toc[i].label} (第 ${p} 页)`
+                    break
+                  }
+                }
+              }
+
+              results.push({
+                page: p,
+                chapterTitle,
+                excerpt
+              })
+
+              if (results.length >= 200) return results
+              pos = lower.indexOf(kw, pos + keyword.length)
+            }
+          } catch (e) {
+            // 忽略单页错误
+          }
+        }
+        return results
+      },
+      jumpTo: (res) => {
+        if (res && res.page) {
+          setCurrentPage(res.page)
+        }
+      }
+    })
+  }, [pdf, totalPages, toc, registerSearchProvider])
+
+  // 注册统一精准跳转定位器 (书签)
+  useEffect(() => {
+    if (!registerJumpTo) return
+    registerJumpTo((target) => {
+      if (!target) return
+      if (target.page != null) {
+        setCurrentPage(Math.min(totalPages, Math.max(1, target.page)))
+      } else if (target.percentage != null && totalPages > 1) {
+        setCurrentPage(Math.min(totalPages, Math.max(1, Math.round(target.percentage * totalPages))))
+      }
+    })
+  }, [totalPages, registerJumpTo])
 
   useEffect(() => {
     if (savedProgress?.page && totalPages > 0) {

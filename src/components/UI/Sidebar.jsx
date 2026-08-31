@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
+import { WebdavModal } from './WebdavModal'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
 }
 
 export function Sidebar() {
+  const [showWebdavModal, setShowWebdavModal] = useState(false)
   const {
     books, currentView, openBook, setBooks, showToast, showConfirm,
     categories, selectedCategoryId, setSelectedCategoryId, setCategories, setCurrentView
@@ -375,6 +377,37 @@ export function Sidebar() {
         flexDirection: 'column',
         gap: '10px'
       }}>
+        <button
+          onClick={() => setShowWebdavModal(true)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px',
+            width: '100%',
+            padding: '7px 12px',
+            backgroundColor: 'var(--bg-layer2)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            color: 'var(--text-primary)',
+            fontSize: '12px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--bg-layer3)'
+            e.currentTarget.style.borderColor = 'var(--accent)'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'var(--bg-layer2)'
+            e.currentTarget.style.borderColor = 'var(--border)'
+          }}
+        >
+          <span style={{ fontSize: '13px' }}>☁️</span>
+          WebDAV 云端同步
+        </button>
+
         <div style={{
           color: 'var(--text-muted)',
           fontSize: '12px',
@@ -384,6 +417,11 @@ export function Sidebar() {
         }}>
           © YouQian Tech
         </div>
+
+        <WebdavModal
+          isOpen={showWebdavModal}
+          onClose={() => setShowWebdavModal(false)}
+        />
       </div>
     </div>
   )

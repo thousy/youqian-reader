@@ -16,8 +16,12 @@ export const useStore = create((set, get) => ({
   currentView: 'library', // 'library' | 'reader' | 'novelSearch'
   readingProgress: null,
   bookmarks: [],
+  annotations: [],
   showToc: false,
   showBookmarks: false,
+  showAnnotations: false,
+  showSearch: false,
+  showTts: false,
   showSettings: false,
 
   // ===== 阅读设置 =====
@@ -124,7 +128,7 @@ export const useStore = create((set, get) => ({
     }
     
     try { document.documentElement.removeAttribute('data-theme') } catch (_) {}
-    set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [] })
+    set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [], annotations: [], showTts: false })
   },
 
   setCurrentView: (view) => {
@@ -147,9 +151,29 @@ export const useStore = create((set, get) => ({
     set(s => ({ bookmarks: s.bookmarks.filter(b => b.id !== id) }))
   },
 
+  // ===== 划线高亮与笔记 (Annotations) =====
+  setAnnotations: (annotations) => set({ annotations }),
+
+  addAnnotationToStore: (annotation) => {
+    set(s => ({ annotations: [...s.annotations, annotation] }))
+  },
+
+  updateAnnotationInStore: (id, updates) => {
+    set(s => ({
+      annotations: s.annotations.map(a => a.id === id ? { ...a, ...updates } : a)
+    }))
+  },
+
+  removeAnnotationFromStore: (id) => {
+    set(s => ({ annotations: s.annotations.filter(a => a.id !== id) }))
+  },
+
   // ===== UI 状态 =====
   setShowToc: (v) => set({ showToc: v }),
   setShowBookmarks: (v) => set({ showBookmarks: v }),
+  setShowAnnotations: (v) => set({ showAnnotations: v }),
+  setShowSearch: (v) => set({ showSearch: v }),
+  setShowTts: (v) => set({ showTts: v }),
   setShowSettings: (v) => set({ showSettings: v }),
 
   updateSettings: (s) => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
 import { registerSingleCustomFont } from '../../utils/fontLoader'
+import { WebdavModal } from '../UI/WebdavModal'
 
 const DEFAULT_SETTINGS = {
   fontSize: 18,
@@ -35,6 +36,7 @@ export function SettingsPanel({ onClose, isModal = false }) {
   const [importingFont, setImportingFont] = useState(false)
   const [isBatchMode, setIsBatchMode] = useState(false)
   const [selectedFontFiles, setSelectedFontFiles] = useState([])
+  const [showWebdav, setShowWebdav] = useState(false)
 
   // 处理关闭
   const handleClose = () => {
@@ -224,13 +226,18 @@ export function SettingsPanel({ onClose, isModal = false }) {
 
       {/* 主题 */}
       <div className="settings-group">
-        <div className="settings-label">背景主题</div>
+        <div className="settings-label">背景主题 (含阅读3.0经典预设)</div>
         <div className="settings-theme-btns">
           {[
-            { key: 'dark', label: '暗黑', cls: 'theme-dark' },
+            { key: 'sepia', label: '羊皮纸', cls: 'theme-sepia' },
+            { key: 'green', label: '护眼绿', cls: 'theme-green' },
+            { key: 'cyan', label: '远山黛', cls: 'theme-cyan' },
+            { key: 'peach', label: '胭脂粉', cls: 'theme-peach' },
+            { key: 'ivory', label: '象牙白', cls: 'theme-ivory' },
+            { key: 'coffee', label: '暗褐', cls: 'theme-coffee' },
             { key: 'light', label: '亮白', cls: 'theme-light' },
-            { key: 'sepia', label: '米黄', cls: 'theme-sepia' },
-            { key: 'night', label: '夜间', cls: 'theme-night' },
+            { key: 'dark', label: '暗黑', cls: 'theme-dark' },
+            { key: 'night', label: '纯黑', cls: 'theme-night' },
             { key: 'word', label: 'Word', cls: 'theme-word' },
           ].map(t => (
             <button
@@ -605,6 +612,16 @@ export function SettingsPanel({ onClose, isModal = false }) {
         )}
       </div>
 
+      {/* WebDAV 云端同步 */}
+      <button
+        className="settings-restore-btn"
+        style={{ marginBottom: '10px', borderColor: 'var(--border)', color: 'var(--accent)' }}
+        onClick={() => setShowWebdav(true)}
+      >
+        <span style={{ fontSize: '13px', marginRight: '4px' }}>☁️</span>
+        WebDAV 云端同步设置
+      </button>
+
       {/* 恢复默认设置 */}
       <button
         className="settings-restore-btn"
@@ -620,7 +637,10 @@ export function SettingsPanel({ onClose, isModal = false }) {
         恢复默认设置
       </button>
 
-
+      <WebdavModal
+        isOpen={showWebdav}
+        onClose={() => setShowWebdav(false)}
+      />
     </div>
   )
 }

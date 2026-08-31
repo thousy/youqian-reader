@@ -2,7 +2,63 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
 
-export function TxtReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, showToc }) {
+function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick) {
+  if (!para || !annotations || annotations.length === 0) return para
+
+  const matchingAnns = annotations.filter(a => a.selectedText && para.includes(a.selectedText))
+  if (matchingAnns.length === 0) return para
+
+  let segments = [{ text: para, isHighlight: false }]
+  for (const ann of matchingAnns) {
+    const nextSegments = []
+    for (const seg of segments) {
+      if (seg.isHighlight) {
+        nextSegments.push(seg)
+      } else {
+        const parts = seg.text.split(ann.selectedText)
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i]) nextSegments.push({ text: parts[i], isHighlight: false })
+          if (i < parts.length - 1) {
+            nextSegments.push({ text: ann.selectedText, isHighlight: true, annotation: ann })
+          }
+        }
+      }
+    }
+    segments = nextSegments
+  }
+
+  return segments.map((seg, idx) => {
+    if (seg.isHighlight && seg.annotation) {
+      return (
+        <mark
+          key={idx}
+          className="user-annotation-highlight"
+          onClick={(e) => {
+            e.stopPropagation()
+            onAnnotationClick?.(seg.annotation, e)
+          }}
+          title={seg.annotation.note ? `想法: ${seg.annotation.note}` : '划线高亮 (点击查看/编辑)'}
+          style={{
+            backgroundColor: seg.annotation.color || '#ffe066',
+            color: '#1a1a2e',
+            borderRadius: '2px',
+            padding: '1px 2px',
+            cursor: 'pointer',
+            borderBottom: '2px solid rgba(0,0,0,0.3)',
+            transition: 'opacity 0.15s ease'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+        >
+          {seg.text}
+        </mark>
+      )
+    }
+    return seg.text
+  })
+}
+
+export function TxtReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, registerSearchProvider, registerJumpTo, registerGetTtsBlocks, showToc, annotations = [], onAnnotationClick }) {
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [rect, setRect] = useState({ width: 0, height: 0 })
@@ -128,9 +184,15 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   const desktopBg = settings.theme === 'word' ? '#f3f3f3' : (settings.globalTheme === 'light' ? '#eaeaf2' : '#0d0d14')
   const outerBg = settings.theme === 'word' ? '#f3f3f3' : (isCardStyle ? desktopBg : 'transparent')
+  const isLight = ['light', 'sepia', 'green', 'cyan', 'peach', 'ivory', 'word'].includes(settings.theme)
   const readerBg = {
     light: '#fafafa',
     sepia: '#f4ede0',
+    green: '#e3ece0',
+    cyan: '#e0ede9',
+    peach: '#faecea',
+    ivory: '#f6f5ec',
+    coffee: '#231f20',
     dark: '#12121c',
     night: '#05050a',
     word: '#ffffff'
@@ -284,6 +346,12 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       : paragraphs.length
     return paragraphs.slice(start, end)
   }, [paragraphs, chapters, currentChapterIndex])
+
+  const currentChapterStartIndex = useMemo(() => {
+    if (paragraphs.length === 0 || chapters.length === 0) return 0
+    const safeIdx = Math.min(Math.max(0, currentChapterIndex), chapters.length - 1)
+    return chapters[safeIdx]?.paraIndex || 0
+  }, [paragraphs.length, chapters, currentChapterIndex])
 
   // 监听外层容器的实际大小
   useEffect(() => {
@@ -699,6 +767,163 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     }
   }, [chapterPageCounts, chapters.length, globalTotalPages, goToPage, goToPageCard, isCardStyle])
 
+  // 注册书内搜索服务
+  useEffect(() => {
+    if (!registerSearchProvider) return
+    registerSearchProvider({
+      search: async (keyword) => {
+        if (!keyword || !paragraphs || paragraphs.length === 0) return []
+        const kw = keyword.toLowerCase()
+        const results = []
+        const chapList = chapters && chapters.length > 0 ? chapters : [{ label: '正文', paraIndex: 0 }]
+
+        for (let cIdx = 0; cIdx < chapList.length; cIdx++) {
+          const chap = chapList[cIdx]
+          const startPara = chap.paraIndex
+          const endPara = cIdx + 1 < chapList.length ? chapList[cIdx + 1].paraIndex : paragraphs.length
+
+          for (let pIdx = startPara; pIdx < endPara; pIdx++) {
+            const pText = paragraphs[pIdx] || ''
+            const lower = pText.toLowerCase()
+            let pos = lower.indexOf(kw)
+            while (pos !== -1) {
+              const start = Math.max(0, pos - 20)
+              const end = Math.min(pText.length, pos + keyword.length + 30)
+              const excerpt = (start > 0 ? '...' : '') + pText.substring(start, end) + (end < pText.length ? '...' : '')
+
+              results.push({
+                chapterIndex: cIdx,
+                chapterTitle: chap.label || `第 ${cIdx + 1} 章`,
+                paraIndex: pIdx,
+                pos,
+                excerpt
+              })
+
+              if (results.length >= 300) return results
+              pos = lower.indexOf(kw, pos + keyword.length)
+            }
+          }
+        }
+        return results
+      },
+      jumpTo: (res) => {
+        if (!res) return
+        goToPage(0, res.chapterIndex)
+        setTimeout(() => {
+          const targetEl = document.querySelector(`[data-para-idx="${res.paraIndex}"]`)
+          if (targetEl) {
+            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 200)
+      }
+    })
+  }, [paragraphs, chapters, goToPage, registerSearchProvider])
+
+  // 注册统一精准跳转定位器 (书签、笔记、外部进度均可通过此通道精准定位)
+  useEffect(() => {
+    if (!registerJumpTo) return
+    registerJumpTo((target) => {
+      if (!target) return
+      if (target.chapterIndex != null) {
+        const pIndex = target.pageIndex != null ? target.pageIndex : 0
+        goToPage(pIndex, target.chapterIndex)
+        if (target.paraIndex != null) {
+          setTimeout(() => {
+            const targetEl = document.querySelector(`[data-para-idx="${target.paraIndex}"]`)
+            if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }, 250)
+        }
+      } else if (target.paraIndex != null) {
+        let matchedChap = 0
+        for (let i = 0; i < chapters.length; i++) {
+          if (chapters[i].paraIndex <= target.paraIndex) {
+            matchedChap = i
+          } else break
+        }
+        goToPage(0, matchedChap)
+        setTimeout(() => {
+          const targetEl = document.querySelector(`[data-para-idx="${target.paraIndex}"]`)
+          if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }, 250)
+      } else if (target.percentage != null && paragraphs.length > 0) {
+        const targetPara = Math.floor(target.percentage * paragraphs.length)
+        let matchedChap = 0
+        for (let i = 0; i < chapters.length; i++) {
+          if (chapters[i].paraIndex <= targetPara) {
+            matchedChap = i
+          } else break
+        }
+        goToPage(0, matchedChap)
+      }
+    })
+  }, [chapters, paragraphs, goToPage, registerJumpTo])
+
+  // 注册当前章节段落与当前页精准起始索引获取器 (专供听书模式毫秒级直达当前展示页)
+  useEffect(() => {
+    if (!registerGetTtsBlocks) return
+    registerGetTtsBlocks(() => {
+      const rawParas = currentChapterParas || []
+      const validParas = rawParas.map(t => t.trim()).filter(t => t.length > 0)
+      if (validParas.length === 0) return { paragraphs: [], startIndex: 0 }
+
+      let targetIdx = 0
+
+      if (isCardStyle) {
+        // 卡片横向分页模式：通过物理位置探测
+        const container = containerRef.current
+        if (container) {
+          const cRect = container.getBoundingClientRect()
+          const pElements = container.querySelectorAll('p[data-para-idx]')
+          for (let i = 0; i < pElements.length; i++) {
+            const r = pElements[i].getBoundingClientRect()
+            if (r.width > 0 && r.height > 0 && r.right > cRect.left + 20 && r.left < cRect.right - 20) {
+              targetIdx = i
+              break
+            }
+          }
+        }
+      } else {
+        // 普通多栏模式：通过容器 scrollLeft 与段落 offsetLeft 计算
+        const el = containerRef.current
+        if (el && el.offsetWidth > 0) {
+          const currentScrollLeft = el.scrollLeft
+          const viewWidth = el.offsetWidth
+          const pElements = el.querySelectorAll('p[data-para-idx]')
+          let matched = -1
+          for (let i = 0; i < pElements.length; i++) {
+            const p = pElements[i]
+            if (p.offsetLeft >= currentScrollLeft - 15 && p.offsetLeft < currentScrollLeft + viewWidth - 15) {
+              matched = i
+              break
+            }
+          }
+          if (matched >= 0) {
+            targetIdx = matched
+          } else if (totalPages > 1) {
+            const ratio = pageIndex / totalPages
+            targetIdx = Math.min(rawParas.length - 1, Math.floor(ratio * rawParas.length))
+          }
+        } else if (totalPages > 1) {
+          const ratio = pageIndex / totalPages
+          targetIdx = Math.min(rawParas.length - 1, Math.floor(ratio * rawParas.length))
+        }
+      }
+
+      // 将 rawParas 的 targetIdx 映射到 validParas 中的位置
+      const targetText = rawParas[targetIdx]?.trim()
+      let finalStartIdx = 0
+      if (targetText) {
+        const found = validParas.indexOf(targetText)
+        if (found >= 0) finalStartIdx = found
+      }
+
+      return {
+        paragraphs: validParas,
+        startIndex: finalStartIdx
+      }
+    })
+  }, [currentChapterParas, pageIndex, totalPages, isCardStyle, registerGetTtsBlocks])
+
   // 注册进度读取器
   useEffect(() => {
     registerGetPosition(() => {
@@ -885,10 +1110,10 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       width: '44px',
       height: '44px',
       borderRadius: '50%',
-      backgroundColor: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
+      backgroundColor: isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)',
       backdropFilter: 'blur(12px)',
       WebkitBackdropFilter: 'blur(12px)',
-      border: settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
+      border: isLight ? '1px solid rgba(0, 0, 0, 0.08)' : '1px solid rgba(255, 255, 255, 0.12)',
       boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
       color: settings.theme === 'word' ? '#333333' : 'var(--text-primary)',
       cursor: 'pointer',
@@ -905,13 +1130,13 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   const handleBtnMouseEnter = (e) => {
     e.currentTarget.style.opacity = '1'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1.12)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
+    e.currentTarget.style.backgroundColor = isLight ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.18)'
   }
 
   const handleBtnMouseLeave = (e) => {
     e.currentTarget.style.opacity = '0.5'
     e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
-    e.currentTarget.style.backgroundColor = settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'word' ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
+    e.currentTarget.style.backgroundColor = isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   }
 
   const activeTocRef = useRef(null)
@@ -1012,6 +1237,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                     {currentChapterParas.map((para, idx) => (
                       <p 
                         key={idx} 
+                        data-para-idx={currentChapterStartIndex + idx}
                         style={{ 
                           ...fontStyle,
                           margin: '0 0 1em 0', 
@@ -1021,7 +1247,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                           minHeight: para.trim() === '' ? '1em' : 'auto'
                         }}
                       >
-                        {para}
+                        {renderParagraphWithHighlights(para, annotations, onAnnotationClick)}
                       </p>
                     ))}
                   </div>
@@ -1041,6 +1267,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                 {currentChapterParas.map((para, i) => (
                   <p 
                     key={i} 
+                    data-para-idx={currentChapterStartIndex + i}
                     style={{ 
                       ...fontStyle,
                       margin: '0 0 1em 0', 
@@ -1050,7 +1277,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                       minHeight: para.trim() === '' ? '1em' : 'auto'
                     }}
                   >
-                    {para}
+                    {renderParagraphWithHighlights(para, annotations, onAnnotationClick)}
                   </p>
                 ))}
               </div>

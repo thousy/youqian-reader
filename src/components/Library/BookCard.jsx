@@ -12,6 +12,33 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
   const [isCreatingInPopover, setIsCreatingInPopover] = useState(false)
   const [popoverCatName, setPopoverCatName] = useState('')
   const [imgError, setImgError] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+
+  // 检查单本小说更新
+  const handleCheckUpdate = async (e) => {
+    e.stopPropagation()
+    setIsUpdating(true)
+    try {
+      const res = await window.api.novelCheckBookUpdate(book.id)
+      if (res.hasUpdate) {
+        showToast(`《${book.title}》发现 ${res.newCount} 篇新章节，正在拉取更新...`, 'info')
+        const updateRes = await window.api.novelPerformUpdate(book.id)
+        if (updateRes.success) {
+          showToast(`《${book.title}》追更成功！已新增 ${updateRes.newCount} 章`, 'success')
+          const all = await window.api.getAllBooks()
+          setBooks(all)
+        } else {
+          showToast(`更新失败: ${updateRes.error}`, 'error')
+        }
+      } else {
+        showToast(res.message || '当前已是最新章节', 'info')
+      }
+    } catch (err) {
+      showToast('追更检查失败: ' + err.message, 'error')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
 
   // 外部点击关闭气泡
   useEffect(() => {
@@ -90,6 +117,26 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
             <div className="book-cover-author">{book.author || '未知作者'}</div>
           </div>
         )}
+        {book.novelUrl && book.novelSourceId && (
+          <div
+            style={{
+              position: 'absolute',
+              top: '6px',
+              left: '6px',
+              backgroundColor: 'var(--accent-glow)',
+              color: 'var(--accent-light)',
+              border: '1px solid var(--border)',
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '1px 6px',
+              borderRadius: '4px',
+              backdropFilter: 'blur(4px)',
+              zIndex: 2
+            }}
+          >
+            连载
+          </div>
+        )}
         <div className="book-format-badge" style={{ color: FORMAT_COLORS[book.format] || 'var(--accent-light)' }}>
           {book.format}
         </div>
@@ -101,6 +148,31 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
       
       {/* 悬停动作层 */}
       <div className="book-card-hover-overlay">
+        {/* 追更检查按钮 */}
+        {book.novelUrl && book.novelSourceId && (
+          <button
+            className="book-action-btn"
+            title="检查章节更新"
+            disabled={isUpdating}
+            onClick={handleCheckUpdate}
+            style={{ color: 'var(--accent-light)' }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              style={{ animation: isUpdating ? 'spin 1s linear infinite' : 'none' }}
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <polyline points="1 20 1 14 7 14" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+          </button>
+        )}
+
         <button 
           className="book-action-btn" 
           title="书籍信息" 
