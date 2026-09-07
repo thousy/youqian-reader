@@ -16,8 +16,8 @@ import defaultRules from './rules/rulesData.js'
 
 const app = electron.app || electron.default?.app
 
-// 软件原始没有默认/内置书源，完全由用户导入或新建
-const HARDCODED_SOURCES = []
+// 核心书源：优先依赖本地规则书源与全网规则库
+const HARDCODED_SOURCES = [fastSearchSource, superSource]
 let RULE_SOURCES = []
 let CUSTOM_SOURCES = []
 let disabledSourceIds = new Set()
@@ -47,7 +47,15 @@ export function loadCustomSources() {
         try {
           const content = readFileSync(fullPath, 'utf-8')
           const parsed = JSON.parse(content)
-          const rules = Array.isArray(parsed) ? parsed : [parsed]
+          const rawRules = Array.isArray(parsed) ? parsed : [parsed]
+          const rules = rawRules.map(r => {
+            // 如果规则拥有 rawLegadoRule，且现有 search.url 异常（包含未闭合模板或缺少 http），自动修复
+            if (r.rawLegadoRule && (!r.search?.url || r.search.url.includes('{{String(source') || !r.search.url.startsWith('http'))) {
+              const fixed = normalizeSourceRule(r)
+              if (fixed) return { ...fixed, id: r.id || fixed.id }
+            }
+            return r
+          })
           const created = createSourcesFromRules(rules).map(s => {
             s._customFileName = file
             return s
@@ -994,22 +1002,42 @@ export function normalizeSourceRule(raw) {
     (raw.bookSourceUrl || raw.ruleSearch || raw.ruleToc || raw.ruleContent || raw.searchUrl) ? JSON.parse(JSON.stringify(raw)) : null
   )
 
-  let searchUrl = raw.search?.url || raw.searchUrl || ''
+  let searchUrl = raw.search?.url || raw.searchUrl || raw.rawLegadoRule?.searchUrl || ''
   if (searchUrl.includes('<js>')) {
     searchUrl = searchUrl.split('<js>')[0].trim()
   }
   let searchMethod = (raw.search?.method || 'get').toLowerCase()
   let searchData = raw.search?.data || ''
 
-  if (searchUrl.includes(',')) {
-    const parts = searchUrl.split(',')
-    searchUrl = parts[0].trim()
+  // 仅在明确匹配到 Legado 3.0 POST 参数语法 (,{...) 时提取配置
+  if (searchUrl.includes(',{')) {
+    const lastIdx = searchUrl.lastIndexOf(',{')
+    const urlPart = searchUrl.slice(0, lastIdx).trim()
+    const optPart = searchUrl.slice(lastIdx + 1).trim()
     try {
-      const extra = JSON.parse(parts.slice(1).join(',').trim())
+      const extra = JSON.parse(optPart)
+      searchUrl = urlPart
       if (extra.method) searchMethod = extra.method.toLowerCase()
       if (extra.body) searchData = extra.body
     } catch (_) {}
   }
+
+  // 智能求值 Legado 模板变量（如 source.getKey(), source.getVariable(), page 等）
+  searchUrl = searchUrl.replace(/\{\{([\s\S]*?)\}\}/g, (m, expr) => {
+    const trimmed = expr.trim()
+    if (trimmed === 'key' || trimmed === 'keyword' || trimmed === 'searchkey') return '%s'
+    if (trimmed === 'page') return '1'
+    if (trimmed.includes('source.') || trimmed.includes('baseUrl')) {
+      try {
+        const fn = new Function('source', 'baseUrl', `return (${trimmed})`)
+        const res = fn({ getKey: () => url, getVariable: () => url, bookSourceUrl: url }, url)
+        return res != null ? String(res) : url
+      } catch (_) {
+        return url
+      }
+    }
+    return m
+  })
 
   // 自动为相对路径 searchUrl 补全主站域名
   if (searchUrl && !searchUrl.startsWith('http') && !searchUrl.startsWith('@js:')) {
@@ -1581,5 +1609,31 @@ export async function autoSniffNovelSource(input = {}) {
       sampleChapterTitle,
       sampleContentPreview
     }
+  }
+}
+
+/**
+ * 从远程网络链接 (URL) 订阅/导入阅读 3.0 书源 JSON
+ */
+export async function importSourceFromUrl(url) {
+  if (!url || typeof url !== 'string' || !url.trim().startsWith('http')) {
+    return { success: false, error: '请输入有效的 http/https 书源网络链接' }
+  }
+
+  const targetUrl = url.trim()
+  try {
+    const rawText = await fetchWithRetry(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Legado/3.0'
+      }
+    }, 2, 12000)
+
+    if (!rawText || !rawText.trim()) {
+      return { success: false, error: '远程书源地址响应内容为空' }
+    }
+
+    return importCustomSource(rawText)
+  } catch (err) {
+    return { success: false, error: `网络拉取书源失败: ${err.message}` }
   }
 }

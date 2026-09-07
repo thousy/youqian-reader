@@ -24,6 +24,22 @@ function randomUA() {
 }
 
 /**
+ * 净化并标准化请求头，消除多余空白与非法换行符，防止 Parse Error
+ */
+export function sanitizeHeaders(rawHeaders = {}) {
+  const safe = {}
+  if (!rawHeaders || typeof rawHeaders !== 'object') return safe
+  for (const [k, v] of Object.entries(rawHeaders)) {
+    if (!k || typeof k !== 'string') continue
+    const cleanKey = k.trim().replace(/[\r\n]+/g, '')
+    if (!cleanKey) continue
+    const cleanVal = String(v ?? '').trim().replace(/[\r\n]+/g, ' ')
+    safe[cleanKey] = cleanVal
+  }
+  return safe
+}
+
+/**
  * 强容错 HTTP 请求核心方法
  */
 async function doFetch(url, options = {}, timeoutMs = 6000) {
@@ -32,13 +48,16 @@ async function doFetch(url, options = {}, timeoutMs = 6000) {
 
   try {
     let parsedUrl = new URL(url)
-    const headers = {
+    const baseHeaders = {
       'User-Agent': randomUA(),
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      'Referer': parsedUrl.origin + '/',
-      ...options.headers
+      'Referer': parsedUrl.origin + '/'
     }
+    const headers = sanitizeHeaders({
+      ...baseHeaders,
+      ...options.headers
+    })
 
     const fetchOptions = {
       method: (options.method || 'GET').toUpperCase(),
@@ -88,13 +107,16 @@ function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 6000, redirectCoun
     const isHttps = parsedUrl.protocol === 'https:'
     const client = isHttps ? https : http
 
-    const headers = {
+    const baseHeaders = {
       'User-Agent': randomUA(),
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Referer': parsedUrl.origin + '/',
-      ...options.headers
+      'Referer': parsedUrl.origin + '/'
     }
+    const headers = sanitizeHeaders({
+      ...baseHeaders,
+      ...options.headers
+    })
 
     const reqOptions = {
       protocol: parsedUrl.protocol,
@@ -104,8 +126,7 @@ function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 6000, redirectCoun
       method: (options.method || 'GET').toUpperCase(),
       headers,
       rejectUnauthorized: false,
-      ciphers: 'DEFAULT:@SECLEVEL=0',
-      minVersion: 'TLSv1',
+      insecureHTTPParser: true,
       timeout: timeoutMs
     }
 
@@ -197,22 +218,49 @@ function isLikelyGBK(buf) {
  */
 export function cleanContent(html) {
   if (!html) return ''
-  return html
+  let text = html
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<p[^>]*>/gi, '\n')
+    .replace(/<div[^>]*>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
-    .replace(/天才一秒记住.*?手机版网址：.*?(\n|$)/g, '')
-    .replace(/笔趣阁.*?最快更新/g, '')
-    .replace(/请记住本书首发域名.*?(\n|$)/g, '')
-    .replace(/如果喜欢这本书.*?(\n|$)/g, '')
+    .replace(/天才一秒记住.*?(\n|$)/gi, '')
+    .replace(/笔趣阁.*?最快更新/gi, '')
+    .replace(/请记住本书首发域名.*?(\n|$)/gi, '')
+    .replace(/如果喜欢这本书.*?(\n|$)/gi, '')
+    .replace(/最新网址[：:]\s*/gi, '')
+    .replace(/https?:\/\/[^\n]*(\n|$)/gi, '')
     .replace(/www\.[a-z0-9]+\.[a-z]+/gi, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+
+  // 全面智能断行：逐行扫描，对任何包含段落合并特征的长段落彻底断行
+  const rawLines = text.split(/\n+/)
+  const cleanLines = []
+
+  for (let line of rawLines) {
+    let l = line.trim()
+    if (!l) continue
+    // 如果该行字数较长且包含段落缩进/标点特征，执行自动断行
+    if (l.length > 50) {
+      // 1. 中文句末标点（。！？…”」』）后跟 2 个及以上空格或全角空格，后接中文、英文或引号
+      l = l.replace(/([。！？…”」』])(\u3000+| {2,})(?=[“「『\u4e00-\u9fa5a-zA-Z0-9])/g, '$1\n')
+      // 2. 句尾标点后接连续空格
+      l = l.replace(/([。！？…”」』])\s{2,}/g, '$1\n')
+      // 3. 连续 4 个以上空格或双全角空格作为段首缩进
+      l = l.replace(/(^|[^。！？…”」』\s])\s*(\u3000{2}| {4,})(?=[“「『\u4e00-\u9fa5])/g, '$1\n')
+    }
+    const splitted = l.split(/\n+/).map(s => s.trim()).filter(Boolean)
+    cleanLines.push(...splitted)
+  }
+
+  return cleanLines.join('\n\n')
 }
 
 /**

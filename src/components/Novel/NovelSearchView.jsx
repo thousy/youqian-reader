@@ -119,7 +119,7 @@ function rankSearchResults(list, kw) {
 }
 
 export function NovelSearchView() {
-  const { showToast, setBooks, setFilterFormat } = useStore()
+  const { showToast, setBooks, setFilterFormat, openBook } = useStore()
 
   const [keyword, setKeyword] = useState('')
   const [sourceId, setSourceId] = useState('all')
@@ -436,6 +436,34 @@ export function NovelSearchView() {
       }
     } catch (e) {
       showToast('一键下载出错: ' + e.message, 'error')
+    }
+  }
+
+  // 一键加入书架追更 (免漫长预下载，秒级加入书库流式阅读)
+  const handleAddToShelf = async (book, openNow = false) => {
+    try {
+      const res = await window.api.novelAddToShelf({
+        title: book.title,
+        author: book.author,
+        cover: book.cover,
+        novelUrl: book.novelUrl || book.url,
+        sourceId: book.sourceId || book.source,
+        sourceName: getSourceName(book),
+        latestChapterTitle: book.latestChapterTitle || book.latestChapter,
+        chapterCount: book.chapterCount
+      })
+      if (res.success) {
+        showToast(res.alreadyExists ? `《${book.title}》已在书架中！` : `《${book.title}》已成功加入书架，随时流式在线追更！`, 'success')
+        const allBooks = await window.api.getAllBooks()
+        setBooks(allBooks)
+        if (openNow && res.book) {
+          openBook(res.book)
+        }
+      } else {
+        showToast('加入书架失败: ' + res.error, 'error')
+      }
+    } catch (e) {
+      showToast('加入书架异常: ' + e.message, 'error')
     }
   }
 
@@ -953,6 +981,18 @@ export function NovelSearchView() {
                       <td className="col-action" style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                         <div style={{ display: 'inline-flex', gap: '3px', justifyContent: 'center', alignItems: 'center', whiteSpace: 'nowrap', flexWrap: 'nowrap' }}>
                           <button
+                            onClick={() => handleAddToShelf(book, false)}
+                            style={{
+                              padding: '3px 7px', borderRadius: '5px', border: 'none',
+                              background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff', cursor: 'pointer', fontSize: '11px', fontWeight: 600,
+                              whiteSpace: 'nowrap', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '2px',
+                              boxShadow: '0 2px 6px rgba(16, 185, 129, 0.3)'
+                            }}
+                            title="免预下载！像阅读 3.0 一样直接加入书架，流式在线追更"
+                          >
+                            ⚡ 追更
+                          </button>
+                          <button
                             onClick={() => handleOpenPreview(book)}
                             style={{
                               padding: '3px 6px', borderRadius: '5px', border: '1px solid var(--border)',
@@ -1021,6 +1061,7 @@ export function NovelSearchView() {
                 <NovelCard
                   key={`${book.source}_${idx}`}
                   book={book}
+                  onAddToShelf={() => handleAddToShelf(book, false)}
                   onPreview={() => handleOpenPreview(book)}
                   onDownload={() => handleOpenDownloadModal(book)}
                   onQuickDownload={(fmt) => handleQuickDownload(book, fmt)}
@@ -1064,6 +1105,7 @@ export function NovelSearchView() {
           content={previewModal.content}
           loading={previewModal.loading}
           allResults={results}
+          onAddToShelf={(bookObj, openNow) => handleAddToShelf(bookObj, openNow)}
           onSwitchBook={(altBook) => handleOpenPreview(altBook)}
           onClose={() => setPreviewModal(null)}
           onDownload={() => {
@@ -1080,7 +1122,7 @@ export function NovelSearchView() {
               setPreviewModal(prev => ({
                 ...prev,
                 currentIdx: idx,
-                content: res.success ? res.content : '【获取正文失败，请尝试重新加载或点击上方换源】',
+                content: res.success ? res.content : '【获取章节正文失败，请尝试重新加载或点击上方换源】',
                 loading: false
               }))
             } catch (e) {
@@ -1099,7 +1141,7 @@ export function NovelSearchView() {
 }
 
 // ─── 书籍卡片 ──────────────────────────────────────────
-function NovelCard({ book, onPreview, onDownload, onQuickDownload }) {
+function NovelCard({ book, onAddToShelf, onPreview, onDownload, onQuickDownload }) {
   const [imgError, setImgError] = useState(false)
   const hasValidCover = book.cover && !imgError
 
@@ -1153,7 +1195,19 @@ function NovelCard({ book, onPreview, onDownload, onQuickDownload }) {
         <div className="novel-card-source-footer" style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span className="source-tag">{getSourceName(book)}</span>
-            <span style={{ userSelect: 'none' }}>&nbsp;&nbsp;</span>
+            <span style={{ userSelect: 'none' }}>&nbsp;</span>
+            <button
+              onClick={onAddToShelf}
+              style={{
+                padding: '2px 8px', borderRadius: '4px', border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', cursor: 'pointer', fontSize: '11px', fontWeight: 600,
+                whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '2px',
+                boxShadow: '0 2px 5px rgba(16, 185, 129, 0.25)'
+              }}
+              title="免预下载！一键加入书架，流式在线追更"
+            >
+              ⚡ 追更
+            </button>
             <button
               onClick={onPreview}
               style={{
@@ -1599,7 +1653,7 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
 }
 
 // ─── 沉浸式在线章节阅读预览浮层 ────────────────────────────
-function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content = '', loading = false, onClose, onDownload, onChangeChapter, allResults = [], onSwitchBook }) {
+function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content = '', loading = false, onClose, onDownload, onChangeChapter, allResults = [], onSwitchBook, onAddToShelf }) {
   const currentChapter = (chapters && chapters[currentIdx]) || { title: '第一章' }
   const [fontSize, setFontSize] = useState(16)
 
@@ -1638,6 +1692,21 @@ function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content =
                 A+
               </button>
             </div>
+
+            <button
+              onClick={() => {
+                onAddToShelf?.(novelInfo, true)
+                onClose?.()
+              }}
+              style={{
+                padding: '6px 14px', borderRadius: '6px', border: 'none',
+                background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+                display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)'
+              }}
+              title="免去漫长下载！一键加入书架，即刻开启流式阅读"
+            >
+              ⚡ 加入书架追更
+            </button>
 
             <button
               onClick={onDownload}

@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState, Suspense } from 'react'
 import { useStore } from '../../store/useStore'
+import { ErrorBoundary } from '../UI/ErrorBoundary'
 // 懒加载各格式阅读器组件（首屏无需加载全部 ~260KB 的阅读器代码）
 const EpubReader = React.lazy(() => import('./EpubReader').then(m => ({ default: m.EpubReader })))
 const PdfReader = React.lazy(() => import('./PdfReader').then(m => ({ default: m.PdfReader })))
 const TxtReader = React.lazy(() => import('./TxtReader').then(m => ({ default: m.TxtReader })))
 const MobiReader = React.lazy(() => import('./MobiReader').then(m => ({ default: m.MobiReader })))
 const Azw3Reader = React.lazy(() => import('./Azw3Reader').then(m => ({ default: m.Azw3Reader })))
+const OnlineNovelReader = React.lazy(() => import('./OnlineNovelReader').then(m => ({ default: m.OnlineNovelReader })))
 import { BookmarkPanel } from './BookmarkPanel'
 import { AnnotationPanel } from './AnnotationPanel'
 import { TextSelectionToolbar } from './TextSelectionToolbar'
@@ -13,8 +15,10 @@ import { SettingsPanel } from './SettingsPanel'
 import { BookInfoModal } from '../UI/BookInfoModal'
 import { InBookSearchModal } from './InBookSearchModal'
 import { TtsPlayerBar } from './TtsPlayerBar'
+import { GlobalSettingsModal } from '../UI/GlobalSettingsModal'
 
 export function ReaderView() {
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false)
   const {
     currentBook, closeBook,
     showToc, setShowToc,
@@ -75,8 +79,16 @@ export function ReaderView() {
 
   useEffect(() => {
     const handleMouseUp = (e) => {
-      // 避免在工具条内部或其子元素操作时被误当作重新划词
-      if (e.target && e.target.closest && e.target.closest('.text-selection-toolbar')) {
+      // 避免在工具条、翻页按钮、工具栏或状态栏操作时误当作划词
+      if (e.target && e.target.closest && (
+        e.target.closest('.text-selection-toolbar') ||
+        e.target.closest('button') ||
+        e.target.closest('.reader-toolbar') ||
+        e.target.closest('.status-bar') ||
+        e.target.closest('.reader-toc-panel') ||
+        e.target.closest('.modal-overlay') ||
+        e.target.closest('.online-novel-reader-root') && e.target.closest('button')
+      )) {
         return
       }
 
@@ -345,9 +357,63 @@ export function ReaderView() {
     return () => document.removeEventListener('mousedown', handleClickOutsideSettings)
   }, [showSettings, setShowSettings])
 
-  if (!currentBook) return null
+  const handleProgressChange = React.useCallback((p) => {
+    if (!p) return
+    setProgress(p?.percentage || 0)
+    setReadingProgress(p)
+    setSelectionState(null)
 
-  const format = currentBook.format
+    if (saveProgressTimeoutRef.current) {
+      clearTimeout(saveProgressTimeoutRef.current)
+    }
+    saveProgressTimeoutRef.current = setTimeout(() => {
+      if (currentBook?.id) {
+        window.api.saveReadingProgress(currentBook.id, p)
+      }
+    }, 300)
+  }, [currentBook?.id])
+
+  if (!currentBook) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--bg-layer1, #12121c)',
+          color: 'var(--text-secondary, #9ca3af)',
+          gap: '16px',
+          padding: '24px',
+          boxSizing: 'border-box'
+        }}
+      >
+        <div className="loading-spinner" style={{ width: '32px', height: '32px', borderWidth: '3px' }} />
+        <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary, #ffffff)' }}>
+          正在加载书籍并准备阅读环境...
+        </div>
+        <button
+          onClick={closeBook}
+          style={{
+            marginTop: '8px',
+            padding: '6px 16px',
+            borderRadius: '6px',
+            border: '1px solid var(--border, rgba(255,255,255,0.15))',
+            backgroundColor: 'var(--bg-layer2, #1e1e2e)',
+            color: 'var(--text-primary, #ffffff)',
+            fontSize: '12px',
+            cursor: 'pointer'
+          }}
+        >
+          返回书库
+        </button>
+      </div>
+    )
+  }
+
+  const format = currentBook.format || (currentBook.novelUrl ? 'ONLINE' : '')
 
   // 添加书签
   const handleAddBookmark = async () => {
@@ -392,18 +458,7 @@ export function ReaderView() {
       book: currentBook,
       savedProgress: readingProgress,
       settings,
-      onProgressChange: (p) => {
-        setProgress(p?.percentage || 0)
-        setReadingProgress(p)
-
-        // 引入 200ms 防抖保存，防止高频滚动期间密集触发 IPC 磁盘 I/O
-        if (saveProgressTimeoutRef.current) {
-          clearTimeout(saveProgressTimeoutRef.current)
-        }
-        saveProgressTimeoutRef.current = setTimeout(() => {
-          window.api.saveReadingProgress(currentBook.id, p)
-        }, 200)
-      },
+      onProgressChange: handleProgressChange,
       registerGetPosition: (fn) => { getPositionRef.current = fn },
       registerSearchProvider: (provider) => { searchProviderRef.current = provider },
       registerJumpTo: (fn) => { jumpToRef.current = fn },
@@ -421,9 +476,14 @@ export function ReaderView() {
       case 'TXT': reader = <TxtReader {...props} />; break
       case 'MOBI': reader = <MobiReader {...props} />; break
       case 'AZW3': reader = <Azw3Reader {...props} />; break
+      case 'ONLINE': reader = <OnlineNovelReader {...props} onTocClose={() => setShowToc(false)} />; break
       default: return <div style={{padding:'40px',color:'var(--text-muted)'}}>不支持的格式: {format}</div>
     }
-    return <Suspense fallback={readerFallback}>{reader}</Suspense>
+    return (
+      <ErrorBoundary title="当前章节内容渲染异常">
+        <Suspense fallback={readerFallback}>{reader}</Suspense>
+      </ErrorBoundary>
+    )
   }
 
   return (
@@ -471,14 +531,14 @@ export function ReaderView() {
           </span>
           <span 
             style={{ padding: '4px 10px', color: '#555555', cursor: 'pointer' }}
-            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? () => setShowToc(!showToc) : undefined}
+            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? () => setShowToc(!showToc) : undefined}
           >
             目录
           </span>
 
           {/* 右侧原核心功能与排版控制组 */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) && (
+              {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) && (
                 <button
                   className={`reader-toolbar-btn ${showToc ? 'active' : ''}`}
                   onClick={() => setShowToc(!showToc)}
@@ -660,16 +720,16 @@ export function ReaderView() {
             书库
           </button>
           <div 
-            className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? 'clickable' : ''}`}
-            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? () => setShowToc(!showToc) : undefined}
-            title={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) ? "点击切换目录" : ""}
+            className={`reader-book-info ${['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? 'clickable' : ''}`}
+            onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? () => setShowToc(!showToc) : undefined}
+            title={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? "点击切换目录" : ""}
           >
             <div className="reader-book-title">{currentBook.title}</div>
             <div className="reader-book-author">{currentBook.author}</div>
           </div>
 
           {/* 目录 */}
-          {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF'].includes(format) && (
+          {['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) && (
             <button
               className={`reader-toolbar-btn ${showToc ? 'active' : ''}`}
               onClick={() => setShowToc(!showToc)}
@@ -854,7 +914,15 @@ export function ReaderView() {
             bookTitle={currentBook?.title}
           />
         )}
-        {showSettings && <SettingsPanel />}
+        {showSettings && (
+          <SettingsPanel
+            onOpenGlobalSettings={() => setShowGlobalSettings(true)}
+          />
+        )}
+        <GlobalSettingsModal
+          isOpen={showGlobalSettings}
+          onClose={() => setShowGlobalSettings(false)}
+        />
         {showInfoModal && <BookInfoModal book={currentBook} onClose={() => setShowInfoModal(false)} />}
         <InBookSearchModal
           isOpen={showSearch}

@@ -52,7 +52,13 @@ export const useStore = create((set, get) => ({
     if (filterFormat !== 'all') {
       filtered = filtered.filter(b => b.format === filterFormat)
     }
-    if (selectedCategoryId === 'uncategorized') {
+    if (selectedCategoryId === 'online') {
+      // 像阅读3.0一样：在线追更书籍
+      filtered = filtered.filter(b => b.format === 'ONLINE' || (b.novelUrl && b.novelSourceId))
+    } else if (selectedCategoryId === 'local') {
+      // 像阅读3.0一样：本地导入书籍
+      filtered = filtered.filter(b => b.format !== 'ONLINE' && (!b.novelUrl || !b.novelSourceId))
+    } else if (selectedCategoryId === 'uncategorized') {
       filtered = filtered.filter(b => !b.categoryId)
     } else if (selectedCategoryId !== 'all') {
       filtered = filtered.filter(b => b.categoryId === selectedCategoryId)

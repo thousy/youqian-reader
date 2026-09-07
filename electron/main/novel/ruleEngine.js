@@ -7,7 +7,7 @@
 import * as cheerio from 'cheerio'
 import iconv from 'iconv-lite'
 import crypto from 'crypto'
-import { fetchWithRetry, cleanContent, toSimplified, sanitizeSearchResult } from './utils.js'
+import { fetchWithRetry, cleanContent, toSimplified, sanitizeSearchResult, sanitizeHeaders } from './utils.js'
 
 /**
  * SPA / 加密小说站 Token 签名生成算法 (AES-128-CBC)
@@ -322,16 +322,74 @@ export async function evalLegadoJsAsync(jsCode, env = {}) {
 }
 
 /**
- * 执行 @js: 内联脚本（沙箱化，r 为输入字符串，返回处理后的字符串）
+ * 执行 @js: 内联脚本（兼容 Legado 的 result、r、java 环境）
  */
 function evalJsTransform(jsCode, r) {
   try {
-    const fn = new Function('r', jsCode + '\nreturn r')
-    return fn(r)
+    const javaShim = {
+      toNumChapter: (s) => (s || '').replace(/第([零一二两三四五六七八九十百千\d]+)章/g, (m, p) => `第${p}章`),
+      ajax: () => ''
+    }
+    const fn = new Function('r', 'result', 'java', `
+      var res = r;
+      var java = java;
+      var result = (typeof r !== 'undefined') ? r : '';
+      ${jsCode}
+      return (typeof result !== 'undefined' ? result : res);
+    `)
+    return fn(r, r, javaShim)
   } catch (e) {
-    console.warn('[RuleEngine] @js 执行失败:', e.message)
     return r
   }
+}
+
+/**
+ * 将常见的 XPath 表达式智能转换为 Cheerio CSS 选择器，杜绝 Empty sub-selector 报错
+ */
+function convertXPathToCss(xpath) {
+  if (!xpath || typeof xpath !== 'string') return ''
+  let s = xpath.trim()
+  if (!s.startsWith('/') && !s.startsWith('.//') && !s.includes('following-sibling::')) {
+    return s
+  }
+
+  // 1. 匹配类似 //*[@id="list"]//dt[2]/following-sibling::dd/a
+  const idMatch = s.match(/\[@id=["']([^"']+)["']\]/)
+  const classMatch = s.match(/\[@class=["']([^"']+)["']\]/)
+  
+  // 提取末尾的目标标签链
+  let targetTail = ''
+  if (s.includes('following-sibling::')) {
+    const parts = s.split('following-sibling::')
+    targetTail = parts[parts.length - 1].replace(/\[\d+\]/g, '').replace(/\/\//g, ' ').replace(/\//g, ' ').trim()
+  } else {
+    const slashTokens = s.split('/').filter(Boolean).map(t => t.replace(/\[\d+\]/g, '').replace(/\[[^\]]+\]/g, '').trim()).filter(Boolean)
+    if (slashTokens.length > 0) {
+      targetTail = slashTokens.join(' ')
+    }
+  }
+
+  if (idMatch) {
+    const id = idMatch[1]
+    return targetTail ? `#${id} ${targetTail}` : `#${id}`
+  }
+  if (classMatch) {
+    const cls = classMatch[1].split(' ').filter(Boolean).join('.')
+    return targetTail ? `.${cls} ${targetTail}` : `.${cls}`
+  }
+
+  // 通用清理 // 与 /，将 [@...] 转为 CSS
+  let cleaned = s
+    .replace(/^\.?\/\//, '')
+    .replace(/^\.?\//, '')
+    .replace(/\[@id=["']([^"']+)["']\]/g, '#$1')
+    .replace(/\[@class=["']([^"']+)["']\]/g, '.$1')
+    .replace(/\[[^\]]+\]/g, '')
+    .replace(/\/\//g, ' ')
+    .replace(/\//g, ' ')
+    .trim()
+
+  return cleaned || 'a'
 }
 
 /**
@@ -340,10 +398,20 @@ function evalJsTransform(jsCode, r) {
 function parseLegadoJsoupPart(part) {
   if (!part) return ''
   let trimmed = part.trim()
+    .replace(/:tbody/gi, ' tbody')
+    .replace(/:thead/gi, ' thead')
+    .replace(/:tfoot/gi, ' tfoot')
+    .replace(/!(\d+|\*|[\d:]+)/g, '')
+    .trim()
+
+  // 若是以 / 或 // 开头的 XPath，先尝试转换为 CSS
+  if (trimmed.startsWith('/') || trimmed.startsWith('.//') || trimmed.includes('following-sibling::')) {
+    trimmed = convertXPathToCss(trimmed)
+  }
 
   // text.下页 -> :contains("下页")
   if (trimmed.startsWith('text.')) {
-    const kw = trimmed.slice(5)
+    const kw = trimmed.slice(5).replace(/["']/g, '')
     return `:contains("${kw}")`
   }
 
@@ -364,7 +432,7 @@ function parseLegadoJsoupPart(part) {
     return '#' + rest
   }
 
-  // tag.a.0 或 tag.div
+  // tag.a.0 或 tag.div 或 tag.li.-1
   if (trimmed.startsWith('tag.')) {
     const rest = trimmed.slice(4)
     const tokens = rest.split('.')
@@ -375,8 +443,8 @@ function parseLegadoJsoupPart(part) {
     return rest
   }
 
-  // a.0, p.1, span.0, div.2, li.0 等纯 tag.index 简写
-  const tagIndexMatch = trimmed.match(/^([a-zA-Z0-9_-]+)\.(\d+)$/)
+  // a.0, p.1, span.0, div.2, li.-1 等纯 tag.index 简写
+  const tagIndexMatch = trimmed.match(/^([a-zA-Z0-9_-]+)\.(-?\d+)$/)
   if (tagIndexMatch) {
     const tagName = tagIndexMatch[1]
     const idx = parseInt(tagIndexMatch[2])
@@ -387,130 +455,345 @@ function parseLegadoJsoupPart(part) {
 }
 
 /**
- * 解析增强版 Selector，完美支持 CSS + Legado 3.0 Jsoup 简写 + 多级 @ 链式解析 + ## 正则清洗
+ * 解析增强版 Selector，完美支持 CSS + Legado 3.0 Jsoup 简写 + 多级 @ 链式解析 + ## 正则清洗 + && 与 || 逻辑
  */
 function resolveSelector(sel, $, context) {
   if (!sel) return ''
 
-  // 提取 Legado 正则清洗表达式（如 selector##regex）
-  let cleanSel = sel
-  let replaceRegex = null
-  if (cleanSel.includes('##')) {
-    const parts = cleanSel.split('##')
-    cleanSel = parts[0]
-    replaceRegex = parts.slice(1).join('##')
+  try {
+    // 0. 优先支持 Legado || 候选选择器（前一个提取不到时回退到下一个）
+    if (sel.includes('||')) {
+      const candidates = sel.split('||').map(s => s.trim()).filter(Boolean)
+      for (const cand of candidates) {
+        const res = resolveSelector(cand, $, context)
+        if (res) return res
+      }
+      return ''
+    }
+
+    // 1. 优先支持 Legado && 复合字段选择器（提取多个字段值用空格拼接）
+    if (sel.includes('&&')) {
+      const subSels = sel.split('&&').map(s => s.trim()).filter(Boolean)
+      const parts = subSels.map(s => resolveSelector(s, $, context)).filter(Boolean)
+      return parts.join(' ').trim()
+    }
+
+    // 2. 提取 Legado 正则清洗表达式（如 selector##regex）
+    let cleanSel = sel.trim()
+    let replaceRegex = null
+    if (cleanSel.includes('##')) {
+      const parts = cleanSel.split('##')
+      cleanSel = parts[0].trim()
+      replaceRegex = parts.slice(1).join('##')
+    }
+
+    // 3. 处理 {{...}} 模板包裹
+    if (cleanSel.startsWith('{{@@') && cleanSel.endsWith('}}')) {
+      cleanSel = cleanSel.slice(4, -2).trim()
+    } else if (cleanSel.startsWith('{{') && cleanSel.endsWith('}}') && !cleanSel.includes('function') && !cleanSel.includes('let ')) {
+      cleanSel = cleanSel.slice(2, -2).trim()
+    }
+
+    // 4. 处理 <js> ... </js> 内联脚本
+    if (cleanSel.includes('<js>')) {
+      const jsMatch = cleanSel.match(/<js>([\s\S]*?)<\/js>/)
+      if (jsMatch) {
+        const jsCode = jsMatch[1]
+        let r = ''
+        try {
+          r = typeof context === 'string' ? context : (context ? ($(context).html() || $(context).text() || '') : ($.html ? $.html() : ''))
+        } catch (_) {}
+        const transformed = evalJsTransform(jsCode, r)
+        const rest = cleanSel.slice(cleanSel.indexOf('</js>') + 5).trim()
+        if (rest) {
+          try {
+            const $sub = cheerio.load(transformed)
+            return resolveSelector(rest, $sub, $sub.root())
+          } catch (_) {
+            return String(transformed || '').trim()
+          }
+        }
+        return String(transformed || '').trim()
+      }
+    }
+
+    let val = ''
+
+    // 特殊：以 @js: 开头
+    if (cleanSel.startsWith('@js:')) {
+      const jsCode = cleanSel.slice(4)
+      let r = ''
+      try {
+        r = $(context).html() || $(context).text() || ''
+      } catch (_) {}
+      val = evalJsTransform(jsCode, r)
+    } else if (cleanSel.startsWith('$') || cleanSel.startsWith('{$.')) {
+      // 5. JSONPath 轻量提取
+      const path = cleanSel.replace(/^\{(\$\.[^}]+)\}$/, '$1')
+      let ctxStr = ''
+      if (typeof context === 'string') ctxStr = context
+      else {
+        try { ctxStr = $(context).text() || $(context).html() || '' } catch (_) {}
+      }
+      val = extractJsonPath(ctxStr, path)
+    } else if (cleanSel.includes('@')) {
+      // 6. 如果是以 @ 切分的多层 Jsoup 链式选择器
+      const parts = cleanSel.split('@').map(p => p.trim()).filter(Boolean)
+      let curr = $(context)
+      let attrToFetch = null
+
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i]
+        if (p === 'text' || p === 'textNodes') {
+          attrToFetch = 'text'
+          continue
+        }
+        if (p === 'href' || p === 'src' || p === 'title' || p === 'alt' || p === 'content' || p === 'html') {
+          attrToFetch = p
+          continue
+        }
+
+        // 识别负数索引语法，如 li.-1 或 a.-2
+        const negMatch = p.match(/^([a-zA-Z0-9_-]+)\.(-?\d+)$/)
+        if (negMatch && curr && curr.length) {
+          const tagName = negMatch[1]
+          const idx = parseInt(negMatch[2])
+          try {
+            const found = curr.find(tagName)
+            if (found.length) {
+              curr = found.eq(idx)
+              continue
+            }
+          } catch (_) {}
+        }
+
+        const cssSel = parseLegadoJsoupPart(p)
+        if (cssSel && curr && curr.length) {
+          try {
+            const found = curr.find(cssSel)
+            if (found.length) curr = found.first()
+          } catch (_) {}
+        }
+      }
+
+      if (curr && curr.length) {
+        if (attrToFetch === 'text') val = curr.text().trim()
+        else if (attrToFetch === 'html') val = curr.html() || ''
+        else if (attrToFetch) val = curr.attr(attrToFetch) || ''
+        else val = curr.text().trim()
+      }
+    }
+
+    // 7. 常规 CSS / Jsoup 解析备用
+    if (!val) {
+      const jsIdx = cleanSel.indexOf('@js:')
+      const atIdx = jsIdx === -1 ? cleanSel.lastIndexOf('@') : cleanSel.lastIndexOf('@', jsIdx - 1)
+
+      let cssPart = cleanSel
+      let attrPart = null
+      let jsPart = null
+
+      if (jsIdx !== -1) {
+        const beforeJs = cleanSel.slice(0, jsIdx)
+        const attrAt = beforeJs.lastIndexOf('@')
+        if (attrAt !== -1 && attrAt !== 0) {
+          cssPart = beforeJs.slice(0, attrAt)
+          attrPart = beforeJs.slice(attrAt + 1)
+        } else {
+          cssPart = beforeJs
+        }
+        jsPart = cleanSel.slice(jsIdx + 4)
+      } else if (atIdx > 0) {
+        cssPart = cleanSel.slice(0, atIdx)
+        attrPart = cleanSel.slice(atIdx + 1)
+      }
+
+      cssPart = parseLegadoJsoupPart(cssPart)
+      let $el = null
+      try {
+        $el = cssPart ? $(context).find(cssPart).first() : $(context)
+      } catch (_) {
+        $el = $(context)
+      }
+
+      if ($el && $el.length) {
+        if (attrPart === 'href' || attrPart === 'src' || attrPart === 'title' || attrPart === 'alt') {
+          val = $el.attr(attrPart) || ''
+        } else if (attrPart === 'html') {
+          val = $el.html() || ''
+        } else if (attrPart) {
+          val = $el.attr('content') || $el.attr(attrPart) || $el.text().trim()
+        } else {
+          val = $el.text().trim()
+        }
+      }
+
+      if (jsPart) {
+        val = evalJsTransform(jsPart, val)
+      }
+    }
+
+    // 8. 应用 ## 正则清洗
+    if (replaceRegex && val) {
+      try {
+        const subParts = replaceRegex.split('|')
+        for (const p of subParts) {
+          if (!p.trim()) continue
+          try {
+            const re = new RegExp(p.trim(), 'g')
+            val = val.replace(re, '')
+          } catch (_) {
+            val = val.split(p.trim()).join('')
+          }
+        }
+      } catch (_) {}
+    }
+
+    return (val || '').trim()
+  } catch (err) {
+    return ''
+  }
+}
+
+/**
+ * 解析增强版元素列表（支持 || 分隔候选、XPath 兼容、Legado Jsoup 链式 @ 与排除下标 !0:1:2）
+ */
+function queryElements($, selector, context) {
+  if (!selector) return []
+  const $root = context ? $(context) : ($.root ? $.root() : $('body'))
+
+  // 1. 支持 Legado || 候选选择器
+  if (selector.includes('||')) {
+    const candidates = selector.split('||').map(s => s.trim()).filter(Boolean)
+    for (const cand of candidates) {
+      const res = queryElements($, cand, context)
+      if (res && res.length > 0) return res
+    }
+    return []
   }
 
-  let val = ''
+  // 2. 如果是 XPath
+  let sel = selector.trim()
+  if (sel.startsWith('/') || sel.startsWith('.//') || sel.includes('following-sibling::')) {
+    sel = convertXPathToCss(sel)
+  }
 
-  // 特殊：以 @js: 开头
-  if (cleanSel.startsWith('@js:')) {
-    const jsCode = cleanSel.slice(4)
-    const r = $(context).html() || ''
-    val = evalJsTransform(jsCode, r)
-  } else if (cleanSel.includes('@')) {
-    // 1. 如果是以 @ 切分的多层 Jsoup 链式选择器
-    const parts = cleanSel.split('@').map(p => p.trim()).filter(Boolean)
-    let curr = $(context)
-    let attrToFetch = null
+  // 3. 处理 Legado 多级 @ 链式结构 (例如 class.mulu_list@tag.li@tag.a 或 id.list@tag.dd)
+  if (sel.includes('@') && !sel.includes('<js>') && !sel.startsWith('@js:')) {
+    const parts = sel.split('@').map(p => p.trim()).filter(Boolean)
+    // 检查末尾是否是纯属性提取词 (如 text, href 等)，如果是则去掉末尾属性词，只保留元素选择器链
+    const attrWords = new Set(['text', 'textnodes', 'href', 'src', 'title', 'alt', 'content', 'html'])
+    const lastPart = parts[parts.length - 1].toLowerCase()
+    const cleanParts = attrWords.has(lastPart) ? parts.slice(0, -1) : parts
 
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i]
-      if (p === 'text' || p === 'textNodes') {
-        attrToFetch = 'text'
-        continue
+    let currentSet = [$root]
+    for (const p of cleanParts) {
+      // 提取排除下标 !0:1:2 或 !0
+      let excludeIndices = new Set()
+      let rawPart = p
+      const exclMatch = rawPart.match(/!([\d:]+)/)
+      if (exclMatch) {
+        exclMatch[1].split(':').forEach(num => {
+          const n = parseInt(num, 10)
+          if (!isNaN(n)) excludeIndices.add(n)
+        })
+        rawPart = rawPart.replace(/![\d:]+/, '')
       }
-      if (p === 'href' || p === 'src' || p === 'title' || p === 'alt' || p === 'content') {
-        attrToFetch = p
-        continue
+
+      const cssPart = parseLegadoJsoupPart(rawPart)
+      if (!cssPart) continue
+
+      const nextSet = []
+      for (const $curr of currentSet) {
+        try {
+          const found = $curr.find(cssPart).toArray()
+          found.forEach((el, idx) => {
+            if (!excludeIndices.has(idx)) {
+              nextSet.push($(el))
+            }
+          })
+        } catch (_) {}
       }
-      const cssSel = parseLegadoJsoupPart(p)
-      if (cssSel && curr && curr.length) {
-        const found = curr.find(cssSel)
-        if (found.length) curr = found.first()
-      }
+      currentSet = nextSet
+      if (currentSet.length === 0) break
     }
 
-    if (curr && curr.length) {
-      if (attrToFetch === 'text') val = curr.text().trim()
-      else if (attrToFetch) val = curr.attr(attrToFetch) || ''
-      else val = curr.text().trim()
+    if (currentSet.length > 0) {
+      return currentSet
     }
   }
 
-  // 2. 常规 CSS / Jsoup 解析备用
-  if (!val) {
-    const jsIdx = cleanSel.indexOf('@js:')
-    const atIdx = jsIdx === -1 ? cleanSel.lastIndexOf('@') : cleanSel.lastIndexOf('@', jsIdx - 1)
+  // 4. 单层或普通 CSS 选择器安全解析
+  try {
+    let cleanCss = parseLegadoJsoupPart(sel)
+    cleanCss = cleanCss
+      .replace(/:tbody/gi, ' tbody')
+      .replace(/:thead/gi, ' thead')
+      .replace(/:tfoot/gi, ' tfoot')
+      .replace(/!(\d+|\*|[\d:]+)/g, '')
+      .trim()
+    
+    cleanCss = cleanCss.replace(/^,+|,+$/g, '').trim()
 
-    let cssPart = cleanSel
-    let attrPart = null
-    let jsPart = null
-
-    if (jsIdx !== -1) {
-      const beforeJs = cleanSel.slice(0, jsIdx)
-      const attrAt = beforeJs.lastIndexOf('@')
-      if (attrAt !== -1 && attrAt !== 0) {
-        cssPart = beforeJs.slice(0, attrAt)
-        attrPart = beforeJs.slice(attrAt + 1)
-      } else {
-        cssPart = beforeJs
-      }
-      jsPart = cleanSel.slice(jsIdx + 4)
-    } else if (atIdx > 0) {
-      cssPart = cleanSel.slice(0, atIdx)
-      attrPart = cleanSel.slice(atIdx + 1)
+    if (cleanCss) {
+      return $root.find(cleanCss).toArray().map(el => $(el))
     }
-
-    cssPart = parseLegadoJsoupPart(cssPart)
-    const $el = cssPart ? $(context).find(cssPart).first() : $(context)
-    if ($el.length) {
-      if (attrPart === 'href' || attrPart === 'src' || attrPart === 'title' || attrPart === 'alt') {
-        val = $el.attr(attrPart) || ''
-      } else if (attrPart === 'html') {
-        val = $el.html() || ''
-      } else if (attrPart) {
-        val = $el.attr('content') || $el.attr(attrPart) || $el.text().trim()
-      } else {
-        val = $el.text().trim()
-      }
-    }
-
-    if (jsPart) {
-      val = evalJsTransform(jsPart, val)
-    }
+  } catch (_) {
+    // 拦截任何 Cheerio/CSS 语法解析异常（如 Empty sub-selector），由调用方安全降级
   }
 
-  // 3. 应用 ## 正则清洗
-  if (replaceRegex && val) {
+  return []
+}
+
+/**
+ * 通用小说目录智能启发式容器提取器（当书源规则失效或未命中时自动保底救火）
+ */
+function findHeuristicTocElements($page) {
+  const commonSelectors = [
+    '#list dd a', '#list a', '#chapters a', '.catalog a',
+    '.chapter-list a', '.list-charts a', '.read-section a',
+    'dl.chapterlist dd a', 'dl dd a', 'ul.dirs li a', 'ul.dirs a',
+    '.dirtree a', '.book-list a', '.section-box a', '.mulu_list li a',
+    '#chapterlist a', '.chapterlist a', '#dir a', '.dir a',
+    '.content-list a', '.book_last a', '#defaulthtml4 a',
+    'div.box_con div#list a', 'div.mulu a'
+  ]
+
+  for (const s of commonSelectors) {
     try {
-      const subParts = replaceRegex.split('|')
-      for (const p of subParts) {
-        if (!p.trim()) continue
-        const re = new RegExp(p.trim(), 'g')
-        val = val.replace(re, '')
+      const items = $page(s).toArray()
+      if (items.length >= 5) {
+        return items.map(el => $page(el))
       }
     } catch (_) {}
   }
 
-  return (val || '').trim()
+  // 深度保底：全页面链接特征扫描
+  try {
+    const chapterRegex = /第\s*[0-9零一二两三四五六七八九十百千]+\s*[章节回卷]|Chapter|\b\d{1,5}\b|楔子|序言|尾声|后记|番外|终章|感言/i
+    const candidateLinks = []
+    $page('a').each((_, el) => {
+      const $el = $page(el)
+      const text = $el.text().trim()
+      const href = $el.attr('href')
+      if (!href || href.startsWith('javascript:') || href === '#' || href.startsWith('void(')) return
+      if (text.length >= 2 && text.length <= 50 && chapterRegex.test(text)) {
+        candidateLinks.push($el)
+      }
+    })
+    if (candidateLinks.length >= 5) {
+      return candidateLinks
+    }
+  } catch (_) {}
+
+  return []
 }
 
 /**
- * 从页面提取列表（result 选择器 → 多个元素）
+ * 保持兼容的 resolveList 导出
  */
 function resolveList(selector, $, root) {
-  if (!selector) return []
-  if (selector.includes('@js:')) {
-    const jsIdx = selector.indexOf('@js:')
-    const cssPart = selector.slice(0, jsIdx)
-    const jsCode = selector.slice(jsIdx + 4)
-    const htmlFull = (cssPart ? $(root).find(cssPart) : $(root)).html() || ''
-    const transformed = evalJsTransform(jsCode, htmlFull)
-    const $2 = cheerio.load(transformed)
-    return $2('li, div, tr').toArray().map(el => $2(el))
-  }
-  return $(root).find(selector).toArray().map(el => $(el))
+  return queryElements($, selector, root)
 }
 
 /**
@@ -572,7 +855,19 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
     const parts = html.split(new RegExp(`<br\\s*\\/?>${sep}`, 'i'))
     text = parts.map(p => cheerio.load(p).text().trim()).filter(Boolean).join('\n')
   } else {
-    text = $content.text().trim()
+    // 关键修复：绝对不能直接 $content.text()，因为 cheerio 会吃掉所有 <br>、<p>、<div>！
+    // 必须先将 html 中的块级和换行标签转换为 \n，保留正常的段落分割
+    let html = $content.html() || ''
+    if (html) {
+      html = html
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n')
+        .replace(/<\/div>/gi, '\n')
+        .replace(/<p[^>]*>/gi, '\n')
+      text = cheerio.load(html).text()
+    } else {
+      text = $content.text().trim()
+    }
   }
 
   return text
@@ -611,9 +906,14 @@ export class RuleSource {
    */
   async _request(urlOrConfig, keyword) {
     const searchRule = this.rule.search || {}
-    let rawUrl = typeof urlOrConfig === 'string' ? urlOrConfig : urlOrConfig.url
+    let rawUrl = typeof urlOrConfig === 'string' ? urlOrConfig : (urlOrConfig.url || '')
     let method = (urlOrConfig.method || searchRule.method || 'get').toUpperCase()
     const cookies = urlOrConfig.cookies || searchRule.cookies
+
+    // 自动补全相对 URL
+    if (rawUrl && !rawUrl.startsWith('http') && !rawUrl.startsWith('@js:')) {
+      rawUrl = this._absUrl(rawUrl)
+    }
 
     let safeReferer = 'https://www.baidu.com'
     try {
@@ -624,34 +924,36 @@ export class RuleSource {
       }
     } catch (_) {}
 
-    const headers = {
+    const baseHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9',
       'Referer': safeReferer
     }
 
+    const headers = sanitizeHeaders(baseHeaders)
+
     // 提取书源自带的自定义 Header（如移动端 UA、自定义 Cookie 等）
     const rawHeader = this.rule.rawLegadoRule?.header || this.rule.header
     if (rawHeader) {
       if (typeof rawHeader === 'object' && rawHeader !== null) {
-        Object.assign(headers, rawHeader)
+        Object.assign(headers, sanitizeHeaders(rawHeader))
       } else if (typeof rawHeader === 'string' && rawHeader.trim().startsWith('{')) {
         try {
           const parsedH = JSON.parse(rawHeader)
-          if (parsedH && typeof parsedH === 'object') Object.assign(headers, parsedH)
+          if (parsedH && typeof parsedH === 'object') Object.assign(headers, sanitizeHeaders(parsedH))
         } catch (_) {}
       }
     }
 
     // 请求配置特定 header 覆盖
     if (urlOrConfig && typeof urlOrConfig === 'object' && urlOrConfig.headers) {
-      Object.assign(headers, urlOrConfig.headers)
+      Object.assign(headers, sanitizeHeaders(urlOrConfig.headers))
     }
 
     if (cookies) {
       headers['Cookie'] = typeof cookies === 'string'
-        ? cookies
+        ? cookies.replace(/[\r\n]+/g, '')
         : Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ')
     }
 
@@ -677,6 +979,11 @@ export class RuleSource {
         if (url.startsWith('@js:')) {
           const jsCode = url.slice(4)
           url = evalJsTransform(jsCode, keyword || '')
+        }
+
+        // 再次确保 url 格式合法
+        if (!url.startsWith('http')) {
+          url = this._absUrl(url)
         }
 
         // POST 表单数据构造
@@ -734,7 +1041,7 @@ export class RuleSource {
           body: bodyData
         }, 1, 6000)
 
-        if (html && html.length > 50) {
+        if (html && html.length > 30) {
           return html
         }
       } catch (err) {
@@ -752,27 +1059,64 @@ export class RuleSource {
     if (!s || s.disabled) return []
 
     try {
-      let targetUrl = s.url || this.rule.rawLegadoRule?.searchUrl || ''
+      let targetUrl = s.url || ''
+      const rawLegadoSearchUrl = this.rule.rawLegadoRule?.searchUrl || ''
+
+      // 修复损坏的 targetUrl（如被逗号截断或缺少模板），优先参考 rawLegadoRule.searchUrl
+      if (!targetUrl || targetUrl.includes('{{String(source') || !targetUrl.includes('http') || (rawLegadoSearchUrl && rawLegadoSearchUrl.length > targetUrl.length)) {
+        if (rawLegadoSearchUrl) {
+          targetUrl = rawLegadoSearchUrl
+        }
+      }
+
       let reqConfig = { ...s }
 
       // 解析 Legado 3.0 的复杂 searchUrl 格式：url,{"method":"POST","body":"...","charset":"gbk"}
       if (targetUrl.includes(',') && targetUrl.includes('{')) {
-        const commaIdx = targetUrl.indexOf(',')
-        const urlPart = targetUrl.slice(0, commaIdx).trim()
-        const optPart = targetUrl.slice(commaIdx + 1).trim()
-        try {
-          const parsedOpt = JSON.parse(optPart)
-          targetUrl = urlPart
-          if (parsedOpt.method) reqConfig.method = parsedOpt.method
-          if (parsedOpt.body) reqConfig.body = parsedOpt.body
-          if (parsedOpt.charset) reqConfig.charset = parsedOpt.charset
-          if (parsedOpt.headers) reqConfig.headers = parsedOpt.headers
-        } catch (_) {}
+        const lastCommaIdx = targetUrl.lastIndexOf(',{')
+        if (lastCommaIdx !== -1) {
+          const urlPart = targetUrl.slice(0, lastCommaIdx).trim()
+          const optPart = targetUrl.slice(lastCommaIdx + 1).trim()
+          try {
+            const parsedOpt = JSON.parse(optPart)
+            targetUrl = urlPart
+            if (parsedOpt.method) reqConfig.method = parsedOpt.method
+            if (parsedOpt.body) reqConfig.body = parsedOpt.body
+            if (parsedOpt.charset) reqConfig.charset = parsedOpt.charset
+            if (parsedOpt.headers) reqConfig.headers = parsedOpt.headers
+          } catch (_) {}
+        }
       }
+
+      // 智能求值 Legado 模板变量（如 source.getKey(), source.getVariable(), page 等）
+      targetUrl = targetUrl.replace(/\{\{([\s\S]*?)\}\}/g, (match, expr) => {
+        const trimmed = expr.trim()
+        if (trimmed === 'key' || trimmed === 'keyword' || trimmed === 'searchkey') return '{{key}}'
+        if (trimmed === 'page') return '1'
+        if (trimmed.includes('source.') || trimmed.includes('baseUrl')) {
+          try {
+            const fn = new Function('source', 'baseUrl', `return (${trimmed})`)
+            const res = fn({
+              getKey: () => this.baseUrl,
+              getVariable: () => this.baseUrl,
+              bookSourceUrl: this.baseUrl
+            }, this.baseUrl)
+            return res != null ? String(res) : this.baseUrl
+          } catch (_) {
+            return this.baseUrl
+          }
+        }
+        return match
+      })
 
       // 自动修复 SPA Hash 路由 URL 为 API 或真实路径
       if (targetUrl.includes('/#/search')) {
         targetUrl = targetUrl.replace('/#/search', '/api/search')
+      }
+
+      // 确保 targetUrl 为合法绝对路径
+      if (!targetUrl.startsWith('http') && !targetUrl.startsWith('@js:')) {
+        targetUrl = this._absUrl(targetUrl)
       }
 
       const html = await this._request({ ...reqConfig, url: targetUrl }, keyword)
@@ -780,49 +1124,128 @@ export class RuleSource {
 
       // 1. 优先自动检测是否为 JSON 响应（支持现代 SPA / API 书源）
       const trimmed = html.trim()
+      let isJson = false
+      let json = null
+
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
-          const json = JSON.parse(trimmed)
-          let list = Array.isArray(json) ? json : (json.data || json.list || json.books || json.results || json.items || [])
+          json = JSON.parse(trimmed)
+          isJson = true
+        } catch (_) {}
+      } else {
+        // 尝试检测 JSONP 包装
+        const jsonpMatch = trimmed.match(/^[\w$]+\s*\(([\s\S]*)\)\s*;?$/)
+        if (jsonpMatch) {
+          try {
+            json = JSON.parse(jsonpMatch[1].trim())
+            isJson = true
+          } catch (_) {}
+        }
+      }
+
+      if (isJson && json) {
+        try {
+          let list = []
+          // 优先根据 s.result 中的 JSONPath 提取
+          if (s.result && s.result.trim().startsWith('$')) {
+            const custom = extractJsonPath(json, s.result.trim())
+            if (Array.isArray(custom)) list = custom
+          }
+
+          if (!list.length) {
+            if (Array.isArray(json)) {
+              list = json
+            } else if (json.data && Array.isArray(json.data.list)) {
+              list = json.data.list
+            } else if (json.data && Array.isArray(json.data.books)) {
+              list = json.data.books
+            } else if (json.data && Array.isArray(json.data.items)) {
+              list = json.data.items
+            } else if (json.data && Array.isArray(json.data.data)) {
+              list = json.data.data
+            } else if (Array.isArray(json.data)) {
+              list = json.data
+            } else if (Array.isArray(json.list)) {
+              list = json.list
+            } else if (Array.isArray(json.books)) {
+              list = json.books
+            } else if (Array.isArray(json.results)) {
+              list = json.results
+            } else if (Array.isArray(json.items)) {
+              list = json.items
+            } else if (Array.isArray(json.dataList)) {
+              list = json.dataList
+            }
+          }
+
           if (Array.isArray(list) && list.length > 0) {
             const results = []
-            const host = this.baseUrl || (targetUrl.match(/^(https?:\/\/[^/]+)/) ? targetUrl.match(/^(https?:\/\/[^/]+)/)[1] : '')
-            
-            // 如果搜索条目缺少最新章节或更新时间，自动为前 15 条并发请求书籍详情补全
-            const needEnrich = list.slice(0, 15).some(it => (!it.lastchapter && !it.latestChapter) && (it.id || it.bookId))
-            const enrichedMap = {}
-            if (needEnrich && host) {
-              const enrichPromises = list.slice(0, 15).map(async (it) => {
-                const bookId = it.id || it.bookId || ''
-                if (bookId) {
-                  try {
-                    const detail = await requestSpaApi(host, 'book', { id: Number(bookId) || bookId })
-                    if (detail && detail.title) {
-                      enrichedMap[bookId] = detail
-                    }
-                  } catch (_) {}
-                }
-              })
-              await Promise.allSettled(enrichPromises)
-            }
-
             for (const it of list) {
-              const id = it.id || it.bookId || it.book_id || ''
-              const detail = enrichedMap[id] || {}
+              if (!it || typeof it !== 'object') continue
 
-              const title = it.title || it.name || it.bookName || it.book_name || detail.title || ''
+              let title = ''
+              if (s.bookName && s.bookName.startsWith('$')) {
+                title = extractJsonPath(it, s.bookName)
+              }
+              if (!title) {
+                title = it.title || it.name || it.bookName || it.book_name || it.newBookName || ''
+              }
               if (!title) continue
-              const author = it.author || it.authorName || it.writer || detail.author || '未知'
-              const itemUrl = it.url || (id ? `${this.baseUrl}/book/${id}/` : '')
-              const latestChapter = it.lastchapter || it.latestChapter || it.last_chapter || detail.lastchapter || ''
-              const updateTime = it.lastupdate || it.updateTime || it.last_update || detail.lastupdate || ''
-              const status = it.full || it.status || detail.full || ''
+
+              let author = ''
+              if (s.author && s.author.startsWith('$')) {
+                author = extractJsonPath(it, s.author)
+              }
+              if (!author) {
+                author = it.author || it.authorName || it.writer || '未知'
+              }
+
+              let itemUrl = ''
+              if (s.bookUrl) {
+                let rawItemUrl = s.bookUrl
+                rawItemUrl = rawItemUrl.replace(/\{\{\s*\$?\??\.?(\w+)\s*\}\}/g, (_, field) => {
+                  return it[field] != null ? it[field] : ''
+                })
+                if (rawItemUrl.startsWith('http')) {
+                  itemUrl = rawItemUrl
+                } else if (rawItemUrl) {
+                  itemUrl = this._absUrl(rawItemUrl)
+                }
+              }
+              if (!itemUrl) {
+                const id = it.id || it.bookId || it.book_id || ''
+                itemUrl = it.url || (id ? `${this.baseUrl}/book/${id}/` : '')
+              }
+
+              let latestChapter = ''
+              if (s.latestChapter && s.latestChapter.startsWith('$')) {
+                latestChapter = extractJsonPath(it, s.latestChapter)
+              }
+              if (!latestChapter) {
+                latestChapter = it.lastchapter || it.latestChapter || it.last_chapter || it.lastChapter || ''
+              }
+
+              let updateTime = ''
+              if (s.lastUpdateTime && s.lastUpdateTime.startsWith('$')) {
+                updateTime = extractJsonPath(it, s.lastUpdateTime)
+              }
+              if (!updateTime) {
+                updateTime = it.lastupdate || it.updateTime || it.last_update || ''
+              }
+
+              let cover = ''
+              if (s.coverUrl && s.coverUrl.startsWith('$')) {
+                cover = extractJsonPath(it, s.coverUrl)
+              }
+              if (!cover) {
+                cover = it.cover || it.coverUrl || it.bookImg || null
+              }
 
               results.push(sanitizeSearchResult({
                 title: toSimplified(title),
                 author: toSimplified(author),
-                cover: it.cover || it.coverUrl || detail.cover || null,
-                status: status,
+                cover: cover,
+                status: it.status || (it.full ? '完结' : '连载'),
                 latestChapter: toSimplified(latestChapter),
                 lastUpdateTime: updateTime,
                 url: this._absUrl(itemUrl),
@@ -830,19 +1253,27 @@ export class RuleSource {
                 sourceName: this.name
               }))
             }
+
             if (results.length > 0) {
               return results
             }
           }
         } catch (_) {}
+        // 关键防御：如果是 JSON 响应，绝不回退至 Cheerio DOM 选择器，避免 Empty sub-selector
+        return []
       }
 
       // 2. 常规 HTML DOM 选择器解析
       let $ = cheerio.load(html)
+      $('script, style, noscript, header, nav, footer').remove()
 
-      // result 可能含 @js:（响应体转换）
       let resultSel = s.result || ''
       let items = []
+
+      // 若 resultSel 为纯 JSONPath，不适用 HTML 解析
+      if (resultSel.trim().startsWith('$')) {
+        return []
+      }
 
       if (resultSel.includes('@js:')) {
         const jsIdx = resultSel.indexOf('@js:')
@@ -851,39 +1282,91 @@ export class RuleSource {
         const htmlFull = cssPart ? $(cssPart).html() : $.html()
         const transformed = evalJsTransform(jsCode, htmlFull || html)
         $ = cheerio.load(transformed)
-        items = $('dl, li, div, tr').toArray().map(el => $(el)).filter(el => el.text().trim())
-      } else {
-        items = $(resultSel).toArray().map(el => $(el))
+        $('script, style, noscript, header, nav, footer').remove()
+        items = queryElements($, 'dl, .item, .bookbox, article, tr, li', $.root())
+      } else if (resultSel) {
+        try {
+          items = queryElements($, resultSel, $.root())
+        } catch (_) {
+          items = []
+        }
+      }
+
+      if (!items || items.length === 0) {
+        // 降级使用特征明确的通用列表项选择器（避免误抓页面普通列表）
+        items = queryElements($, 'div.item, .bookbox, .book-item, .search-item, table.grid tr, dl.item', $.root())
       }
 
       const results = []
-      for (const $item of items) {
-        let titleText = resolveSelector(s.bookName, $, $item)
+      for (const itemEl of items) {
+        const $item = typeof itemEl.find === 'function' ? itemEl : $(itemEl)
+        let titleText = ''
+        try {
+          titleText = resolveSelector(s.bookName, $, $item)
+        } catch (_) {}
         if (!titleText) {
-          // 备用：尝试普通 find('a')
-          titleText = $item.find('a').first().text().trim()
+          titleText = $item.find('h3 a, h4 a, .title a, a').first().text().trim()
         }
         if (!titleText) continue
 
+        // 过滤导航噪音和无意义文本
+        const junkTitles = ['首页', '排行榜', '书架', '分类', '搜索', '全本', '完本', '登录', '注册', '书库', '更多', '下一页', '上一页']
+        if (junkTitles.includes(titleText)) continue
+
         // 书籍详情页 URL
         let bookUrl = ''
-        const titleEl = s.bookName ? $item.find(s.bookName.split('@')[0]).first() : null
-        const titleHref = titleEl?.attr('href') || $item.find('a').first().attr('href')
-        if (titleHref) {
-          bookUrl = this._absUrl(titleHref)
-        } else {
-          bookUrl = this._absUrl(resolveSelector(s.bookName + '@href', $, $item))
+        if (s.bookUrl) {
+          try {
+            bookUrl = this._absUrl(resolveSelector(s.bookUrl, $, $item))
+          } catch (_) {}
         }
+        if (!bookUrl) {
+          try {
+            const aTag = $item.is('a') ? $item : $item.find('a').first()
+            const titleHref = aTag.attr('href')
+            if (titleHref) bookUrl = this._absUrl(titleHref)
+          } catch (_) {}
+        }
+        if (!bookUrl) continue
 
-        const authorText = resolveSelector(s.author, $, $item) || '未知'
-        const latestChapterText = resolveSelector(s.latestChapter, $, $item)
-        const updateTimeText = resolveSelector(s.lastUpdateTime, $, $item)
-        const statusText = resolveSelector(s.status, $, $item)
+        let authorText = ''
+        try {
+          authorText = resolveSelector(s.author, $, $item)
+        } catch (_) {}
+        if (!authorText) authorText = '未知'
+
+        let latestChapterText = ''
+        try {
+          latestChapterText = resolveSelector(s.latestChapter, $, $item)
+        } catch (_) {}
+
+        let updateTimeText = ''
+        try {
+          updateTimeText = resolveSelector(s.lastUpdateTime, $, $item)
+        } catch (_) {}
+
+        let statusText = ''
+        try {
+          statusText = resolveSelector(s.status, $, $item)
+        } catch (_) {}
+
+        let coverUrl = ''
+        if (s.coverUrl) {
+          try {
+            coverUrl = resolveSelector(s.coverUrl, $, $item)
+          } catch (_) {}
+        }
+        if (!coverUrl) {
+          coverUrl = $item.find('img').first().attr('src') || null
+        }
+        if (coverUrl && !coverUrl.startsWith('http')) {
+          coverUrl = this._absUrl(coverUrl)
+        }
 
         results.push(sanitizeSearchResult({
           title: toSimplified(titleText),
           author: toSimplified(authorText),
-          cover: null,
+          cover: coverUrl || null,
           status: statusText || '',
           latestChapter: toSimplified(latestChapterText || ''),
           lastUpdateTime: updateTimeText || '',
@@ -998,27 +1481,41 @@ export class RuleSource {
 
       const extractChapters = ($page) => {
         const baseUri = toc.baseUri || ''
-        const itemSel = toc.item || this.rule.ruleToc?.chapterList || 'a'
-        $page(itemSel).each((_, el) => {
-          const $el = $page(el)
+        const itemSel = toc.item || this.rule.ruleToc?.chapterList || ''
+        let elements = []
+        if (itemSel) {
+          try {
+            elements = queryElements($page, itemSel, $page.root())
+          } catch (_) {}
+        }
+
+        // 如果按规则未命中任何元素，自动触发小说通用目录启发式提取
+        if (!elements || elements.length === 0) {
+          elements = findHeuristicTocElements($page)
+        }
+
+        elements.forEach(el => {
+          const $el = typeof el.find === 'function' ? el : $page(el)
           let text = ''
           let href = ''
 
           if (toc.chapterName) {
-            text = resolveSelector(toc.chapterName, $page, $el)
+            try { text = resolveSelector(toc.chapterName, $page, $el) } catch (_) {}
           }
           if (!text) {
             text = $el.is('a') ? $el.text().trim() : ($el.find('a').first().text().trim() || $el.text().trim())
           }
 
           if (toc.chapterUrl) {
-            href = resolveSelector(toc.chapterUrl, $page, $el)
+            try { href = resolveSelector(toc.chapterUrl, $page, $el) } catch (_) {}
           }
           if (!href) {
             href = $el.is('a') ? $el.attr('href') : $el.find('a').first().attr('href')
           }
 
           if (!text || !href) return
+          if (href.startsWith('javascript:') || href === '#' || href.startsWith('void(')) return
+
           const absHref = href.startsWith('http') ? href : (baseUri ? baseUri.replace('%s', '') + href : this._absUrl(href))
           if (!seen.has(absHref)) {
             seen.add(absHref)
@@ -1028,6 +1525,26 @@ export class RuleSource {
       }
 
       extractChapters($toc)
+
+      // 如果当前页面依然解析不出章节，尝试在页面寻找“全部章节 / 目录”直达链接二次探测
+      if (chapters.length === 0) {
+        let secondaryTocUrl = ''
+        $toc('a').each((_, aEl) => {
+          if (secondaryTocUrl) return
+          const linkText = $toc(aEl).text().trim()
+          const linkHref = $toc(aEl).attr('href')
+          if (!linkHref || linkHref.startsWith('javascript:') || linkHref === '#') return
+          if (linkText.includes('全部章节') || linkText.includes('查看目录') || linkText.includes('完整目录') || linkText.includes('章节列表')) {
+            secondaryTocUrl = this._absUrl(linkHref)
+          }
+        })
+        if (secondaryTocUrl && secondaryTocUrl !== tocUrl && secondaryTocUrl !== novelUrl) {
+          try {
+            const secHtml = await fetchWithRetry(secondaryTocUrl)
+            extractChapters(cheerio.load(secHtml))
+          } catch (_) {}
+        }
+      }
 
       // 下一页（翻页目录）—— 仅处理 select option 格式
       if (toc.nextPage && chapters.length > 0) {
@@ -1138,12 +1655,19 @@ export class RuleSource {
           }
         }
       } else if (contentRule && !contentRule.includes('{') && !contentRule.includes('let ') && !contentRule.includes('function') && !contentRule.startsWith('<')) {
-        // 常规合法 CSS 选择器解析
+        // 常规合法 CSS / Jsoup 选择器解析
         const $ = cheerio.load(html)
         $('script, style, noscript').remove()
 
-        let $content = $(contentRule).first()
-        if ($content.length) {
+        let $content = null
+        try {
+          const els = queryElements($, contentRule, $.root())
+          if (els && els.length > 0) {
+            $content = typeof els[0].find === 'function' ? els[0] : $(els[0])
+          }
+        } catch (_) {}
+
+        if ($content && $content.length) {
           // 过滤标签
           if (ch.filterTag) {
             const tags = ch.filterTag.split(',').map(t => t.trim()).filter(Boolean)

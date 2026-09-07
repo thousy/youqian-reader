@@ -37,6 +37,7 @@ const api = {
 
   // TXT 读取
   readTxtFile: (path) => ipcRenderer.invoke('read-txt-file', path),
+  applyReplaceRules: (content, context) => ipcRenderer.invoke('apply-replace-rules', content, context),
 
   // MOBI/AZW3 内容提取
   extractMobiContent: (path) => ipcRenderer.invoke('extract-mobi-content', path),
@@ -103,6 +104,7 @@ const api = {
   novelExportSourcesJson: (sourceIds) => ipcRenderer.invoke('novel-export-sources-json', sourceIds),
   novelImportSource: () => ipcRenderer.invoke('novel-import-source'),
   novelImportCustomSource: (content) => ipcRenderer.invoke('novel-import-custom-source', content),
+  novelImportSourceFromUrl: (url) => ipcRenderer.invoke('novel-import-source-from-url', url),
   novelSearch: (keyword, sourceId) => ipcRenderer.invoke('novel-search', keyword, sourceId),
   novelCancelSearch: () => ipcRenderer.invoke('novel-cancel-search'),
   novelGetChapters: (novelUrl, sourceId) => ipcRenderer.invoke('novel-get-chapters', novelUrl, sourceId),
@@ -118,6 +120,41 @@ const api = {
   novelCheckBookUpdate: (bookId) => ipcRenderer.invoke('novel-check-book-update', bookId),
   novelCheckAllUpdates: () => ipcRenderer.invoke('novel-check-all-updates'),
   novelPerformUpdate: (bookId) => ipcRenderer.invoke('novel-perform-update', bookId),
+  novelMarkUpdateRead: (bookId) => ipcRenderer.invoke('novel-mark-update-read', bookId),
+  // 在线流式追更与离线缓存 (阅读 3.0)
+  novelAddToShelf: (novelInfo) => ipcRenderer.invoke('novel-add-to-shelf', novelInfo),
+  novelGetStreamChapters: (bookId, forceRefresh) => ipcRenderer.invoke('novel-get-stream-chapters', bookId, forceRefresh),
+  novelGetStreamContent: (bookId, chapterIndex, forceFetch) => ipcRenderer.invoke('novel-get-stream-content', bookId, chapterIndex, forceFetch),
+  novelPreloadChapters: (bookId, currentIndex, count) => ipcRenderer.invoke('novel-preload-chapters', bookId, currentIndex, count),
+  novelCacheStatus: (bookId) => ipcRenderer.invoke('novel-cache-status', bookId),
+  novelClearCache: (bookId) => ipcRenderer.invoke('novel-clear-cache', bookId),
+  novelStartBatchCache: (bookId, startIndex, count) => ipcRenderer.invoke('novel-start-batch-cache', bookId, startIndex, count),
+  novelCancelBatchCache: (bookId) => ipcRenderer.invoke('novel-cancel-batch-cache', bookId),
+  novelSearchAlternativeSources: (title, author, currentChapterTitle, currentChapterIndex, blockedSources) => ipcRenderer.invoke('novel-search-alternative-sources', title, author, currentChapterTitle, currentChapterIndex, blockedSources),
+  onNovelAlternativeSourceFound: (cb) => {
+    const listener = (_, data) => cb(data)
+    ipcRenderer.on('novel:onAlternativeSourceFound', listener)
+    return () => ipcRenderer.removeListener('novel:onAlternativeSourceFound', listener)
+  },
+  novelSwitchSource: (bookId, newSourceId, newNovelUrl, currentChapterTitle, currentChapterIndex) => ipcRenderer.invoke('novel-switch-source', bookId, newSourceId, newNovelUrl, currentChapterTitle, currentChapterIndex),
+  onBatchCacheProgress: (bookId, cb) => {
+    const channel = `novel-batch-cache-progress-${bookId}`
+    const listener = (_, data) => cb(data)
+    ipcRenderer.on(channel, listener)
+    return () => ipcRenderer.removeListener(channel, listener)
+  },
+  // 阅读 3.0 (Legado) 替换净化规则管理
+  novelGetReplaceRules: () => ipcRenderer.invoke('novel-get-replace-rules'),
+  novelSaveReplaceRules: (rules) => ipcRenderer.invoke('novel-save-replace-rules', rules),
+  novelAddReplaceRule: (rule) => ipcRenderer.invoke('novel-add-replace-rule', rule),
+  novelUpdateReplaceRule: (id, updates) => ipcRenderer.invoke('novel-update-replace-rule', id, updates),
+  novelDeleteReplaceRule: (id) => ipcRenderer.invoke('novel-delete-replace-rule', id),
+  novelToggleReplaceRule: (id, enabled) => ipcRenderer.invoke('novel-toggle-replace-rule', id, enabled),
+  novelImportReplaceRules: (rawData) => ipcRenderer.invoke('novel-import-replace-rules', rawData),
+  // 阅读 3.0 (Legado) TXT 目录分章识别规则
+  novelGetTxtTocRules: () => ipcRenderer.invoke('novel-get-txt-toc-rules'),
+  novelSaveTxtTocRules: (rules) => ipcRenderer.invoke('novel-save-txt-toc-rules', rules),
+  novelParseTxtToc: (paragraphs) => ipcRenderer.invoke('novel-parse-txt-toc', paragraphs),
   // 监听下载进度推送
   onDownloadProgress: (cb) => ipcRenderer.on('download-progress', (_, data) => cb(data)),
   onSearchPartial: (cb) => ipcRenderer.on('novel-search-partial', (_, data) => cb(data)),

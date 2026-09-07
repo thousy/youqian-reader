@@ -2,12 +2,24 @@ import { readFileSync } from 'fs'
 import { basename, extname } from 'path'
 import chardet from 'chardet'
 import iconv from 'iconv-lite'
+import { parseTxtChaptersWithRules } from '../novel/txtTocEngine.js'
 
 export async function extractTxtMeta(filePath) {
+  let toc = []
+  try {
+    const rawText = await readTxtFile(filePath)
+    const lines = rawText.split('\n')
+    const chapters = parseTxtChaptersWithRules(lines)
+    if (chapters && chapters.length > 0) {
+      toc = chapters.map(c => ({ label: c.title, paraIndex: c.paraIndex }))
+    }
+  } catch (_) {}
+
   return {
     title: basename(filePath, extname(filePath)),
     author: '未知',
-    cover: null
+    cover: null,
+    toc: toc.length > 0 ? toc : undefined
   }
 }
 

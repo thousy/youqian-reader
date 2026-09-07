@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore'
 import defaultBookCover from '../../logo.png'
 
 const FORMAT_COLORS = {
-  EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
+  EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa', ONLINE: '#38bdf8'
 }
 
 export function BookCard({ book, onClick, onDelete, onShowInfo }) {
@@ -21,15 +21,9 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
     try {
       const res = await window.api.novelCheckBookUpdate(book.id)
       if (res.hasUpdate) {
-        showToast(`《${book.title}》发现 ${res.newCount} 篇新章节，正在拉取更新...`, 'info')
-        const updateRes = await window.api.novelPerformUpdate(book.id)
-        if (updateRes.success) {
-          showToast(`《${book.title}》追更成功！已新增 ${updateRes.newCount} 章`, 'success')
-          const all = await window.api.getAllBooks()
-          setBooks(all)
-        } else {
-          showToast(`更新失败: ${updateRes.error}`, 'error')
-        }
+        showToast(`《${book.title}》发现 ${res.newCount} 篇新章节！`, 'success')
+        const all = await window.api.getAllBooks()
+        setBooks(all)
       } else {
         showToast(res.message || '当前已是最新章节', 'info')
       }
@@ -78,23 +72,23 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
 
     const newCatId = 'cat_' + Date.now() + Math.random().toString(36).substr(2, 4)
     const newCat = { id: newCatId, name }
-    const updatedCats = [...categories, newCat]
+    const updatedCategories = [...categories, newCat]
     
     try {
-      await window.api.saveCategories(updatedCats)
-      setCategories(updatedCats)
+      await window.api.saveCategories(updatedCategories)
+      setCategories(updatedCategories)
       
       // 直接将当前书籍归入此新分类
       await window.api.updateBook(book.id, { categoryId: newCatId })
       const updatedBooks = books.map(b => b.id === book.id ? { ...b, categoryId: newCatId } : b)
       setBooks(updatedBooks)
       
+      showToast(`已创建分类「${name}」并将书籍移入`, 'success')
+      setShowPopover(false)
       setPopoverCatName('')
       setIsCreatingInPopover(false)
-      setShowPopover(false)
-      showToast(`已创建分类并归档`, 'success')
     } catch (err) {
-      showToast('操作失败: ' + err.message, 'error')
+      showToast('创建分类失败: ' + err.message, 'error')
     }
   }
 
@@ -117,15 +111,17 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
             <div className="book-cover-author">{book.author || '未知作者'}</div>
           </div>
         )}
-        {book.novelUrl && book.novelSourceId && (
+        
+        {/* 连载标签 */}
+        {(book.novelUrl || book.format === 'ONLINE') && (
           <div
             style={{
               position: 'absolute',
               top: '6px',
               left: '6px',
-              backgroundColor: 'var(--accent-glow)',
-              color: 'var(--accent-light)',
-              border: '1px solid var(--border)',
+              backgroundColor: 'rgba(56, 189, 248, 0.2)',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
               fontSize: '10px',
               fontWeight: 600,
               padding: '1px 6px',
@@ -137,13 +133,49 @@ export function BookCard({ book, onClick, onDelete, onShowInfo }) {
             连载
           </div>
         )}
+
+        {/* 像阅读 3.0 一样的追更红点提示 */}
+        {(book.hasUpdate || (book.unreadCount && book.unreadCount > 0)) && (
+          <div
+            className="book-update-red-badge"
+            title={`有新章节更新！未读: ${book.unreadCount || 1} 章`}
+            style={{
+              position: 'absolute',
+              top: '6px',
+              right: '6px',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: '#ffffff',
+              fontSize: '10px',
+              fontWeight: 700,
+              padding: '2px 7px',
+              borderRadius: '10px',
+              boxShadow: '0 2px 8px rgba(239, 68, 68, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              zIndex: 3,
+              animation: 'novel-badge-pulse 2s infinite'
+            }}
+          >
+            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ffffff', display: 'inline-block' }} />
+            {book.unreadCount ? `${book.unreadCount}新` : '新'}
+          </div>
+        )}
+
         <div className="book-format-badge" style={{ color: FORMAT_COLORS[book.format] || 'var(--accent-light)' }}>
           {book.format}
         </div>
       </div>
       <div className="book-info">
         <div className="book-title">{book.title}</div>
-        <div className="book-author">{book.author}</div>
+        <div className="book-author" style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>{book.author}</span>
+          {book.latestChapter && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85px' }} title={book.latestChapter}>
+              {book.latestChapter}
+            </span>
+          )}
+        </div>
       </div>
       
       {/* 悬停动作层 */}

@@ -20,13 +20,26 @@ import { extractTxtMeta, readTxtFile } from './parsers/txt'
 import {
   searchNovels, getNovelChapters, getChapterContent, getAllSourcesInfo, getAllSourcesDetail,
   saveOrUpdateSource, deleteSource, clearAllSources, resetDefaultSources, testSingleSource, toggleSourceEnabled, exportSourcesJson,
-  importCustomSource, cancelSearch, autoSniffNovelSource
+  importCustomSource, importSourceFromUrl, cancelSearch, autoSniffNovelSource
 } from './novel/sourceManager'
 import {
   startDownload, cancelDownload, getTaskStatus, getAllTasks,
   getDownloadConfig, saveDownloadConfig
 } from './novel/downloader'
-import { checkBookUpdate, checkAllBooksUpdate, performIncrementalUpdate } from './novel/novelUpdater.js'
+import {
+  checkBookUpdate, checkAllBooksUpdate, performIncrementalUpdate,
+  addSerialBookToShelf, getOrFetchBookChapters, getOrFetchChapterContent,
+  preloadNextChapters, getBookCacheStatus, clearBookOfflineCache,
+  startOfflineBatchCache, cancelOfflineBatchCache,
+  searchAlternativeSources, switchBookSource, markBookUpdateRead
+} from './novel/novelUpdater.js'
+import {
+  getReplaceRules, saveReplaceRules, addReplaceRule, updateReplaceRule, deleteReplaceRule, toggleReplaceRule, importLegadoReplaceRules,
+  applyReplaceRules
+} from './novel/replaceRuleEngine.js'
+import {
+  getTxtTocRules, saveTxtTocRules, parseTxtChaptersWithRules
+} from './novel/txtTocEngine.js'
 import {
   getCustomFonts, openAndImportFontFiles, deleteCustomFont, deleteCustomFonts, readCustomFontDataUrl, readCustomFontBuffer
 } from './fontManager.js'
@@ -121,14 +134,20 @@ export function setupIpcHandlers() {
 
   ipcMain.handle('open-external', (_, url) => shell.openExternal(url))
 
-  // ===== TXT 读取（含编码检测）=====
+  // ===== TXT 读取（含编码检测，毫秒级秒开）=====
   ipcMain.handle('read-txt-file', async (_, filePath) => {
-    return readTxtFile(resolveBookPath(filePath))
+    return await readTxtFile(resolveBookPath(filePath))
   })
 
-  // ===== MOBI/AZW3 内容提取 =====
+  // ===== 单章节/片段替换净化规则处理 =====
+  ipcMain.handle('apply-replace-rules', (_, content, context) => {
+    return applyReplaceRules(content, context)
+  })
+
+  // ===== MOBI/AZW3 内容提取（含阅读 3.0 全局替换净化）=====
   ipcMain.handle('extract-mobi-content', async (_, filePath) => {
-    return extractMobiContent(resolveBookPath(filePath))
+    const raw = await extractMobiContent(resolveBookPath(filePath))
+    return applyReplaceRules(raw, { bookTitle: basename(filePath) })
   })
 
   // ===== 阅读进度 =====
@@ -443,6 +462,15 @@ export function setupIpcHandlers() {
     }
   })
 
+  ipcMain.handle('novel-import-source-from-url', async (_, url) => {
+    try {
+      if (!url || typeof url !== 'string') return { success: false, error: '书源网络链接不能为空' }
+      return await importSourceFromUrl(url.trim())
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  })
+
   // ===== 在线小说：聚合搜索 (带流式实时推送) =====
   ipcMain.handle('novel-search', async (event, keyword, sourceId) => {
     try {
@@ -526,6 +554,49 @@ export function setupIpcHandlers() {
   ipcMain.handle('novel-check-book-update', (_, bookId) => checkBookUpdate(bookId))
   ipcMain.handle('novel-check-all-updates', () => checkAllBooksUpdate())
   ipcMain.handle('novel-perform-update', (_, bookId) => performIncrementalUpdate(bookId))
+  ipcMain.handle('novel-mark-update-read', (_, bookId) => markBookUpdateRead(bookId))
+
+  // ===== 在线流式追书与离线缓存系统 (类似阅读 3.0) =====
+  ipcMain.handle('novel-add-to-shelf', (_, novelInfo) => addSerialBookToShelf(novelInfo))
+  ipcMain.handle('novel-get-stream-chapters', (_, bookId, forceRefresh) => getOrFetchBookChapters(bookId, forceRefresh))
+  ipcMain.handle('novel-get-stream-content', (_, bookId, chapterIndex, forceFetch) => getOrFetchChapterContent(bookId, chapterIndex, forceFetch))
+  ipcMain.handle('novel-preload-chapters', (_, bookId, currentIndex, count) => preloadNextChapters(bookId, currentIndex, count))
+  ipcMain.handle('novel-cache-status', (_, bookId) => getBookCacheStatus(bookId))
+  ipcMain.handle('novel-clear-cache', (_, bookId) => clearBookOfflineCache(bookId))
+  ipcMain.handle('novel-start-batch-cache', (event, bookId, startIndex, count) => {
+    return startOfflineBatchCache(bookId, startIndex, count, (progress) => {
+      try {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(`novel-batch-cache-progress-${bookId}`, progress)
+        }
+      } catch (_) {}
+    })
+  })
+  ipcMain.handle('novel-cancel-batch-cache', (_, bookId) => cancelOfflineBatchCache(bookId))
+  ipcMain.handle('novel-search-alternative-sources', (event, title, author, currentChapterTitle, currentChapterIndex, blockedSources) => {
+    return searchAlternativeSources(title, author, currentChapterTitle, currentChapterIndex, blockedSources, (item) => {
+      try {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('novel:onAlternativeSourceFound', item)
+        }
+      } catch (_) {}
+    })
+  })
+  ipcMain.handle('novel-switch-source', (_, bookId, newSourceId, newNovelUrl, currentChapterTitle, currentChapterIndex) => switchBookSource(bookId, newSourceId, newNovelUrl, currentChapterTitle, currentChapterIndex))
+
+  // ===== 阅读 3.0 (Legado) 标准替换净化规则 =====
+  ipcMain.handle('novel-get-replace-rules', () => getReplaceRules())
+  ipcMain.handle('novel-save-replace-rules', (_, rules) => saveReplaceRules(rules))
+  ipcMain.handle('novel-add-replace-rule', (_, rule) => addReplaceRule(rule))
+  ipcMain.handle('novel-update-replace-rule', (_, id, updates) => updateReplaceRule(id, updates))
+  ipcMain.handle('novel-delete-replace-rule', (_, id) => deleteReplaceRule(id))
+  ipcMain.handle('novel-toggle-replace-rule', (_, id, enabled) => toggleReplaceRule(id, enabled))
+  ipcMain.handle('novel-import-replace-rules', (_, rawData) => importLegadoReplaceRules(rawData))
+
+  // ===== 阅读 3.0 (Legado) TXT 目录分章识别规则 =====
+  ipcMain.handle('novel-get-txt-toc-rules', () => getTxtTocRules())
+  ipcMain.handle('novel-save-txt-toc-rules', (_, rules) => saveTxtTocRules(rules))
+  ipcMain.handle('novel-parse-txt-toc', (_, paragraphs) => parseTxtChaptersWithRules(paragraphs))
 
   // ===== 在线小说：下载完成后导入书库 =====
   ipcMain.handle('novel-import-after-download', async (_, filePath) => {
@@ -563,7 +634,7 @@ export function setupIpcHandlers() {
 
   // ===== 系统与版本信息 =====
   ipcMain.handle('get-app-version', () => {
-    return app.getVersion() || '2.0.4'
+    return app.getVersion() || '2.0.5'
   })
 
   // ===== 用户自定义字体管理 (Custom Font Management) =====

@@ -208,11 +208,29 @@ function createReaderWindow(bookId) {
     }
   })
 
+  readerWin.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[READER WINDOW] 页面加载失败: ${errorCode} - ${errorDescription} (${validatedURL})`)
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+  })
+
+  readerWin.webContents.on('render-process-gone', (event, details) => {
+    console.error(`[READER WINDOW] 渲染进程异常退出: ${details.reason} (exitCode: ${details.exitCode})`)
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+    }
+  })
+
   readerWin.on('maximize', () => readerWin.webContents.send('window-maximized', true))
   readerWin.on('unmaximize', () => readerWin.webContents.send('window-maximized', false))
 
   readerWin.on('closed', () => {
     readerWindows.delete(readerWin)
+    // 若所有阅读器窗口均已关闭，自动恢复主书库窗口展示
+    if (readerWindows.size === 0 && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show()
+    }
   })
 
   const query = { windowType: 'reader', bookId: String(bookId) }

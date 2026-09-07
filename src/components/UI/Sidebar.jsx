@@ -1,13 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
-import { WebdavModal } from './WebdavModal'
-
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
 }
 
 export function Sidebar() {
-  const [showWebdavModal, setShowWebdavModal] = useState(false)
   const {
     books, currentView, openBook, setBooks, showToast, showConfirm,
     categories, selectedCategoryId, setSelectedCategoryId, setCategories, setCurrentView
@@ -144,6 +141,11 @@ export function Sidebar() {
     }
   }
 
+  // 连载追更小说与本地图书划分 (类似阅读3.0)
+  const onlineBooks = books.filter(b => b.format === 'ONLINE' || (b.novelUrl && b.novelSourceId))
+  const localBooks = books.filter(b => b.format !== 'ONLINE' && (!b.novelUrl || !b.novelSourceId))
+  const hasAnySerialUpdate = onlineBooks.some(b => b.hasUpdate || (b.unreadCount && b.unreadCount > 0))
+
   return (
     <div className="sidebar">
       {/* 导入按钮 */}
@@ -158,6 +160,7 @@ export function Sidebar() {
 
       {/* 导航板块 */}
       <div className="sidebar-nav">
+        {/* 全部图书 */}
         <button 
           className={`nav-item ${currentView === 'library' && selectedCategoryId === 'all' ? 'active' : ''}`}
           onClick={() => {
@@ -165,12 +168,84 @@ export function Sidebar() {
             setCurrentView('library')
             setSelectedCategoryId('all')
           }}
+          style={{ position: 'relative' }}
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-          </svg>
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+            </svg>
+            {hasAnySerialUpdate && (
+              <span
+                title="有追更连载小说更新！"
+                style={{
+                  position: 'absolute',
+                  top: '-3px',
+                  right: '-3px',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  boxShadow: '0 0 0 2px var(--bg-layer1)',
+                  animation: 'novel-badge-pulse 2s infinite'
+                }}
+              />
+            )}
+          </div>
           全部图书
           <span className="sidebar-badge">{books.length}</span>
+        </button>
+
+        {/* 像阅读3.0：在线追书 */}
+        <button 
+          className={`nav-item ${currentView === 'library' && selectedCategoryId === 'online' ? 'active' : ''}`}
+          id="sidebar-online-shelf-btn"
+          onClick={() => {
+            useStore.getState().closeBook()
+            setCurrentView('library')
+            setSelectedCategoryId('online')
+          }}
+          style={{ position: 'relative' }}
+        >
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <span style={{ fontSize: '15px' }}>⚡</span>
+            {hasAnySerialUpdate && (
+              <span
+                title="有连载新章节更新！"
+                style={{
+                  position: 'absolute',
+                  top: '-3px',
+                  right: '-3px',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
+                  boxShadow: '0 0 0 2px var(--bg-layer1)',
+                  animation: 'novel-badge-pulse 2s infinite'
+                }}
+              />
+            )}
+          </div>
+          在线追书
+          <span className="sidebar-badge" style={{ color: onlineBooks.length > 0 ? 'var(--accent-light)' : 'inherit' }}>
+            {onlineBooks.length}
+          </span>
+        </button>
+
+        {/* 像阅读3.0：本地书籍 */}
+        <button 
+          className={`nav-item ${currentView === 'library' && selectedCategoryId === 'local' ? 'active' : ''}`}
+          id="sidebar-local-shelf-btn"
+          onClick={() => {
+            useStore.getState().closeBook()
+            setCurrentView('library')
+            setSelectedCategoryId('local')
+          }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          本地书籍
+          <span className="sidebar-badge">{localBooks.length}</span>
         </button>
 
         {/* 在线找书 */}
@@ -372,42 +447,8 @@ export function Sidebar() {
       <div className="sidebar-footer" style={{
         marginTop: 'auto',
         padding: '16px',
-        borderTop: '1px solid var(--border-subtle)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '10px'
+        borderTop: '1px solid var(--border-subtle)'
       }}>
-        <button
-          onClick={() => setShowWebdavModal(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            width: '100%',
-            padding: '7px 12px',
-            backgroundColor: 'var(--bg-layer2)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            color: 'var(--text-primary)',
-            fontSize: '12px',
-            fontWeight: 500,
-            cursor: 'pointer',
-            transition: 'all 0.15s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-layer3)'
-            e.currentTarget.style.borderColor = 'var(--accent)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'var(--bg-layer2)'
-            e.currentTarget.style.borderColor = 'var(--border)'
-          }}
-        >
-          <span style={{ fontSize: '13px' }}>☁️</span>
-          WebDAV 云端同步
-        </button>
-
         <div style={{
           color: 'var(--text-muted)',
           fontSize: '12px',
@@ -417,11 +458,6 @@ export function Sidebar() {
         }}>
           © YouQian Tech
         </div>
-
-        <WebdavModal
-          isOpen={showWebdavModal}
-          onClose={() => setShowWebdavModal(false)}
-        />
       </div>
     </div>
   )

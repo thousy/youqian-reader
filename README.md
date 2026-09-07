@@ -1,6 +1,6 @@
-# YouQian书籍阅读器 📚 (V2.0.4)
+# YouQian书籍阅读器 📚 (V2.0.5)
 
-[![Version](https://img.shields.io/badge/version-2.0.4-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.0.5-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
@@ -8,7 +8,33 @@
 
 ---
 
-## 🚀 V2.0.4 核心功能更新与完成报告 (Release Notes & Walkthrough)
+## 🚀 V2.0.5 核心功能更新与完成报告 (Release Notes & Walkthrough)
+
+### 1. 🌐 阅读 3.0 书源全开放导入引擎 (Network / Local / Paste)
+* **全途径一键导入**：支持直接输入网络书源 URL 实时拉取、本地书源 `.json` 文件批量解析导入、以及剪贴板 JSON 内容直接粘贴导入。
+* **书源管理工作台**：书源列表支持一键全选/全不选、单项启用/停用、按来源筛选与批量删除。
+* **智能字段映射与容错**：自动对齐阅读 3.0 各种变体字段（如 `bookSourceUrl`、`ruleSearch` 等），剔除无效与损坏书源。
+
+### 2. ⚡ 在线小说自动阅读引擎 (Auto-Reading Engine)
+* **双模式平滑调度**：左右分页模式下支持秒级倒计时平滑翻页；垂直滚动模式下采用 `requestAnimationFrame` 微积分平滑匀速滚屏。
+* **防抢夺暂停机制**：读者手动触摸、鼠标滚轮或键盘干预时，自动微暂停 2.8 秒后平滑续播，杜绝与读者抢夺视野控制权。
+* **浮动微型控制胶囊**：底部常驻微型毛玻璃控制条，提供快速调节速度、播放/暂停、随时关闭等无感交互。
+
+### 3. 🧹 文本替换净化规则系统 (Replace Rule Engine)
+* **阅读 3.0 净化规则对齐**：支持导入/导出阅读 3.0 净化规则 JSON，内置常用小说网站广告清洗与乱码净化规则。
+* **正文断行与排版自愈**：智能清洗粘连段落、规范化字面量换行符与转义符，还原清爽实体书排版。
+
+### 4. 📖 本地 TXT 小说首章智能合并与空前言自愈
+* **根治首屏大片空白**：针对《妙手小村医》等本地 TXT，自动识别首章前的书名、作者等微量元数据（< 500 字），将其直接作为第一章卷首展示，正文紧随其后，杜绝将正文推到下一页的割裂感。
+* **历史坏目录自愈持久化**：打开已导入书籍时，自动侦测并剔除历史数据库中遗留的伪前言，自动回写数据库完成一键自愈。
+
+### 5. 🛡️ 翻页与页码计算坚固防溢出
+* **根治百万页码 Bug**：跨章翻页全面弃用数值魔数，改用安全语义 `'last'`，彻底消除 `1000000/11696` 与状态栏 `100000` 溢出。
+* **总页数合理化保底**：为单页估算字符数设置合理保底，消除因极短章节导致的虚假上万总页数。
+
+---
+
+## 🚀 V2.0.4 历史功能更新 (Historical Release Notes)
 
 ### 1. 🎨 新增“阅读 3.0 (Legado)”广受好评的经典预设背景
 * **6 款经典护眼预设全量引入**：羊皮纸（Sepia）、护眼绿（Green）、远山黛（Cyan）、落霞粉（Peach）、象牙白（Ivory）、暗褐咖啡（Coffee）。

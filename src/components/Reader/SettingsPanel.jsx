@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
 import { registerSingleCustomFont } from '../../utils/fontLoader'
-import { WebdavModal } from '../UI/WebdavModal'
 
 const DEFAULT_SETTINGS = {
   fontSize: 18,
@@ -26,7 +25,7 @@ const PRESET_FONT_MAP = {
 
 const PRESET_FONT_OPTIONS = Object.keys(PRESET_FONT_MAP)
 
-export function SettingsPanel({ onClose, isModal = false }) {
+export function SettingsPanel({ onClose, isModal = false, onOpenGlobalSettings }) {
   const {
     settings, updateSettings, setShowSettings,
     setCategories, setBooks, showToast, showConfirm
@@ -36,7 +35,6 @@ export function SettingsPanel({ onClose, isModal = false }) {
   const [importingFont, setImportingFont] = useState(false)
   const [isBatchMode, setIsBatchMode] = useState(false)
   const [selectedFontFiles, setSelectedFontFiles] = useState([])
-  const [showWebdav, setShowWebdav] = useState(false)
 
   // 处理关闭
   const handleClose = () => {
@@ -213,7 +211,7 @@ export function SettingsPanel({ onClose, isModal = false }) {
   return (
     <div className={`settings-panel ${isModal ? 'settings-panel-modal' : ''}`} id="settings-panel">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <div className="settings-title">阅读设置</div>
+        <div className="settings-title">📖 阅读排版偏好</div>
         <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
           onClick={handleClose}
           title="关闭设置"
@@ -612,16 +610,6 @@ export function SettingsPanel({ onClose, isModal = false }) {
         )}
       </div>
 
-      {/* WebDAV 云端同步 */}
-      <button
-        className="settings-restore-btn"
-        style={{ marginBottom: '10px', borderColor: 'var(--border)', color: 'var(--accent)' }}
-        onClick={() => setShowWebdav(true)}
-      >
-        <span style={{ fontSize: '13px', marginRight: '4px' }}>☁️</span>
-        WebDAV 云端同步设置
-      </button>
-
       {/* 恢复默认设置 */}
       <button
         className="settings-restore-btn"
@@ -634,13 +622,34 @@ export function SettingsPanel({ onClose, isModal = false }) {
           <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
           <path d="M8 21H3v-5" />
         </svg>
-        恢复默认设置
+        恢复默认排版
       </button>
 
-      <WebdavModal
-        isOpen={showWebdav}
-        onClose={() => setShowWebdav(false)}
-      />
+      {onOpenGlobalSettings && (
+        <button
+          onClick={() => {
+            handleClose()
+            onOpenGlobalSettings()
+          }}
+          style={{
+            marginTop: '12px',
+            padding: '8px 12px',
+            width: '100%',
+            background: 'var(--bg-layer2)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            color: 'var(--accent-light)',
+            fontSize: '12px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '6px'
+          }}
+        >
+          <span>⚙️</span> 打开全局设置中心 (书源/规则/WebDAV) →
+        </button>
+      )}
     </div>
   )
 }

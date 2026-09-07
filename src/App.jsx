@@ -10,11 +10,13 @@ import { SourceEditorView } from './components/Novel/SourceEditorView'
 import { Toast } from './components/UI/Toast'
 import { ConfirmModal } from './components/UI/ConfirmModal'
 import { DropOverlay } from './components/UI/DropOverlay'
+import { ErrorBoundary } from './components/UI/ErrorBoundary'
 import { initCustomFonts } from './utils/fontLoader'
 
 export default function App() {
   const { currentView, currentBook, toast, confirm, setBooks, openBook, showToast, settings, updateSettings, setCategories, showConfirm } = useStore()
   const [dragging, setDragging] = useState(false)
+  const [isDataReady, setIsDataReady] = useState(false)
 
   const params = new URLSearchParams(window.location.search)
   const isReaderWindow = params.get('windowType') === 'reader'
@@ -28,35 +30,54 @@ export default function App() {
 
     async function init() {
       try {
-        // 并行加载设置、书库、分类与自定义字体（无依赖关系，无需串行等待）
+        // 1. 核心业务数据优先加载（设置、书库、分类）
         const [savedSettings, books, categories] = await Promise.all([
-          window.api.getSettings(),
-          window.api.getAllBooks(),
-          window.api.getCategories(),
-          initCustomFonts()
+          window.api.getSettings().catch(() => null),
+          window.api.getAllBooks().catch(() => []),
+          window.api.getCategories().catch(() => [])
         ])
         if (!mounted) return
 
         if (savedSettings) updateSettings(savedSettings)
-        setBooks(books)
+        setBooks(books || [])
         if (categories) setCategories(categories)
+        setIsDataReady(true)
+
+        // 2. 后台静默加载自定义字体，不阻塞阅读窗口秒开
+        initCustomFonts().catch(e => console.warn('[App] 自定义字体后台预载告警:', e))
 
         if (isReaderWindow) {
           // 如果是阅读窗口，自动定位并打开特定图书
           const bookIdParam = params.get('bookId')
           if (bookIdParam) {
-            const targetBook = books.find(b => String(b.id) === String(bookIdParam))
+            let targetBook = (books || []).find(b => String(b.id) === String(bookIdParam))
+            // 若书库列表中未直接找到（可能正在写入或异步写入），尝试主进程直接单本读取
+            if (!targetBook && window.api?.getBookById) {
+              try {
+                targetBook = await window.api.getBookById(bookIdParam)
+              } catch (_) {}
+            }
+
             if (targetBook) {
-              const exists = await window.api.fileExists(targetBook.filePath)
-              if (exists) openBook(targetBook)
+              if (targetBook.format === 'ONLINE' || (targetBook.novelUrl && targetBook.novelSourceId)) {
+                // 在线连载追更小说：无需本地物理文件，直接打开流式阅读
+                openBook(targetBook)
+              } else {
+                const exists = await window.api.fileExists(targetBook.filePath)
+                if (exists) openBook(targetBook)
+                else showToast('书籍文件不存在或已被移动', 'error')
+              }
+            } else {
+              console.warn('[App] 未能在书库中定位到书籍:', bookIdParam)
             }
           }
         } else if (isFileReaderWindow && filePathParam) {
           // ===== 文件关联：通过文件路径直接打开书籍 =====
-          await initFileReader(filePathParam, books)
+          await initFileReader(filePathParam, books || [])
         }
       } catch (e) {
-        console.error('初始化失败:', e)
+        console.error('[App] 初始化失败:', e)
+        setIsDataReady(true)
       }
     }
     init()
@@ -195,7 +216,9 @@ export default function App() {
         <TitleBar windowTitle={currentBook ? currentBook.title : '阅读器'} />
         <div className="main-layout" style={{ height: 'calc(100vh - var(--titlebar-height))' }}>
           <div className="main-content" style={{ width: '100%', height: '100%' }}>
-            <ReaderView />
+            <ErrorBoundary title="阅读器窗口加载异常">
+              <ReaderView />
+            </ErrorBoundary>
           </div>
         </div>
         {toast && <Toast {...toast} />}
@@ -212,16 +235,18 @@ export default function App() {
       <div className="main-layout">
         <Sidebar />
         <div className="main-content">
-          {currentView === 'reader'
-            ? <ReaderView />
-            : currentView === 'novelSearch'
-            ? <NovelSearchView />
-            : currentView === 'downloadManager'
-            ? <DownloadManagerView />
-            : currentView === 'sourceEditor'
-            ? <SourceEditorView />
-            : <LibraryView onImport={importFiles} />
-          }
+          <ErrorBoundary title="内容区域渲染异常">
+            {currentView === 'reader'
+              ? <ReaderView />
+              : currentView === 'novelSearch'
+              ? <NovelSearchView />
+              : currentView === 'downloadManager'
+              ? <DownloadManagerView />
+              : currentView === 'sourceEditor'
+              ? <SourceEditorView />
+              : <LibraryView onImport={importFiles} />
+            }
+          </ErrorBoundary>
         </div>
       </div>
       {toast && <Toast {...toast} />}

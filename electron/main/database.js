@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { existsSync, statSync } from 'fs'
-import { getPortableDataDir, resolveBookPath } from './portablePath'
+import { getPortableDataDir, resolveBookPath } from './portablePath.js'
 
 let store = null
 
@@ -31,6 +31,41 @@ export function setupDatabase() {
     }
   })
   console.log('便携数据库初始化完成:', store.path)
+  autoHealTxtBooksToc()
+}
+
+/**
+ * 自动纠偏与自愈存量 TXT 书籍的伪前言（将只有书名作者的空前言移除，真正第一章接管段落0）
+ */
+function autoHealTxtBooksToc() {
+  try {
+    const books = store.get('books', [])
+    if (!Array.isArray(books) || books.length === 0) return
+    let changed = false
+    const PREFACE_REGEX = /^(前言|序|引言|序言|自序|楔子)$/
+    const updated = books.map(book => {
+      if (book && book.format === 'TXT' && Array.isArray(book.toc) && book.toc.length > 1) {
+        const first = book.toc[0]
+        const second = book.toc[1]
+        if (first && PREFACE_REGEX.test(first.label?.trim()) && second && second.paraIndex <= 40) {
+          console.log(`[Database] 发现书籍 [${book.title}] 存在历史残留伪前言，自动纠偏移除...`)
+          const newToc = book.toc.slice(1)
+          if (newToc.length > 0) {
+            newToc[0] = { ...newToc[0], paraIndex: 0 }
+          }
+          changed = true
+          return { ...book, toc: newToc }
+        }
+      }
+      return book
+    })
+    if (changed) {
+      store.set('books', updated)
+      console.log('[Database] 存量 TXT 书籍目录智能自愈完成！')
+    }
+  } catch (err) {
+    console.warn('[Database] 存量书籍自愈异常:', err.message)
+  }
 }
 
 export function getStore() {
@@ -54,12 +89,20 @@ export function getAllBooks() {
 
 export function addBook(book) {
   const books = store.get('books', [])
-  // 检查是否已存在
-  const exists = books.find(b => b.filePath === book.filePath || (b.title === book.title && b.author === book.author))
+  // 检查是否已存在 (必须严谨避免 undefined === undefined 或 null === null 误判为同一本书)
+  const exists = books.find(b => {
+    // 1. 本地物理书籍：filePath 必须非空且完全相同
+    if (book.filePath && b.filePath && b.filePath === book.filePath) return true
+    // 2. 在线追更书籍：novelUrl 必须非空且相同
+    if (book.novelUrl && b.novelUrl && b.novelUrl === book.novelUrl) return true
+    // 3. 同名同作者判定：书名与作者必须均有明确有效值
+    if (book.title && book.author && b.title === book.title && b.author === book.author) return true
+    return false
+  })
   if (exists) return { success: false, error: '该书籍已在书库中', book: exists }
   
   const newBook = {
-    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    id: book.id || (Date.now().toString() + Math.random().toString(36).substr(2, 9)),
     addedAt: new Date().toISOString(),
     ...book
   }

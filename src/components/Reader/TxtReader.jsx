@@ -206,31 +206,70 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return candidates.length === 0 || candidates.some(candidate => Math.abs(index - candidate) <= 2)
   }
 
-  // 将 TXT 文本切分为段落
+  // 将 TXT 文本切分为段落 (智能容错将字面量 \n 还原为真实换行段落)
   const paragraphs = useMemo(() => {
     if (!content) return []
-    return content.split(/\r?\n/)
+    const normalized = content.includes('\\n') ? content.replace(/\\r?\\n/g, '\n') : content
+    return normalized.split(/\r?\n/)
   }, [content])
 
-  // 正则解析 TXT 目录章节
+  // 正则解析 TXT 目录章节（深度对标阅读 3.0，支持首部微量卷首与第一章无缝合并、伪前言智能自愈）
   const chapters = useMemo(() => {
     let list = []
-    
+    const PREFACE_REGEX = /^[ 　\t]{0,4}(?:序[言章子]|前言|楔子|引子|自序|作品相关|内容简介|本书声明|作者的话)/i
+    const FAKE_PREFACE_LABEL = /^(前言|序|引言|序言|自序|楔子)$/i
+
     // 优先读取数据库已有的持久化目录
     if (book.toc && book.toc.length > 0) {
       list = [...book.toc]
+
+      // 强力自愈 1：即使 paragraphs 尚未加载，若持久化目录首项是伪前言且第二项跨度极小（<= 40），直接剔除伪前言
+      while (list.length > 1) {
+        const first = list[0]
+        const second = list[1]
+        const isFake = FAKE_PREFACE_LABEL.test(first.label?.trim()) ||
+          (/^[ 　\t]{0,4}《[^》\n]+》/.test(first.label) && !/(?:第|章|卷|篇|部)/.test(first.label))
+        if (isFake && (second.paraIndex == null || second.paraIndex <= 40)) {
+          list.shift()
+          if (list.length > 0) {
+            list[0].paraIndex = 0
+          }
+        } else {
+          break
+        }
+      }
     } else if (paragraphs.length > 0) {
-      const CHAPTER_REGEX = /^\s*(第\s*[一二三四五六七八九十百千万零\d]+\s*[章节回卷折幕]|Chapter\s*\d+|[Cc]hapter\s*[一二三四五六七八九十百千万零\d]+)/i
+      // 阅读 3.0 (Legado) 复合目录分章正则表达式（兼容顶格、前缀空白、分卷、番外、纯数字/中文标号）
+      const LEGADO_TOC_REGEXES = [
+        // 1. 标准章节、卷、番外、序跋（支持前置0~4个空格）
+        /^[ 　\t]{0,4}(?:序[言章子]|前言|楔子|正文(?!完|结)|终章|后[记传]|尾声|番外|第\s{0,4}[0-9〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]+?\s{0,4}(?:[章节卷集部篇回幕话]))(?:\s{1,4}.{0,35}|.{0,30})$/i,
+        // 2. 章节名序号（例如：12. 标题、一、标题、1、标题）
+        /^[ 　\t]{0,4}(?:\d{1,5}|[零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]{1,8})[、:：,.， _—\-].{1,35}$/,
+        // 3. 英文 Chapter 语法
+        /^[ 　\t]{0,4}Chapter\s*\d+.{0,40}$/i,
+        // 4. 纯分卷与作品相关
+        /^[ 　\t]{0,4}(?:作品相关|分[卷章回册]|内容简介|书籍简介).{0,30}$/
+      ]
+
       const len = paragraphs.length
       for (let i = 0; i < len; i++) {
-        const para = paragraphs[i]
-        if (para.length === 0 || para.length > 60) continue
-        
-        const firstChar = para[0] === ' ' ? para.trim()[0] : para[0]
-        if (firstChar !== '第' && firstChar !== 'C' && firstChar !== 'c') continue
-        
-        const text = para.trim()
-        if (CHAPTER_REGEX.test(text)) {
+        const rawPara = paragraphs[i]
+        if (!rawPara || rawPara.length > 50) continue
+        const text = rawPara.trim()
+        if (!text || text.length > 40) continue
+
+        // 开头前 30 行过滤纯书名与作者行误判
+        if (i < 30) {
+          if (/^[ 　\t]{0,4}《[^》\n]+》[ 　\t]{0,4}$/.test(text) && !/(?:第|章|卷|篇|部|序|前言|楔子)/.test(text)) {
+            continue
+          }
+          if (/^[ 　\t]{0,4}(?:作\s*者|著者|编著)[：:]/.test(text)) {
+            continue
+          }
+        }
+
+        const isMatched = LEGADO_TOC_REGEXES.some(reg => reg.test(rawPara) || reg.test(text))
+        if (isMatched) {
           list.push({
             label: text,
             paraIndex: i
@@ -250,12 +289,38 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
             paraIndex: startIdx
           })
         }
-      } else {
-        if (list[0].paraIndex > 0) {
-          list.unshift({
-            label: '前言',
-            paraIndex: 0
-          })
+      }
+    }
+
+    // 强力自愈 2：智能处理首部微量卷首与首章合并（杜绝“只有书名作者却单独建一个空前言”导致的恶劣空白割裂感）
+    if (list.length > 0 && paragraphs.length > 0) {
+      while (list.length > 1) {
+        const first = list[0]
+        const second = list[1]
+        const isFake = FAKE_PREFACE_LABEL.test(first.label?.trim()) ||
+          (/^[ 　\t]{0,4}《[^》\n]+》/.test(first.label) && !/(?:第|章|卷|篇|部)/.test(first.label))
+        const pStart = first.paraIndex || 0
+        const pEnd = second.paraIndex || paragraphs.length
+        const leadContent = paragraphs.slice(pStart, pEnd).join('').trim()
+        const firstLine = (paragraphs[pStart] || '').trim()
+        const isTruePreface = PREFACE_REGEX.test(firstLine)
+
+        if (isFake && (leadContent.length < 500 && !isTruePreface)) {
+          list.shift()
+          if (list.length > 0) {
+            list[0].paraIndex = 0
+          }
+        } else {
+          break
+        }
+      }
+
+      if (list.length > 0 && list[0].paraIndex > 0) {
+        const leadContent = paragraphs.slice(0, list[0].paraIndex).join('').trim()
+        const firstLine = (paragraphs[0] || '').trim()
+        const isTruePreface = PREFACE_REGEX.test(firstLine)
+        if (leadContent.length < 500 && !isTruePreface) {
+          list[0].paraIndex = 0
         }
       }
     }
@@ -303,31 +368,36 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return chapterPageCounts.reduce((a, b) => a + b, 0)
   }, [chapterPageCounts, totalPages, chapters.length])
 
-  // 全局当前页码
+  // 全局当前页码（加入严格范围夹取，杜绝溢出突破全局总页数）
   const globalCurrentPage = useMemo(() => {
     if (chapterPageCounts.length === 0 || chapterPageCounts.length !== chapters.length) {
-      return pageIndex + 1
+      return Math.max(1, Math.min(pageIndex + 1, totalPages || 1))
     }
     let sum = 0
     const limit = Math.min(currentChapterIndex, chapterPageCounts.length)
     for (let i = 0; i < limit; i++) {
       sum += chapterPageCounts[i] || 0
     }
-    return sum + pageIndex + 1
-  }, [chapterPageCounts, currentChapterIndex, pageIndex, chapters.length])
+    const current = sum + pageIndex + 1
+    return Math.max(1, Math.min(current, globalTotalPages))
+  }, [chapterPageCounts, currentChapterIndex, pageIndex, chapters.length, totalPages, globalTotalPages])
 
-  // 首次打开书籍静默解析出目录后，立即将其回写存入数据库，下次打开直接调用
+  // 目录持久化与智能自愈回写（若发现伪前言已剔除或首章索引自愈修正，立即同步更新数据库）
   useEffect(() => {
-    if (!book.toc && chapters.length > 0 && book.id) {
+    if (chapters.length === 0 || !book.id) return
+    const isDifferent = !book.toc || book.toc.length !== chapters.length || 
+      (book.toc[0]?.label !== chapters[0]?.label) || 
+      (book.toc[0]?.paraIndex !== chapters[0]?.paraIndex)
+
+    if (isDifferent) {
       async function saveToc() {
         try {
           await window.api.updateBook(book.id, { toc: chapters })
-          // 通过 getState 避开对 books 状态的直接依赖，掐断可能的死循环重绘链条
           const currentBooks = useStore.getState().books
           const setBooksFn = useStore.getState().setBooks
           const updatedBooks = currentBooks.map(b => b.id === book.id ? { ...b, toc: chapters } : b)
           setBooksFn(updatedBooks)
-          console.log(`书籍 [${book.title}] 的 TXT 目录已完美持久化写入数据库！`)
+          console.log(`书籍 [${book.title}] 的 TXT 目录已完成智能自愈并持久化写入数据库！`)
         } catch (e) {
           console.error('保存 TXT 目录出错:', e)
         }
@@ -344,7 +414,14 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     const end = safeIdx + 1 < chapters.length 
       ? chapters[safeIdx + 1].paraIndex 
       : paragraphs.length
-    return paragraphs.slice(start, end)
+    const sliced = paragraphs.slice(start, end)
+    
+    // 自动修剪章节开头连续无效空行，杜绝首屏顶部大段空白
+    let firstValid = 0
+    while (firstValid < sliced.length && !sliced[firstValid].trim()) {
+      firstValid++
+    }
+    return firstValid > 0 ? sliced.slice(firstValid) : sliced
   }, [paragraphs, chapters, currentChapterIndex])
 
   const currentChapterStartIndex = useMemo(() => {
@@ -378,13 +455,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         const text = await window.api.readTxtFile(book.filePath)
         if (!mounted) return
         setContent(text)
-        
-        // 延迟 350ms 关闭加载遮罩，给浏览器以充足时间在后台解析渲染首帧大 DOM，消除闪烁与黑屏
-        setTimeout(() => {
-          if (mounted) {
-            setLoading(false)
-          }
-        }, 350)
+        setLoading(false)
       } catch (e) {
         if (mounted) {
           setLoading(false)
@@ -394,7 +465,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     }
     load()
     return () => { mounted = false }
-  }, [book.id])
+  }, [book.id, book.filePath])
 
   // 测算卡片模式下的排版总页数
   useEffect(() => {
@@ -457,10 +528,10 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       return chars
     })
 
-    // 根据当前章节真实页数估算每页平均字符数
+    // 根据当前章节真实页数估算每页平均字符数（增加 250 字符硬性下限保护，杜绝短章节拉低均值造成上万虚假总页数）
     const currentChapChars = chapterChars[currentChapterIndex] || 1
-    const estimatedCharsPerPage = Math.max(100, Math.round(900 * (16 * 16) / (settings.fontSize * settings.fontSize)))
-    const charsPerPage = totalPages > 1 ? (currentChapChars / totalPages) : estimatedCharsPerPage
+    const estimatedCharsPerPage = Math.max(250, Math.round(900 * (16 * 16) / (settings.fontSize * settings.fontSize)))
+    const charsPerPage = totalPages > 1 ? Math.max(250, currentChapChars / totalPages) : estimatedCharsPerPage
 
     // 生成估算页数数组
     const initialCounts = chapterChars.map((chars, i) => {
@@ -565,6 +636,9 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         }
         setPageIndex(targetPage)
         pendingPageRef.current = null
+      } else if (pageIndex >= total) {
+        targetPage = Math.max(0, total - 1)
+        setPageIndex(targetPage)
       }
 
       const clamped = Math.max(0, Math.min(targetPage, total - 1))
@@ -671,12 +745,13 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     if (isNaN(idx) && idx !== 'last') return
     const safeChapIdx = Math.min(Math.max(0, targetChapIdx), chapters.length - 1)
     if (safeChapIdx !== currentChapterIndex) {
-      pendingPageRef.current = idx === 999999 ? 'last' : idx
+      pendingPageRef.current = (idx === 999999 || idx === 'last') ? 'last' : idx
       setCurrentChapterIndex(safeChapIdx)
       setPageIndex(0)
       return
     }
-    const safeIdx = idx === 999999 ? totalPages - 1 : Math.max(0, Math.min(idx, totalPages - 1))
+    const targetIdx = (idx === 999999 || idx === 'last') ? totalPages - 1 : idx
+    const safeIdx = Math.max(0, Math.min(targetIdx, totalPages - 1))
     setPageIndex(safeIdx)
 
     const totalParas = paragraphs.length
@@ -697,24 +772,26 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   // 统一进度跳转与上报逻辑
   const goToPage = useCallback((idx, targetChapIdx = currentChapterIndex) => {
-    if (isNaN(idx)) return
+    if (isNaN(idx) && idx !== 'last') return
     if (isCardStyle) {
       goToPageCard(idx, targetChapIdx)
       return
     }
     const safeChapIdx = Math.min(Math.max(0, targetChapIdx), chapters.length - 1)
     
-    // 如果是跨章节切换，更新章节索引并进入等待渲染队列
+    // 如果是跨章节切换，更新章节索引并进入等待渲染队列，绝不将 999999 直接赋给 pageIndex
     if (safeChapIdx !== currentChapterIndex) {
+      pendingPageRef.current = (idx === 999999 || idx === 'last') ? 'last' : idx
       setCurrentChapterIndex(safeChapIdx)
-      setPageIndex(idx)
+      setPageIndex(0)
       return
     }
 
     const el = containerRef.current
     if (!el || !rect.width) return
     const total = Math.max(1, Math.ceil(el.scrollWidth / el.offsetWidth))
-    const clamped = Math.max(0, Math.min(idx, total - 1))
+    const targetIdx = (idx === 999999 || idx === 'last') ? total - 1 : idx
+    const clamped = Math.max(0, Math.min(targetIdx, total - 1))
     
     setPageIndex(clamped)
     setTotalPages(total)
@@ -736,7 +813,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     })
     
     setCurrentChapterName(chapters[safeChapIdx].label)
-  }, [rect.width, onProgressChange, chapters, paragraphs, currentChapterIndex, isCardStyle])
+  }, [rect.width, onProgressChange, chapters, paragraphs, currentChapterIndex, isCardStyle, goToPageCard])
 
   // 全局页码寻址跳转逻辑
   const goToGlobalPage = useCallback((globalPage) => {
@@ -978,7 +1055,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       if (pageIndex <= 0) {
         if (currentChapterIndex > 0) {
           triggerPageTransition('prev', () => {
-            goToPageCard(999999, currentChapterIndex - 1)
+            goToPageCard('last', currentChapterIndex - 1)
           })
         } else {
           showToast('已经是第一章了', 'info')
@@ -997,7 +1074,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
       goToPage(pageIndex - 1)
     } else {
       if (currentChapterIndex > 0) {
-        goToPage(999999, currentChapterIndex - 1)
+        goToPage('last', currentChapterIndex - 1)
       } else {
         showToast('已经是第一页了', 'info')
       }

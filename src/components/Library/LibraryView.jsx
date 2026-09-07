@@ -5,21 +5,33 @@ import { BookCard } from './BookCard'
 import { BookListItem } from './BookListItem'
 import { BookInfoModal } from '../UI/BookInfoModal'
 import { SettingsPanel } from '../Reader/SettingsPanel'
+import { GlobalSettingsModal } from '../UI/GlobalSettingsModal'
 
 export function LibraryView({ onImport }) {
   const {
     filteredBooks, books, viewMode, searchQuery, filterFormat,
     setSearchQuery, setFilterFormat, setViewMode, isLoading, openBook,
     removeBook: removeFromStore, setBooks, showToast, showConfirm,
-    setCategories
+    setCategories, selectedCategoryId, categories, setCurrentView
   } = useStore()
 
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [infoBook, setInfoBook] = useState(null)
+  const [showGlobalSettings, setShowGlobalSettings] = useState(false)
   const [showReaderSettings, setShowReaderSettings] = useState(false)
-  const [appVersion, setAppVersion] = useState('2.0.4')
+  const [appVersion, setAppVersion] = useState('2.0.5')
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const settingsMenuRef = useRef(null)
+
+  // 像阅读3.0一样：动态计算当前分类标题
+  const currentCategoryTitle = React.useMemo(() => {
+    if (selectedCategoryId === 'online') return '在线追书'
+    if (selectedCategoryId === 'local') return '本地书籍'
+    if (selectedCategoryId === 'uncategorized') return '未分类书籍'
+    if (selectedCategoryId === 'all') return '我的书库'
+    const found = categories?.find(c => c.id === selectedCategoryId)
+    return found ? found.name : '我的书库'
+  }, [selectedCategoryId, categories])
 
   // 一键检查所有连载小说更新并批量拉取
   const handleCheckAllUpdates = async () => {
@@ -48,6 +60,29 @@ export function LibraryView({ onImport }) {
       setIsCheckingUpdates(false)
     }
   }
+
+  // 像阅读 3.0 一样自动后台静默检查追更与红点刷新
+  useEffect(() => {
+    const silentCheck = async () => {
+      try {
+        const updates = await window.api.novelCheckAllUpdates()
+        if (updates && updates.length > 0) {
+          const all = await window.api.getAllBooks()
+          setBooks(all)
+        }
+      } catch (_) {}
+    }
+
+    // 延时 2 秒启动首次静默检查（避免阻塞首屏渲染）
+    const initialTimer = setTimeout(silentCheck, 2000)
+    // 之后每 30 分钟静默轮询一次
+    const intervalTimer = setInterval(silentCheck, 30 * 60 * 1000)
+
+    return () => {
+      clearTimeout(initialTimer)
+      clearInterval(intervalTimer)
+    }
+  }, [setBooks])
 
   useEffect(() => {
     window.api?.getAppVersion?.().then(v => {
@@ -174,13 +209,13 @@ export function LibraryView({ onImport }) {
     if (paths?.length) await onImport(paths)
   }
 
-  const formats = ['all', 'EPUB', 'PDF', 'AZW3', 'MOBI', 'TXT']
+  const formats = ['all', 'ONLINE', 'EPUB', 'PDF', 'AZW3', 'MOBI', 'TXT']
 
   return (
     <div className="library-view">
       <div className="library-toolbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <h1 className="library-title">我的书库</h1>
+          <h1 className="library-title">{currentCategoryTitle}</h1>
           <span className="library-version-badge" style={{
             fontSize: '11px',
             fontWeight: '600',
@@ -291,6 +326,21 @@ export function LibraryView({ onImport }) {
                 className="settings-dropdown-item"
                 onClick={() => {
                   setShowSettingsMenu(false)
+                  setShowGlobalSettings(true)
+                }}
+                id="menu-global-settings-btn"
+                style={{ fontWeight: 600, color: 'var(--accent-light)' }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                ⚙️ 全局系统设置
+              </button>
+              <button
+                className="settings-dropdown-item"
+                onClick={() => {
+                  setShowSettingsMenu(false)
                   setShowReaderSettings(true)
                 }}
                 id="menu-reader-settings-btn"
@@ -299,7 +349,7 @@ export function LibraryView({ onImport }) {
                   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
                   <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                 </svg>
-                阅读设置
+                📖 阅读排版偏好
               </button>
               <div className="settings-dropdown-divider" />
               <button className="settings-dropdown-item" onClick={handleExportBackup}>
@@ -338,11 +388,44 @@ export function LibraryView({ onImport }) {
 
       {filteredBooks.length === 0 ? (
         <div className="empty-library">
-          <div className="empty-icon">
-            <span style={{ fontSize: '40px', display: 'inline-flex', alignItems: 'center' }}>📚</span>
-          </div>
-          {books.length === 0 ? (
+          {selectedCategoryId === 'online' ? (
             <>
+              <div className="empty-icon">
+                <span style={{ fontSize: '42px', display: 'inline-flex', alignItems: 'center' }}>⚡</span>
+              </div>
+              <h3>暂无在线追更书籍</h3>
+              <p>您可以前往「在线找书」聚合全网书源搜索小说，一键加入书架流式追更</p>
+              <button
+                className="empty-add-btn"
+                onClick={() => setCurrentView('novelSearch')}
+                style={{
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                <span>🔍</span> 前往在线找书
+              </button>
+            </>
+          ) : selectedCategoryId === 'local' ? (
+            <>
+              <div className="empty-icon">
+                <span style={{ fontSize: '42px', display: 'inline-flex', alignItems: 'center' }}>📁</span>
+              </div>
+              <h3>暂无本地导入书籍</h3>
+              <p>点击下方按钮导入您的 EPUB、PDF、AZW3、MOBI、TXT 电子书</p>
+              <button className="empty-add-btn" onClick={handleAddClick}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                导入本地图书
+              </button>
+            </>
+          ) : books.length === 0 ? (
+            <>
+              <div className="empty-icon">
+                <span style={{ fontSize: '40px', display: 'inline-flex', alignItems: 'center' }}>📚</span>
+              </div>
               <h3>书库空空如也</h3>
               <p>点击"添加书籍"或将文件拖入此处，支持 EPUB、PDF、AZW3、MOBI、TXT 格式</p>
               <button className="empty-add-btn" id="empty-add-btn" onClick={handleAddClick}>
@@ -354,6 +437,9 @@ export function LibraryView({ onImport }) {
             </>
           ) : (
             <>
+              <div className="empty-icon">
+                <span style={{ fontSize: '40px', display: 'inline-flex', alignItems: 'center' }}>🔍</span>
+              </div>
               <h3>没有找到相关书籍</h3>
               <p>尝试修改搜索词或筛选条件</p>
             </>
@@ -410,10 +496,23 @@ export function LibraryView({ onImport }) {
           }}
         >
           <div onClick={e => e.stopPropagation()}>
-            <SettingsPanel onClose={() => setShowReaderSettings(false)} isModal={true} />
+            <SettingsPanel
+              onClose={() => setShowReaderSettings(false)}
+              isModal={true}
+              onOpenGlobalSettings={() => {
+                setShowReaderSettings(false)
+                setShowGlobalSettings(true)
+              }}
+            />
           </div>
         </div>
       )}
+
+      {/* 全新高颜值现代化全局设置中心 */}
+      <GlobalSettingsModal
+        isOpen={showGlobalSettings}
+        onClose={() => setShowGlobalSettings(false)}
+      />
     </div>
   )
 }

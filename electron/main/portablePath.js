@@ -1,6 +1,8 @@
-import { app } from 'electron'
+import * as electron from 'electron'
 import { join, dirname, basename } from 'path'
 import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from 'fs'
+
+const app = electron.app || electron.default?.app
 
 /**
  * 获取软件本体所在的根目录
