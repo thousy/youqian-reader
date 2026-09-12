@@ -46,6 +46,15 @@ export default function App() {
         // 2. 后台静默加载自定义字体，不阻塞阅读窗口秒开
         initCustomFonts().catch(e => console.warn('[App] 自定义字体后台预载告警:', e))
 
+        // 3. WebDAV 启动自动静默云端同步执行链（打通设置中承诺的静默同步）
+        if (!isReaderWindow && !isFileReaderWindow && window.api?.webdavGetConfig) {
+          window.api.webdavGetConfig().then(cfg => {
+            if (cfg && cfg.autoSync && cfg.url && cfg.username) {
+              window.api.webdavSyncUpload?.().catch(() => {})
+            }
+          }).catch(() => {})
+        }
+
         if (isReaderWindow) {
           // 如果是阅读窗口，自动定位并打开特定图书
           const bookIdParam = params.get('bookId')

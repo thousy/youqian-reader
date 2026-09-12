@@ -7,6 +7,7 @@ export function InBookSearchModal({ isOpen, onClose, onSearch, onJumpTo, isSearc
   const [showResultList, setShowResultList] = useState(false)
   const inputRef = useRef(null)
   const searchTimeoutRef = useRef(null)
+  const searchRequestIdRef = useRef(0)
 
   // 自动聚焦
   useEffect(() => {
@@ -16,6 +17,7 @@ export function InBookSearchModal({ isOpen, onClose, onSearch, onJumpTo, isSearc
         inputRef.current?.select()
       }, 50)
     } else {
+      searchRequestIdRef.current++
       setKeyword('')
       setResults([])
       setCurrentIndex(-1)
@@ -32,15 +34,21 @@ export function InBookSearchModal({ isOpen, onClose, onSearch, onJumpTo, isSearc
       clearTimeout(searchTimeoutRef.current)
     }
 
-    if (!val.trim()) {
+    const trimmed = val.trim()
+    if (!trimmed) {
+      searchRequestIdRef.current++
       setResults([])
       setCurrentIndex(-1)
       return
     }
 
+    const currentReqId = ++searchRequestIdRef.current
     searchTimeoutRef.current = setTimeout(async () => {
       if (!onSearch) return
-      const res = await onSearch(val.trim())
+      const res = await onSearch(trimmed)
+      // 若当前返回的请求不是最新发起的查询，直接丢弃
+      if (currentReqId !== searchRequestIdRef.current) return
+
       setResults(res || [])
       if (res && res.length > 0) {
         setCurrentIndex(0)

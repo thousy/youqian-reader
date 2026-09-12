@@ -321,6 +321,12 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         const isTruePreface = PREFACE_REGEX.test(firstLine)
         if (leadContent.length < 500 && !isTruePreface) {
           list[0].paraIndex = 0
+        } else {
+          // 长导语或独立序篇：自动建立前置章节覆盖第 0 段至首章，确保正文与搜索 100% 完整可达
+          list.unshift({
+            label: isTruePreface ? (firstLine.slice(0, 30) || '序言') : '前言',
+            paraIndex: 0
+          })
         }
       }
     }
@@ -580,9 +586,22 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         const endIdx = i + 1 < chapters.length ? chapters[i + 1].paraIndex : paragraphs.length
         const chapParas = paragraphs.slice(startIdx, endIdx)
 
-        testDiv.innerHTML = chapParas.map(para => {
-          return `<p style="font-size: ${settings.fontSize}px; font-weight: ${settings.fontWeight || 400}; font-family: '${settings.fontFamily}', Georgia, 'Noto Serif SC', serif; line-height: ${settings.lineHeight}; margin: 0 0 1em 0; text-indent: 2em; text-align: justify; word-break: break-all; min-height: ${para.trim() === '' ? '1em' : 'auto'};">${para}</p>`
-        }).join('')
+        // 安全构建测算段落，使用 textContent 杜绝任意 HTML 或脚本注入
+        testDiv.replaceChildren()
+        for (const para of chapParas) {
+          const p = document.createElement('p')
+          p.style.fontSize = `${settings.fontSize}px`
+          p.style.fontWeight = String(settings.fontWeight || 400)
+          p.style.fontFamily = `"${settings.fontFamily}", Georgia, "Noto Serif SC", serif`
+          p.style.lineHeight = String(settings.lineHeight)
+          p.style.margin = '0 0 1em 0'
+          p.style.textIndent = '2em'
+          p.style.textAlign = 'justify'
+          p.style.wordBreak = 'break-all'
+          p.style.minHeight = para.trim() === '' ? '1em' : 'auto'
+          p.textContent = para
+          testDiv.appendChild(p)
+        }
 
         let total = 1
         if (isCardStyle) {

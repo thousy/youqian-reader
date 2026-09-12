@@ -1,6 +1,6 @@
-# YouQian书籍阅读器 📚 (V2.0.5)
+# YouQian书籍阅读器 📚 (V2.1.0)
 
-[![Version](https://img.shields.io/badge/version-2.0.5-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
@@ -8,7 +8,27 @@
 
 ---
 
-## 🚀 V2.0.5 核心功能更新与完成报告 (Release Notes & Walkthrough)
+## 🚀 V2.1.0 核心功能更新与审计核销完成报告 (Release Notes & Security Audit)
+
+### 1. 🛡️ 外部专项代码审计缺陷全量核销 (Security & Robustness Hardening)
+* **S01 书源注入防御 (RCE Elimination)**：彻底移除书源解析模块中的 `new Function` 动态求值机制，改用白名单受控模板替换与安全抽取器，斩断任意远程代码注入风险。
+* **S02 TXT 排版容器 XSS 加固**：排版字符与页码测算容器彻底改用安全 DOM `textContent` 构建，杜绝 HTML 标签未转义导致的潜在渲染注入。
+* **F01 MOBI / AZW3 解析修复**：修复净化过程中对返回数据结构的处理，保留内容结构体并深度净化 `raw.html`，彻底解决部分 MOBI/AZW3 打开内容空白的异常。
+* **F02 在线追更水位与虚假成功根治**：重构小说更新检测机制，在确认追更章节物理写入成功后才持久化推进 `totalChapters` 水位，彻底杜绝网络波动下的假死与虚假更新。
+* **F03 & F04 备份恢复全量化与防串书加固**：重构 SQLite 备份恢复引擎，补齐 ONLINE 书籍专属全量字段；恢复时严格根据作者与书源精确配对，杜绝同名小说串书，先全量校验格式合法再原子性提交。
+* **F05 & F06 换源时序与下载书签保护**：换源增加请求 ID 来源校验，丢弃陈旧旧源返回；下载书籍重复入库时增加限制，杜绝意外覆盖用户人工书签。
+* **F08 TXT 长导语自动序章生成**：识别长达数百字的前置背景与导语，自动生成“【序章/导语】”独立目录项，确保 100% 文本完整可读、可检索。
+* **F11 异步书内搜索并发竞态修复**：增加全局单调自增 `searchRequestIdRef` 竞态防护，消除网络或慢检索引起的乱序结果覆盖问题。
+* **F13 WebDAV 云端启动自同步链条补齐**：在应用根生命周期中补齐开启“启动时自动同步”后的执行闭环，实现静默拉取与冲突自愈。
+* **E01 打包脚本异常守护**：修复发布脚本 7za 工具临时替换的退出时序，确保打包异常时仍能可靠还原开发依赖。
+* **D01 开源协议与脱敏防护**：项目根目录正式引入官方 MIT License；`.gitignore` 强化了对设计源文件、测试快照、登录凭据和审计工件的安全隔离。
+
+### 2. 🎯 书库分类切换与格式筛选智能重置
+* **分类跳转自愈**：从本地书籍切换至“在线追书”分类时，格式筛选器自动重置为“全部格式”，不再残留本地格式筛选条件，避免追更小说列表被误隐。
+
+---
+
+## 🚀 V2.0.5 历史功能更新 (Historical Release Notes)
 
 ### 1. 🌐 阅读 3.0 书源全开放导入引擎 (Network / Local / Paste)
 * **全途径一键导入**：支持直接输入网络书源 URL 实时拉取、本地书源 `.json` 文件批量解析导入、以及剪贴板 JSON 内容直接粘贴导入。

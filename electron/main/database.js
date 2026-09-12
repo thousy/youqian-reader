@@ -303,8 +303,19 @@ export function exportBackupData() {
     books: books.map(b => ({
       id: b.id,
       title: b.title,
+      author: b.author || '',
       format: b.format,
-      filePath: b.filePath
+      filePath: b.filePath || null,
+      fileSize: b.fileSize || 0,
+      cover: b.cover || null,
+      description: b.description || '',
+      publisher: b.publisher || '',
+      language: b.language || '',
+      novelUrl: b.novelUrl || null,
+      novelSourceId: b.novelSourceId || null,
+      totalChapters: b.totalChapters || 0,
+      latestChapter: b.latestChapter || '',
+      toc: b.toc || []
     })),
     readingProgress,
     bookmarks,
@@ -320,7 +331,87 @@ export function importBackupData(backup) {
     return { success: false, error: '备份文件缺少必要字段' }
   }
 
-  // 恢复全局设置
+  // 1. 先进行数据校验，杜绝产生半提交脏状态
+  for (const b of backup.books) {
+    if (!b || typeof b !== 'object' || !b.id || !b.title || !b.format) {
+      return { success: false, error: '备份数据中包含不完整的书籍条目，已放弃导入以防损坏书库' }
+    }
+  }
+
+  // 2. 智能书籍配对与恢复（支持 ONLINE 纯元数据恢复与本地严格防串书配对）
+  const currentBooks = getAllBooks()
+  const currentProgress = store.get('readingProgress', {})
+  const currentBookmarks = store.get('bookmarks', {})
+  const currentAnnotations = store.get('annotations', {})
+
+  const idMap = {}
+  let booksUpdated = false
+  const restoredBookIds = []
+
+  for (const backupBook of backup.books) {
+    // 严格多重维度配对：优先 id -> 在线 novelUrl -> (title + author + format) -> filePath
+    const matched = currentBooks.find(b => {
+      if (b.id === backupBook.id) return true
+      if (b.format === 'ONLINE' && backupBook.format === 'ONLINE' && b.novelUrl && backupBook.novelUrl) {
+        return b.novelUrl === backupBook.novelUrl
+      }
+      if (b.format === backupBook.format && b.title === backupBook.title) {
+        if (b.author && backupBook.author && b.author !== '未知' && backupBook.author !== '未知') {
+          return b.author === backupBook.author
+        }
+        if (b.filePath && backupBook.filePath) {
+          return b.filePath === backupBook.filePath
+        }
+        return true
+      }
+      return false
+    })
+
+    if (matched) {
+      idMap[backupBook.id] = matched.id
+    } else {
+      // 备份中有，但当前书库中没有
+      if (backupBook.format === 'ONLINE') {
+        // 在线追更书籍不需要本地文件，直接恢复完整书籍记录
+        const restoredBook = {
+          ...backupBook,
+          id: backupBook.id,
+          addedAt: backupBook.addedAt || new Date().toISOString()
+        }
+        currentBooks.push(restoredBook)
+        idMap[backupBook.id] = backupBook.id
+        restoredBookIds.push(backupBook.id)
+        booksUpdated = true
+      } else if (backupBook.filePath && existsSync(backupBook.filePath)) {
+        // 本地书籍：物理文件存在时恢复完整元数据
+        try {
+          const stat = statSync(backupBook.filePath)
+          const restoredBook = {
+            id: backupBook.id,
+            title: backupBook.title,
+            author: backupBook.author || '未知',
+            format: backupBook.format,
+            filePath: backupBook.filePath,
+            fileSize: stat.size,
+            cover: backupBook.cover || null,
+            description: backupBook.description || '',
+            publisher: backupBook.publisher || '',
+            language: backupBook.language || '',
+            addedAt: new Date().toISOString(),
+            toc: backupBook.toc || []
+          }
+          currentBooks.push(restoredBook)
+          idMap[backupBook.id] = backupBook.id
+          restoredBookIds.push(backupBook.id)
+          booksUpdated = true
+        } catch (e) {
+          console.error(`恢复本地书籍失败 ${backupBook.title}:`, e)
+        }
+      }
+    }
+  }
+
+  // 3. 校验通过后，原子性更新全局设置与分类
   const currentSettings = store.get('settings', {})
   const { lastOpenedBook, ...importedSettings } = backup.settings
   store.set('settings', {
@@ -328,64 +419,15 @@ export function importBackupData(backup) {
     ...importedSettings
   })
 
-  // 恢复书籍分类
   if (Array.isArray(backup.categories)) {
     store.set('categories', backup.categories)
-  }
-
-  // 智能书籍配对与合并（书签 & 进度）
-  const currentBooks = getAllBooks()
-  const currentProgress = store.get('readingProgress', {})
-  const currentBookmarks = store.get('bookmarks', {})
-
-  const idMap = {}
-  let booksUpdated = false
-  const restoredBookIds = []
-
-  for (const backupBook of backup.books) {
-    if (!backupBook.id || !backupBook.title || !backupBook.format) continue
-    
-    const matched = currentBooks.find(b => 
-      b.title === backupBook.title && 
-      b.format === backupBook.format
-    )
-
-    if (matched) {
-      idMap[backupBook.id] = matched.id
-    } else {
-      // 备份中有，但当前书库中没有。检查物理文件是否存在，如果存在则恢复该书籍
-      if (backupBook.filePath && existsSync(backupBook.filePath)) {
-        try {
-          const stat = statSync(backupBook.filePath)
-          const restoredBook = {
-            id: backupBook.id, // 保持原 id 以匹配进度和书签
-            title: backupBook.title,
-            format: backupBook.format,
-            filePath: backupBook.filePath,
-            fileSize: stat.size,
-            addedAt: new Date().toISOString(),
-            author: '未知',
-            cover: null,
-            description: '',
-            publisher: '',
-            language: ''
-          }
-          currentBooks.push(restoredBook)
-          idMap[backupBook.id] = backupBook.id
-          restoredBookIds.push(backupBook.id)
-          booksUpdated = true
-        } catch (e) {
-          console.error(`恢复书籍失败 ${backupBook.title}:`, e)
-        }
-      }
-    }
   }
 
   if (booksUpdated) {
     store.set('books', currentBooks)
   }
 
-  // 合并阅读进度
+  // 4. 合并阅读进度
   if (backup.readingProgress && typeof backup.readingProgress === 'object') {
     for (const [oldId, progress] of Object.entries(backup.readingProgress)) {
       const newId = idMap[oldId]
@@ -399,7 +441,7 @@ export function importBackupData(backup) {
     store.set('readingProgress', currentProgress)
   }
 
-  // 合并书签
+  // 5. 合并书签
   if (backup.bookmarks && typeof backup.bookmarks === 'object') {
     for (const [oldId, oldBookmarks] of Object.entries(backup.bookmarks)) {
       const newId = idMap[oldId]
@@ -431,8 +473,7 @@ export function importBackupData(backup) {
     store.set('bookmarks', currentBookmarks)
   }
 
-  // 合并划线高亮与笔记 (Annotations)
-  const currentAnnotations = store.get('annotations', {})
+  // 6. 合并划线高亮与笔记 (Annotations，支持更新较新批注)
   if (backup.annotations && typeof backup.annotations === 'object') {
     for (const [oldId, oldAnnotations] of Object.entries(backup.annotations)) {
       const newId = idMap[oldId]
@@ -442,14 +483,25 @@ export function importBackupData(backup) {
         }
         const existingAnnotations = currentAnnotations[newId]
         for (const oa of oldAnnotations) {
-          const isDuplicate = existingAnnotations.some(ea => {
+          const matchIdx = existingAnnotations.findIndex(ea => {
             if (oa.cfi && ea.cfi) return oa.cfi === ea.cfi
             if (oa.page !== undefined && ea.page !== undefined) return oa.page === ea.page && oa.selectedText === ea.selectedText
             if (oa.index !== undefined && ea.index !== undefined) return oa.index === ea.index && oa.selectedText === ea.selectedText
             return oa.selectedText === ea.selectedText && oa.chapterTitle === ea.chapterTitle
           })
 
-          if (!isDuplicate) {
+          if (matchIdx >= 0) {
+            // 已存在同位置高亮：若备份包含更新的笔记内容或修改时间，进行合并更新
+            const ea = existingAnnotations[matchIdx]
+            if (oa.note && (!ea.note || (oa.updatedAt && new Date(oa.updatedAt) > new Date(ea.updatedAt || 0)))) {
+              existingAnnotations[matchIdx] = {
+                ...ea,
+                note: oa.note,
+                color: oa.color || ea.color,
+                updatedAt: oa.updatedAt || new Date().toISOString()
+              }
+            }
+          } else {
             const newAnnotationId = Date.now().toString() + Math.random().toString(36).substr(2, 6)
             existingAnnotations.push({
               ...oa,

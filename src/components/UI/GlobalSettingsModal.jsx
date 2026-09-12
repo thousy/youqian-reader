@@ -69,7 +69,7 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
   // ==========================================
   // 4. 关于与更新
   // ==========================================
-  const [appVersion, setAppVersion] = useState('2.0.5')
+  const [appVersion, setAppVersion] = useState('2.1.0')
 
   // 数据加载
   const loadSourcesData = async () => {

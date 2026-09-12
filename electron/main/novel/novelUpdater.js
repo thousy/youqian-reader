@@ -178,9 +178,12 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
       fetchedAt: new Date().toISOString()
     }
 
-    // 存入本地缓存
+    // 存入本地缓存前校验当前书籍的书源是否已被用户更换，杜绝换源后慢速旧请求脏写入新源缓存
     try {
-      writeFileSync(chapterFile, JSON.stringify(resultData, null, 2), 'utf-8')
+      const currentBook = getBookById(bookId)
+      if (currentBook && currentBook.novelSourceId === book.novelSourceId) {
+        writeFileSync(chapterFile, JSON.stringify(resultData, null, 2), 'utf-8')
+      }
     } catch (_) {}
 
     return {
@@ -786,12 +789,12 @@ export async function checkBookUpdate(bookId) {
       const newChapters = onlineChapters.slice(localCount)
       const latestTitle = onlineChapters[totalCount - 1]?.title || ''
 
-      // 更新数据库红点未读数与最新章节
+      // 仅更新红点未读数与最新章节提示，保留 totalChapters 为本地实际已有章节数
       updateBook(book.id, {
         hasUpdate: true,
         unreadCount: newChapters.length,
-        totalChapters: totalCount,
-        latestChapter: latestTitle
+        latestChapter: latestTitle,
+        remoteTotalChapters: totalCount
       })
 
       return {
@@ -916,22 +919,37 @@ export async function performIncrementalUpdate(bookId, onProgress) {
     appendFileSync(book.filePath, appendText, 'utf-8')
   } else if (format === 'EPUB') {
     try {
-      await buildEpub({
+      // 检查原 EPUB 文件是否存在
+      if (!existsSync(book.filePath)) {
+        return { success: false, error: '原 EPUB 电子书文件不存在，无法追加新章' }
+      }
+      // 对于已封装的编译二进制 EPUB，如需追更，安全模式：将追更新章追加记录至TXT附属，或使用在线追更模式
+      // 避免单对象传参引发 TypeError 以及覆盖全书引发数据灾难
+      const novelInfo = {
         title: book.title,
         author: book.author || '网络作家',
-        coverUrl: book.cover,
-        description: book.description || '',
-        chapters: fetchedChapters,
-        outputPath: book.filePath
-      })
+        cover: book.cover || null,
+        description: book.description || ''
+      }
+      // 仅在明确支持或全量章节具备时调用正确签名的 buildEpub(novelInfo, chapters, outputPath)
+      // 若目前仅有增量章节，为保全全书安全，明确返回友好提示，绝不强制覆盖已有整本书
+      return {
+        success: false,
+        error: '本地已封装 EPUB 暂不支持单向二进制热补丁追加；建议使用「在线追书」模式阅读最新章节，或重新全本下载为 EPUB。'
+      }
     } catch (epubErr) {
-      console.warn('EPUB 追更合成警告:', epubErr.message)
+      return { success: false, error: 'EPUB 追更合成异常: ' + epubErr.message }
     }
   }
 
   const newSize = existsSync(book.filePath) ? statSync(book.filePath).size : book.fileSize
+  const newTotal = (book.totalChapters || 0) + fetchedChapters.length
+
   updateBook(bookId, {
-    totalChapters: checkRes.totalCount,
+    totalChapters: newTotal,
+    hasUpdate: false,
+    unreadCount: 0,
+    latestChapter: checkRes.latestChapterTitle,
     latestChapterTitle: checkRes.latestChapterTitle,
     fileSize: newSize,
     lastUpdatedAt: new Date().toISOString()
@@ -940,7 +958,7 @@ export async function performIncrementalUpdate(bookId, onProgress) {
   return {
     success: true,
     newCount: fetchedChapters.length,
-    totalChapters: checkRes.totalCount,
+    totalChapters: newTotal,
     latestChapterTitle: checkRes.latestChapterTitle
   }
 }

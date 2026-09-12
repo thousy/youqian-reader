@@ -348,9 +348,9 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
           isSerializing: true
         })
 
-        // 若为 PDF 电子书，自动将全书章节添加为初始书签，方便点击直接跳转章节
+        // 若为新入库的 PDF 电子书，自动将全书章节添加为初始书签（重复入库时绝对不可覆盖用户已有的人工书签）
         const bookObj = addRes?.book
-        if (bookObj && format === 'PDF' && pdfRes && Array.isArray(pdfRes.chapterBookmarks)) {
+        if (addRes?.success && bookObj && format === 'PDF' && pdfRes && Array.isArray(pdfRes.chapterBookmarks)) {
           const autoBookmarks = pdfRes.chapterBookmarks.map((bm, bIdx) => ({
             id: `auto_pdf_bm_${bIdx}_${Date.now()}`,
             label: `${bm.title} (第 ${bm.page} 页)`,

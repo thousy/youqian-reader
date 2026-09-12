@@ -19,7 +19,7 @@ export function LibraryView({ onImport }) {
   const [infoBook, setInfoBook] = useState(null)
   const [showGlobalSettings, setShowGlobalSettings] = useState(false)
   const [showReaderSettings, setShowReaderSettings] = useState(false)
-  const [appVersion, setAppVersion] = useState('2.0.5')
+  const [appVersion, setAppVersion] = useState('2.1.0')
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const settingsMenuRef = useRef(null)
 
@@ -32,6 +32,11 @@ export function LibraryView({ onImport }) {
     const found = categories?.find(c => c.id === selectedCategoryId)
     return found ? found.name : '我的书库'
   }, [selectedCategoryId, categories])
+
+  // 当在侧边栏切换分类（如从本地书籍跳转到在线追书）时，重置格式筛选为“全部格式”
+  useEffect(() => {
+    setFilterFormat('all')
+  }, [selectedCategoryId, setFilterFormat])
 
   // 一键检查所有连载小说更新并批量拉取
   const handleCheckAllUpdates = async () => {

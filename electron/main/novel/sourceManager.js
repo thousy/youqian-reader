@@ -1022,21 +1022,15 @@ export function normalizeSourceRule(raw) {
     } catch (_) {}
   }
 
-  // 智能求值 Legado 模板变量（如 source.getKey(), source.getVariable(), page 等）
+  // 安全解析 Legado 模板变量（如 key, page, baseUrl 等），杜绝任意代码执行注入
   searchUrl = searchUrl.replace(/\{\{([\s\S]*?)\}\}/g, (m, expr) => {
     const trimmed = expr.trim()
-    if (trimmed === 'key' || trimmed === 'keyword' || trimmed === 'searchkey') return '%s'
-    if (trimmed === 'page') return '1'
-    if (trimmed.includes('source.') || trimmed.includes('baseUrl')) {
-      try {
-        const fn = new Function('source', 'baseUrl', `return (${trimmed})`)
-        const res = fn({ getKey: () => url, getVariable: () => url, bookSourceUrl: url }, url)
-        return res != null ? String(res) : url
-      } catch (_) {
-        return url
-      }
+    if (/^(key|keyword|searchkey)$/i.test(trimmed)) return '%s'
+    if (/^page$/i.test(trimmed)) return '1'
+    if (/^(baseUrl|source\.bookSourceUrl|source\.getKey\(\)|source\.getVariable\(\))$/i.test(trimmed)) {
+      return url || ''
     }
-    return m
+    return ''
   })
 
   // 自动为相对路径 searchUrl 补全主站域名

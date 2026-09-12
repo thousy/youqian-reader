@@ -208,7 +208,13 @@ export const useStore = create((set, get) => ({
   // ===== 分类管理 =====
   setCategories: (categories) => set({ categories }),
   setSelectedCategoryId: (id) => {
-    set({ selectedCategoryId: id })
+    const prevId = get().selectedCategoryId
+    if (prevId !== id) {
+      // 切换分类时（如从本地书籍跳转到在线追书），重置格式筛选为“全部格式”，不沿用前一分类的筛选信息
+      set({ selectedCategoryId: id, filterFormat: 'all' })
+    } else {
+      set({ selectedCategoryId: id })
+    }
     get().applyFilter()
   },
 

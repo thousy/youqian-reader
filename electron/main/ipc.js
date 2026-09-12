@@ -147,7 +147,14 @@ export function setupIpcHandlers() {
   // ===== MOBI/AZW3 内容提取（含阅读 3.0 全局替换净化）=====
   ipcMain.handle('extract-mobi-content', async (_, filePath) => {
     const raw = await extractMobiContent(resolveBookPath(filePath))
-    return applyReplaceRules(raw, { bookTitle: basename(filePath) })
+    if (!raw) return null
+    if (typeof raw === 'object' && raw.html) {
+      return {
+        ...raw,
+        html: applyReplaceRules(raw.html, { bookTitle: basename(filePath) })
+      }
+    }
+    return raw
   })
 
   // ===== 阅读进度 =====
@@ -634,7 +641,7 @@ export function setupIpcHandlers() {
 
   // ===== 系统与版本信息 =====
   ipcMain.handle('get-app-version', () => {
-    return app.getVersion() || '2.0.5'
+    return app.getVersion() || '2.1.0'
   })
 
   // ===== 用户自定义字体管理 (Custom Font Management) =====
