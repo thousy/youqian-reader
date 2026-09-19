@@ -77,6 +77,13 @@ export function ReaderView() {
   // ===== 划词高亮与想法批注逻辑 =====
   const [selectionState, setSelectionState] = useState(null)
 
+  const handleCloseSelection = () => {
+    setSelectionState(null)
+    try {
+      window.getSelection()?.removeAllRanges()
+    } catch (_) {}
+  }
+
   useEffect(() => {
     const handleMouseUp = (e) => {
       // 避免在工具条、翻页按钮、工具栏或状态栏操作时误当作划词
@@ -94,7 +101,11 @@ export function ReaderView() {
 
       setTimeout(() => {
         const sel = window.getSelection()
-        if (!sel || sel.isCollapsed) return
+        if (!sel || sel.isCollapsed) {
+          // 若当前选区已折叠或无有效选区，且点击不在工具条内，则主动退出划词浮窗
+          setSelectionState((prev) => (prev ? null : prev))
+          return
+        }
         const text = sel.toString().trim()
         if (text.length >= 1 && text.length <= 1500) {
           try {
@@ -941,7 +952,7 @@ export function ReaderView() {
             onCopy={handleCopySelection}
             onAddBookmark={handleAddBookmark}
             onDeleteAnnotation={() => handleRemoveAnnotation(selectionState.existingAnnotation?.id)}
-            onClose={() => setSelectionState(null)}
+            onClose={handleCloseSelection}
           />
         )}
         <TtsPlayerBar

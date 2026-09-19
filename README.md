@@ -1,10 +1,18 @@
-# YouQian书籍阅读器 📚 (V2.1.0)
+# YouQian书籍阅读器 📚 (V2.1.1)
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.1.1-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.1.1 划词与阅读交互体验优化 (Release Notes)
+* **划词操作条空白处自动退出**：修复划选文字准备注释或高亮后放弃、点击界面空白区域浮窗不退出的问题；
+* **残留选区与重唤机制根治**：将外部点击改用捕获阶段精准拦截，并在退出时主动清空浏览器选区，彻底消除不可选空白区域释放鼠标时重新唤起浮窗的死循环；
+* **选区折叠联动与全局 Esc 退出**：正文点击选区折叠时自动清空浮窗，新增全局 `Escape` 快捷键极速退出支持；
+* **EPUB 跨 iframe 点击同步**：在 EPUB 阅读模式下点击 iframe 内部空白处时联动关闭工具条并清空选区。
 
 ---
 

@@ -301,8 +301,15 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           }
         })
 
-        // 点击 EPUB iframe 中的正文同样视为点击设置面板外。
-        rendition.on('click', () => setShowSettings(false))
+        // 点击 EPUB iframe 中的正文同样视为点击设置面板外及关闭划词浮窗
+        rendition.on('click', () => {
+          setShowSettings(false)
+          onTextSelected?.(null)
+          try {
+            const iframe = viewerRef.current?.querySelector('iframe')
+            iframe?.contentWindow?.getSelection()?.removeAllRanges()
+          } catch (_) {}
+        })
 
         // 监听 EPUB 内部 iframe 划词选区
         rendition.on('selected', (cfiRange) => {

@@ -296,7 +296,7 @@ export function exportBackupData() {
   const settings = store.get('settings', {})
 
   return {
-    version: '2.1.0',
+    version: '2.1.1',
     exportedAt: new Date().toISOString(),
     settings,
     categories,

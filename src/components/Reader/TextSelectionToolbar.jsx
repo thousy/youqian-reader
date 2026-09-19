@@ -39,19 +39,37 @@ export function TextSelectionToolbar({ position, selectedText, onHighlight, onSa
     setCoords({ x: safeX, y: safeY })
   }, [position, isAddingNote])
 
-  // 点击外部关闭（延时绑定，避免与划词鼠标抬起竞争）
+  // 点击外部关闭与键盘 Esc 退出（捕获阶段拦截，同时主动清除文本选区，彻底杜绝 mouseup 残留重新唤醒）
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (toolbarRef.current && !toolbarRef.current.contains(e.target)) {
+        try {
+          window.getSelection()?.removeAllRanges()
+        } catch (_) {}
         onClose?.()
       }
     }
-    const timer = setTimeout(() => {
-      document.addEventListener('mousedown', handleOutsideClick)
-    }, 120)
+
+    const handleGlobalKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        try {
+          window.getSelection()?.removeAllRanges()
+        } catch (_) {}
+        onClose?.()
+      }
+    }
+
+    const rafId = requestAnimationFrame(() => {
+      document.addEventListener('mousedown', handleOutsideClick, true)
+      document.addEventListener('pointerdown', handleOutsideClick, true)
+      window.addEventListener('keydown', handleGlobalKeyDown, true)
+    })
+
     return () => {
-      clearTimeout(timer)
-      document.removeEventListener('mousedown', handleOutsideClick)
+      cancelAnimationFrame(rafId)
+      document.removeEventListener('mousedown', handleOutsideClick, true)
+      document.removeEventListener('pointerdown', handleOutsideClick, true)
+      window.removeEventListener('keydown', handleGlobalKeyDown, true)
     }
   }, [onClose])
 
