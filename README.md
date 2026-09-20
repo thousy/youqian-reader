@@ -1,10 +1,18 @@
-# YouQian书籍阅读器 📚 (V2.1.1)
+# YouQian书籍阅读器 📚 (V2.1.2)
 
-[![Version](https://img.shields.io/badge/version-2.1.1-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.1.2-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.1.2 全局输入框原生右键菜单与编辑交互补齐 (Release Notes)
+* **全局输入框右键上下文菜单**：在主进程统一接入原生右键菜单服务，全量覆盖“在线找书”搜索框、书库搜索框、替换规则编辑框、WebDAV 设置框等所有可编辑区域；
+* **支持标准编辑动作全集**：右键菜单原生支持“撤销”、“重做”、“剪切”、“复制”、“粘贴”、“删除”、“全选”；
+* **剪贴板状态兜底加固**：粘贴项集成系统剪贴板异步状态检测，杜绝底层标志延迟导致的误置灰，保障右键点击即可秒速粘贴；
+* **非编辑区域右键辅助**：在书库列表、书名、作者等文本区域划选时，同样支持右键快速“复制”与“全选”。
 
 ---
 

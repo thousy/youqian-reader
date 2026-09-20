@@ -23,6 +23,7 @@ app.setPath('userData', getPortableDataDir())
 
 import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
+import { setupContextMenu } from './contextMenu'
 import { setMainWindow } from './novel/downloader'
 
 // ===== 隐私保护：禁用 Chromium 内置的网络连通性探测 =====
@@ -375,6 +376,7 @@ if (!gotLock) {
     nativeTheme.themeSource = 'dark'
     setupDatabase()
     setupIpcHandlers()
+    setupContextMenu(app)
 
     // ===== 注册 custom-font 协议，支持直接流式读取自定义字体 =====
     protocol.handle('custom-font', async (request) => {

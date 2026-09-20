@@ -641,7 +641,7 @@ export function setupIpcHandlers() {
 
   // ===== 系统与版本信息 =====
   ipcMain.handle('get-app-version', () => {
-    return app.getVersion() || '2.1.1'
+    return app.getVersion() || '2.1.2'
   })
 
   // ===== 用户自定义字体管理 (Custom Font Management) =====
