@@ -108,6 +108,17 @@ export function OnlineNovelReader({
 
   const contentContainerRef = useRef(null)
   const innerContentRef = useRef(null)
+  const activeTocRef = useRef(null)
+
+  // 目录抽屉展开时，自动将视口精准居中定位到当前正在阅读的章节
+  useEffect(() => {
+    if (showToc && activeTocRef.current) {
+      const timer = setTimeout(() => {
+        activeTocRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' })
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [showToc, currentChapterIndex])
   const measureContainerRef = useRef(null)
   const isSwitchingChapterRef = useRef(false)
   const pendingPageRef = useRef(null)
@@ -967,7 +978,126 @@ export function OnlineNovelReader({
         </div>
       )}
 
-      {/* 主正文展示区（根据 layoutMode 严格区分左右仿真翻页、左右滚动与上下垂直滚动） */}
+      {/* 主体工作区（双栏水平布局：左侧目录面板 + 右侧阅读区） */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'row',
+          overflow: 'hidden',
+          position: 'relative',
+          width: '100%',
+          height: '100%'
+        }}
+      >
+        {/* 目录面板（1:1 完全对齐本地图书 TxtReader/EpubReader 的 reader-toc-panel 嵌入式侧边栏） */}
+        {showToc && chapters.length > 0 && (
+          <div className="reader-toc-panel">
+            <div className="toc-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>目录 (共 {chapters.length} 章)</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                已缓存 {cachedSet.size} 章
+              </span>
+            </div>
+
+            {/* 换源待确认期目录顶部提示 */}
+            {preSwitchState?.isPendingUserAction && (
+              <div
+                style={{
+                  margin: '8px 10px 4px',
+                  padding: '6px 10px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  lineHeight: '1.4'
+                }}
+              >
+                <div style={{ color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span>🔒</span> 换源前阅读进度
+                </div>
+                <div style={{ color: 'var(--text-primary)', marginTop: '2px', wordBreak: 'break-all', fontSize: '11px' }}>
+                  {preSwitchState.chapterTitle}
+                </div>
+              </div>
+            )}
+
+            {/* 章节列表 */}
+            {chapters.map((ch, idx) => {
+              const isCurrent = idx === currentChapterIndex
+              const isCached = cachedSet.has(idx)
+              const isPreAnchor = preSwitchState?.isPendingUserAction && (
+                ch.title === preSwitchState.chapterTitle || idx === preSwitchState.chapterIndex
+              )
+
+              return (
+                <div
+                  key={idx}
+                  ref={isCurrent ? activeTocRef : null}
+                  className={`toc-item level-1 ${isCurrent ? 'active' : ''}`}
+                  onClick={() => {
+                    confirmUserChapterAction(idx)
+                    loadChapter(idx, chapters, false, false, true)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '6px'
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {ch.title}
+                  </span>
+                  {isPreAnchor && (
+                    <span
+                      style={{
+                        fontSize: '9px',
+                        color: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
+                      }}
+                    >
+                      原进度
+                    </span>
+                  )}
+                  {isCached && (
+                    <span
+                      title="已离线缓存到本地"
+                      style={{
+                        fontSize: '9px',
+                        color: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        padding: '1px 4px',
+                        borderRadius: '3px',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0
+                      }}
+                    >
+                      已缓存
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 右侧正文与控制阅读区 */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            position: 'relative',
+            height: '100%'
+          }}
+        >
+          {/* 主正文展示区（根据 layoutMode 严格区分左右仿真翻页、左右滚动与上下垂直滚动） */}
       {(() => {
         const containerW = contentContainerRef.current?.clientWidth || 860
         const padX = 60
@@ -1271,6 +1401,8 @@ export function OnlineNovelReader({
           }
         }}
       />
+        </div>
+      </div>
 
       {/* 自动阅读微型控制胶囊 (Auto Reading Floating Capsule) */}
       {isAutoReading && (
@@ -1390,160 +1522,7 @@ export function OnlineNovelReader({
         </div>
       )}
 
-      {/* 目录侧边抽屉 */}
-      {showToc && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 99990,
-            display: 'flex'
-          }}
-          onClick={onTocClose}
-        >
-          <div
-            className="online-toc-drawer"
-            style={{
-              width: '360px',
-              maxWidth: '85vw',
-              height: '100%',
-              backgroundColor: 'var(--bg-layer1)',
-              borderRight: '1px solid var(--border)',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '10px 0 30px rgba(0,0,0,0.3)',
-              color: 'var(--text-primary)'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* 目录顶栏 */}
-            <div
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}
-            >
-              <div>
-                <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>目录 (共 {chapters.length} 章)</h4>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  已缓存: {cachedSet.size} 章
-                </div>
-              </div>
-              <button
-                onClick={onTocClose}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '16px', color: 'var(--text-muted)' }}
-              >
-                ✕
-              </button>
-            </div>
 
-            {/* 换源待确认期目录顶部提示 */}
-            {preSwitchState?.isPendingUserAction && (
-              <div
-                style={{
-                  margin: '10px 16px 4px',
-                  padding: '9px 12px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  lineHeight: '1.5'
-                }}
-              >
-                <div style={{ color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>🔒</span> 换源前阅读进度
-                </div>
-                <div style={{ color: 'var(--text-primary)', marginTop: '2px', wordBreak: 'break-all' }}>
-                  {preSwitchState.chapterTitle}
-                </div>
-                <div style={{ color: 'var(--text-muted)', marginTop: '4px', fontSize: '10px' }}>
-                  💡 提示：点击下方任意章节将正式切换并更新阅读进度标记。
-                </div>
-              </div>
-            )}
-
-            {/* 章节列表 */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
-              {chapters.map((ch, idx) => {
-                const isCurrent = idx === currentChapterIndex
-                const isCached = cachedSet.has(idx)
-                const isPreAnchor = preSwitchState?.isPendingUserAction && (
-                  ch.title === preSwitchState.chapterTitle || idx === preSwitchState.chapterIndex
-                )
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => {
-                      onTocClose?.()
-                      confirmUserChapterAction(idx)
-                      loadChapter(idx, chapters, false, false, true)
-                    }}
-                    style={{
-                      padding: '10px 20px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      backgroundColor: isCurrent ? 'var(--bg-hover)' : 'transparent',
-                      color: isCurrent ? 'var(--accent-light)' : 'var(--text-primary)',
-                      fontWeight: isCurrent ? 600 : 'normal',
-                      fontSize: '13px',
-                      cursor: 'pointer',
-                      borderLeft: isCurrent ? '3px solid var(--accent)' : '3px solid transparent'
-                    }}
-                    onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-layer2)' }}
-                    onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'transparent' }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', flex: 1, marginRight: '10px' }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {ch.title}
-                      </span>
-                      {isPreAnchor && (
-                        <span
-                          style={{
-                            fontSize: '9px',
-                            color: '#f59e0b',
-                            backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                            padding: '1px 5px',
-                            borderRadius: '3px',
-                            whiteSpace: 'nowrap',
-                            flexShrink: 0
-                          }}
-                        >
-                          原进度
-                        </span>
-                      )}
-                    </div>
-                    {isCached && (
-                      <span
-                        title="已离线缓存到本地"
-                        style={{
-                          fontSize: '10px',
-                          color: '#22c55e',
-                          backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                          padding: '1px 5px',
-                          borderRadius: '4px',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        已缓存
-                      </span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 换源弹窗 */}
       <SourceSwitcherModal

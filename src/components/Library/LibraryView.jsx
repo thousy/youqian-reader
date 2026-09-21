@@ -19,7 +19,7 @@ export function LibraryView({ onImport }) {
   const [infoBook, setInfoBook] = useState(null)
   const [showGlobalSettings, setShowGlobalSettings] = useState(false)
   const [showReaderSettings, setShowReaderSettings] = useState(false)
-  const [appVersion, setAppVersion] = useState('2.1.2')
+  const [appVersion, setAppVersion] = useState('2.1.3')
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const settingsMenuRef = useRef(null)
 

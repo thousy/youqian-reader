@@ -1,10 +1,18 @@
-# YouQian书籍阅读器 📚 (V2.1.2)
+# YouQian书籍阅读器 📚 (V2.1.3)
 
-[![Version](https://img.shields.io/badge/version-2.1.2-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.1.3-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.1.3 在线追书目录对齐本地图书与体验优化 (Release Notes)
+* **目录显示位置与样式完全对齐本地图书**：彻底移除原有的全屏半透明遮罩与悬浮抽屉，重构为与 TXT/EPUB 本地图书一致的左侧 260px 嵌入式固定侧边栏；
+* **全局主题样式无缝复用**：无缝继承全局 `.reader-toc-panel`、`.toc-header` 与 `.toc-item` 规范，所有阅读主题自动适配；
+* **当前章节自动居中定位**：打开目录面板时，列表自动平滑滚动并将当前阅读章节居中呈现在视口中央；
+* **常驻目录边看边切**：目录常驻侧边不遮挡正文，读者可边浏览目录边自由切换章节阅读。
 
 ---
 
