@@ -1,10 +1,18 @@
-# YouQian书籍阅读器 📚 (V2.1.3)
+# YouQian书籍阅读器 📚 (V2.1.4)
 
-[![Version](https://img.shields.io/badge/version-2.1.3-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.1.4-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.1.4 离线缓存后台状态同步、退出提示与版本号自动化递增 (Release Notes)
+* **离线缓存后台静默与退出提示**：在离线缓存弹窗中启动缓存后，若关闭页面，自动触发「离线缓存任务已转入后台运行」全局提示，明确告知任务正在后台静默下载；
+* **再次打开缓存状态精准恢复**：主进程引入活跃缓存任务状态机与查询接口，每次打开离线缓存弹窗时主动校准真实状态，下载完成立即呈现「✓ 已全部完成」与最新统计，彻底消除残留假性“下载中...”的问题；
+* **阅读器主界面与目录实时联动**：即使弹窗关闭，后台下载完成时阅读器也会自动刷新已缓存章节并点亮目录中的「已缓存」绿色标记；
+* **版本号自动化递增支持**：集成 `npm run publish` 自动递增 Patch 版本号机制与 `npm run bump` 便捷指令，彻底告别手动修改 package.json 的繁琐。
 
 ---
 

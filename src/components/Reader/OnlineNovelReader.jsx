@@ -208,6 +208,24 @@ export function OnlineNovelReader({
     initChapters()
   }, [initChapters])
 
+  // 监听书籍离线缓存任务进度与完成事件，实时更新目录已缓存标记
+  useEffect(() => {
+    if (!book?.id) return
+    const removeListener = window.api.onBatchCacheProgress(book.id, async (data) => {
+      if (data.finished) {
+        try {
+          const statusRes = await window.api.novelCacheStatus(book.id)
+          if (statusRes?.cachedIndices) {
+            setCachedSet(new Set(statusRes.cachedIndices))
+          }
+        } catch (_) {}
+      }
+    })
+    return () => {
+      removeListener?.()
+    }
+  }, [book?.id])
+
   // 2. 加载指定章节正文
   const loadChapter = async (index, chapterList = chapters, forceFetch = false, scrollToBottom = false, isUserAction = false) => {
     if (!book?.id) return

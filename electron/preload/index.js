@@ -130,6 +130,7 @@ const api = {
   novelClearCache: (bookId) => ipcRenderer.invoke('novel-clear-cache', bookId),
   novelStartBatchCache: (bookId, startIndex, count) => ipcRenderer.invoke('novel-start-batch-cache', bookId, startIndex, count),
   novelCancelBatchCache: (bookId) => ipcRenderer.invoke('novel-cancel-batch-cache', bookId),
+  novelGetBatchCacheTask: (bookId) => ipcRenderer.invoke('novel-get-batch-cache-task', bookId),
   novelSearchAlternativeSources: (title, author, currentChapterTitle, currentChapterIndex, blockedSources) => ipcRenderer.invoke('novel-search-alternative-sources', title, author, currentChapterTitle, currentChapterIndex, blockedSources),
   onNovelAlternativeSourceFound: (cb) => {
     const listener = (_, data) => cb(data)

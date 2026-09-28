@@ -270,8 +270,27 @@ export function clearBookOfflineCache(bookId) {
   }
 }
 
-// 记录当前活跃的批量缓存任务控制器 (用于取消)
-const activeBatchCacheControllers = new Map()
+// 记录当前活跃的批量缓存任务状态与控制器 (用于取消与状态拉取)
+const activeBatchCacheTasks = new Map()
+
+/**
+ * 获取指定书籍的离线批量预缓存任务状态
+ */
+export function getOfflineBatchCacheTask(bookId) {
+  const taskKey = `cache_${bookId}`
+  const task = activeBatchCacheTasks.get(taskKey)
+  if (!task) {
+    return { isRunning: false, finished: false, done: 0, total: 0, currentTitle: '' }
+  }
+  return {
+    isRunning: !!task.isRunning,
+    done: task.done || 0,
+    total: task.total || 0,
+    currentTitle: task.currentTitle || '',
+    finished: !!task.finished,
+    cancelled: !!task.cancelled
+  }
+}
 
 /**
  * 启动类似阅读 3.0 的离线批量预缓存任务
@@ -301,7 +320,25 @@ export async function startOfflineBatchCache(bookId, startIndex, count, onProgre
     }
   }
 
+  const taskKey = `cache_${bookId}`
+
+  // 若之前已有正在运行的同名任务，先发送取消信号
+  const existingTask = activeBatchCacheTasks.get(taskKey)
+  if (existingTask && existingTask.isRunning && existingTask.cancelToken) {
+    existingTask.cancelToken.isCancelled = true
+    existingTask.isRunning = false
+  }
+
   if (targetIndices.length === 0) {
+    activeBatchCacheTasks.set(taskKey, {
+      bookId,
+      isRunning: false,
+      done: 0,
+      total: 0,
+      finished: true,
+      cancelled: false,
+      message: '所选范围已全部离线缓存就绪'
+    })
     onProgress?.({
       bookId,
       done: 0,
@@ -312,39 +349,66 @@ export async function startOfflineBatchCache(bookId, startIndex, count, onProgre
     return { success: true, downloadedCount: 0, message: '无需重复下载' }
   }
 
-  const taskKey = `cache_${bookId}`
   const cancelToken = { isCancelled: false }
-  activeBatchCacheControllers.set(taskKey, cancelToken)
+  const currentTask = {
+    bookId,
+    cancelToken,
+    isRunning: true,
+    done: 0,
+    total: targetIndices.length,
+    currentTitle: allChapters[targetIndices[0]]?.title || '',
+    finished: false,
+    cancelled: false,
+    startTime: Date.now()
+  }
+  activeBatchCacheTasks.set(taskKey, currentTask)
 
   const CONCURRENCY = 3
   let doneCount = 0
 
   // 异步在后台并发队列执行，不阻塞调用端
   ;(async () => {
-    for (let i = 0; i < targetIndices.length; i += CONCURRENCY) {
-      if (cancelToken.isCancelled) {
-        onProgress?.({ bookId, done: doneCount, total: targetIndices.length, cancelled: true })
-        break
-      }
+    try {
+      for (let i = 0; i < targetIndices.length; i += CONCURRENCY) {
+        if (cancelToken.isCancelled) {
+          currentTask.isRunning = false
+          currentTask.cancelled = true
+          onProgress?.({ bookId, done: doneCount, total: targetIndices.length, cancelled: true })
+          break
+        }
 
-      const chunk = targetIndices.slice(i, i + CONCURRENCY)
-      await Promise.all(
-        chunk.map(async (chIdx) => {
-          try {
-            await getOrFetchChapterContent(bookId, chIdx, false)
-          } catch (_) {}
-          doneCount++
-          onProgress?.({
-            bookId,
-            done: doneCount,
-            total: targetIndices.length,
-            currentTitle: allChapters[chIdx]?.title,
-            finished: doneCount === targetIndices.length
+        const chunk = targetIndices.slice(i, i + CONCURRENCY)
+        await Promise.all(
+          chunk.map(async (chIdx) => {
+            try {
+              await getOrFetchChapterContent(bookId, chIdx, false)
+            } catch (_) {}
+            doneCount++
+            const currentTitle = allChapters[chIdx]?.title || ''
+            currentTask.done = doneCount
+            currentTask.currentTitle = currentTitle
+            const isFinished = doneCount === targetIndices.length
+            if (isFinished) {
+              currentTask.isRunning = false
+              currentTask.finished = true
+            }
+            onProgress?.({
+              bookId,
+              done: doneCount,
+              total: targetIndices.length,
+              currentTitle,
+              finished: isFinished
+            })
           })
-        })
-      )
+        )
+      }
+    } catch (_) {
+    } finally {
+      if (!cancelToken.isCancelled) {
+        currentTask.isRunning = false
+        currentTask.finished = true
+      }
     }
-    activeBatchCacheControllers.delete(taskKey)
   })()
 
   return {
@@ -359,10 +423,11 @@ export async function startOfflineBatchCache(bookId, startIndex, count, onProgre
  */
 export function cancelOfflineBatchCache(bookId) {
   const taskKey = `cache_${bookId}`
-  const controller = activeBatchCacheControllers.get(taskKey)
-  if (controller) {
-    controller.isCancelled = true
-    activeBatchCacheControllers.delete(taskKey)
+  const task = activeBatchCacheTasks.get(taskKey)
+  if (task && task.isRunning) {
+    if (task.cancelToken) task.cancelToken.isCancelled = true
+    task.isRunning = false
+    task.cancelled = true
     return { success: true, message: '已取消离线缓存任务' }
   }
   return { success: false, message: '未找到正在进行的离线缓存任务' }

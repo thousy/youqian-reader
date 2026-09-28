@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawn, spawnSync } = require('child_process');
 const readline = require('readline');
+const { bumpVersion } = require('./bump-version');
 
 
 const colors = {
@@ -324,7 +325,20 @@ async function main() {
     process.exit(1);
   }
 
-  // 2. 读取 package.json 获取版本号
+  // 2. 检查版本号自动递增逻辑
+  const noBump = process.argv.includes('--no-bump') || process.argv.includes('--skip-bump') || process.argv.includes('--skip-build') || process.argv.includes('--no-build');
+  if (!noBump) {
+    try {
+      const bumpRes = bumpVersion('patch');
+      log(`\n✔ 自动递增 Patch 版本号: ${bumpRes.oldVersion} -> ${bumpRes.newVersion}`, colors.green + colors.bright);
+    } catch (e) {
+      log(`警告: 自动递增版本号失败: ${e.message}，将使用当前版本继续`, colors.yellow);
+    }
+  } else {
+    log('\n检测到 --no-bump 或 --skip-build 参数，跳过自动递增版本号。', colors.yellow);
+  }
+
+  // 读取 package.json 获取版本号
   const pkgPath = path.join(process.cwd(), 'package.json');
   if (!fs.existsSync(pkgPath)) {
     log('错误: 未找到 package.json 文件！', colors.red + colors.bright);

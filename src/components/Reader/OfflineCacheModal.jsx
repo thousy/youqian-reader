@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useStore } from '../../store/useStore'
 
 export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex = 0, totalChapters = 0, onCacheUpdated }) {
   const [cacheStatus, setCacheStatus] = useState({ cachedCount: 0, cachedIndices: [], totalBytes: 0 })
@@ -16,19 +17,44 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
     }
   }, [isOpen, currentChapterIndex, totalChapters])
 
-  // 加载当前书籍的缓存统计
-  const loadCacheStatus = async () => {
+  // 加载当前书籍的缓存统计并从主进程拉取后台任务最新状态
+  const loadCacheStatusAndTask = async () => {
     if (!book?.id) return
     try {
+      // 1. 读取本地磁盘已下载章节统计
       const res = await window.api.novelCacheStatus(book.id)
       setCacheStatus(res || { cachedCount: 0, cachedIndices: [], totalBytes: 0 })
       onCacheUpdated?.(res)
+
+      // 2. 向主进程拉取后台批量下载任务的真实运行状态
+      const task = await window.api.novelGetBatchCacheTask(book.id)
+      if (task && task.isRunning) {
+        setIsCaching(true)
+        setProgressInfo({
+          done: task.done,
+          total: task.total,
+          currentTitle: task.currentTitle
+        })
+      } else {
+        setIsCaching(false)
+        if (task && task.finished && task.total > 0) {
+          setProgressInfo({
+            done: task.total,
+            total: task.total,
+            currentTitle: '全部所选章节已离线缓存就绪',
+            finished: true
+          })
+        } else {
+          setProgressInfo(null)
+        }
+      }
     } catch (_) {}
   }
 
+  // 弹窗打开或书籍切换时立即同步
   useEffect(() => {
     if (isOpen && book?.id) {
-      loadCacheStatus()
+      loadCacheStatusAndTask()
     }
   }, [isOpen, book?.id])
 
@@ -39,13 +65,21 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
       setProgressInfo(data)
       if (data.finished || data.cancelled) {
         setIsCaching(false)
-        loadCacheStatus()
+        loadCacheStatusAndTask()
       }
     })
     return () => {
       removeListener?.()
     }
   }, [isOpen, book?.id])
+
+  // 弹窗关闭处理：当正在执行缓存时提示退出到后台运行
+  const handleModalClose = () => {
+    if (isCaching) {
+      useStore.getState().showToast('离线缓存任务已转入后台运行', 'info')
+    }
+    onClose?.()
+  }
 
   // 启动固定数量离线预下载
   const handleStartCache = async (count) => {
@@ -57,7 +91,12 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
     setIsCaching(true)
     setProgressInfo({ done: 0, total: actualCount, currentTitle: '准备开始...' })
     try {
-      await window.api.novelStartBatchCache(book.id, startIdx, count)
+      const res = await window.api.novelStartBatchCache(book.id, startIdx, count)
+      if (res && res.downloadedCount === 0 && res.message) {
+        setIsCaching(false)
+        useStore.getState().showToast('所选范围已全部离线缓存就绪', 'success')
+        await loadCacheStatusAndTask()
+      }
     } catch (e) {
       alert('启动离线缓存失败: ' + e.message)
       setIsCaching(false)
@@ -79,7 +118,12 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
     setIsCaching(true)
     setProgressInfo({ done: 0, total: count, currentTitle: `准备缓存第 ${start} 至 ${end} 章...` })
     try {
-      await window.api.novelStartBatchCache(book.id, startIndex, count)
+      const res = await window.api.novelStartBatchCache(book.id, startIndex, count)
+      if (res && res.downloadedCount === 0 && res.message) {
+        setIsCaching(false)
+        useStore.getState().showToast('所选范围已全部离线缓存就绪', 'success')
+        await loadCacheStatusAndTask()
+      }
     } catch (e) {
       alert('启动范围离线缓存失败: ' + e.message)
       setIsCaching(false)
@@ -91,6 +135,8 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
     try {
       await window.api.novelCancelBatchCache(book.id)
       setIsCaching(false)
+      setProgressInfo(null)
+      await loadCacheStatusAndTask()
     } catch (_) {}
   }
 
@@ -100,7 +146,7 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
     setIsClearing(true)
     try {
       await window.api.novelClearCache(book.id)
-      await loadCacheStatus()
+      await loadCacheStatusAndTask()
     } catch (_) {}
     finally {
       setIsClearing(false)
@@ -131,7 +177,7 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
         zIndex: 99999,
         backdropFilter: 'blur(6px)'
       }}
-      onClick={onClose}
+      onClick={handleModalClose}
     >
       <div
         className="offline-cache-modal"
@@ -160,7 +206,7 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
             </h3>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleModalClose}
             style={{
               background: 'transparent',
               border: 'none',
@@ -451,8 +497,8 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
           </div>
         </div>
 
-        {/* 正在下载进度条 */}
-        {isCaching && progressInfo && (
+        {/* 正在下载进度条 / 最近完成状态 */}
+        {((isCaching && progressInfo) || (progressInfo?.finished && progressInfo.total > 0)) && (
           <div
             style={{
               backgroundColor: 'var(--bg-hover)',
@@ -464,20 +510,30 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-              <span>后台下载中: <strong>{progressInfo.done} / {progressInfo.total}</strong> 章</span>
-              <button
-                onClick={handleCancelCache}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  textDecoration: 'underline'
-                }}
-              >
-                取消任务
-              </button>
+              <span>
+                {isCaching ? '后台下载中: ' : '缓存状态: '}
+                <strong style={{ color: progressInfo.finished ? '#10b981' : 'inherit' }}>
+                  {progressInfo.done} / {progressInfo.total}
+                </strong> 章
+                {progressInfo.finished && (
+                  <span style={{ marginLeft: '6px', color: '#10b981', fontWeight: 600 }}>✓ 已全部完成</span>
+                )}
+              </span>
+              {isCaching && (
+                <button
+                  onClick={handleCancelCache}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  取消任务
+                </button>
+              )}
             </div>
             {/* 进度条轨道 */}
             <div style={{ width: '100%', height: '6px', backgroundColor: 'var(--bg-layer3)', borderRadius: '3px', overflow: 'hidden' }}>
@@ -485,13 +541,13 @@ export function OfflineCacheModal({ isOpen, onClose, book, currentChapterIndex =
                 style={{
                   height: '100%',
                   width: `${progressInfo.total > 0 ? (progressInfo.done / progressInfo.total) * 100 : 0}%`,
-                  backgroundColor: 'var(--accent)',
+                  backgroundColor: progressInfo.finished ? '#10b981' : 'var(--accent)',
                   transition: 'width 0.2s ease'
                 }}
               />
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              正在处理：{progressInfo.currentTitle || '...'}
+              {isCaching ? `正在处理：${progressInfo.currentTitle || '...'}` : (progressInfo.currentTitle || '离线缓存已就绪')}
             </div>
           </div>
         )}

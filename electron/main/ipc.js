@@ -30,7 +30,7 @@ import {
   checkBookUpdate, checkAllBooksUpdate, performIncrementalUpdate,
   addSerialBookToShelf, getOrFetchBookChapters, getOrFetchChapterContent,
   preloadNextChapters, getBookCacheStatus, clearBookOfflineCache,
-  startOfflineBatchCache, cancelOfflineBatchCache,
+  startOfflineBatchCache, cancelOfflineBatchCache, getOfflineBatchCacheTask,
   searchAlternativeSources, switchBookSource, markBookUpdateRead
 } from './novel/novelUpdater.js'
 import {
@@ -580,6 +580,7 @@ export function setupIpcHandlers() {
     })
   })
   ipcMain.handle('novel-cancel-batch-cache', (_, bookId) => cancelOfflineBatchCache(bookId))
+  ipcMain.handle('novel-get-batch-cache-task', (_, bookId) => getOfflineBatchCacheTask(bookId))
   ipcMain.handle('novel-search-alternative-sources', (event, title, author, currentChapterTitle, currentChapterIndex, blockedSources) => {
     return searchAlternativeSources(title, author, currentChapterTitle, currentChapterIndex, blockedSources, (item) => {
       try {
