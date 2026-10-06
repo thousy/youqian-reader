@@ -11,6 +11,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [toc, setToc] = useState([])
   const [currentTocItem, setCurrentTocItem] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadingStatus, setLoadingStatus] = useState('正在读取电子书资源...')
   const [pageIndex, setPageIndex] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [currentChapterName, setCurrentChapterName] = useState('正文')
@@ -112,6 +113,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
 
   // 用 ref 保存扁平化的目录列表，彻底解决 relocated 事件闭包捕获旧空数组问题
   const tocRef = useRef([])
+  // 用哈希表建立 O(1) 目录快速检索索引，避免成千上万章大书在翻页时卡顿
+  const tocMapRef = useRef(new Map())
 
   // 极速获取文件名用于解决 EPUB 章节路径 mismatch 难题
   const getFilename = (path) => {
@@ -138,6 +141,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     async function loadEpub() {
       try {
         setLoading(true)
+        setLoadingStatus('正在读取电子书资源...')
 
         // 清理旧的 rendition 和 book
         if (renditionRef.current) {
@@ -172,10 +176,12 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           throw new Error('无法识别文件数据格式')
         }
 
-        console.log('EPUB: ArrayBuffer size =', arrayBuffer.byteLength, 'bytes')
+        const sizeInMb = (arrayBuffer.byteLength / 1024 / 1024).toFixed(1)
+        console.log('EPUB: ArrayBuffer size =', arrayBuffer.byteLength, 'bytes, approx', sizeInMb, 'MB')
         if (arrayBuffer.byteLength === 0) throw new Error('文件为空')
 
         // 2. 创建 epub book 并等待就绪
+        setLoadingStatus(Number(sizeInMb) > 30 ? `正在解包大型电子书资源 (${sizeInMb} MB)...` : '正在解析图书结构与章节索引...')
         const epubBook = ePub(arrayBuffer)
         bookRef.current = epubBook
 
@@ -183,25 +189,41 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         if (!mounted) return
         console.log('EPUB: Book ready')
 
+        // 优化：预先为归档文件建立哈希映射表（O(1) 查找），彻底消除多重遍历卡死
+        const archiveMap = new Map()
+        const rawArchiveFiles = epubBook.archive?.files || {}
+        let hasFontFiles = false
+
+        for (const [key, val] of Object.entries(rawArchiveFiles)) {
+          archiveMap.set(key, val)
+          const clean = key.split('/').pop()
+          if (clean && !archiveMap.has(clean)) {
+            archiveMap.set(clean, val)
+          }
+          if (!hasFontFiles && /\.(ttf|otf|woff2?)$/i.test(key)) {
+            hasFontFiles = true
+          }
+        }
+
         // 算出所有 spine item 的大小，构建零开销虚拟全局页数系统
         const spineItems = []
         let totalSize = 0
+        const totalSpineCount = epubBook.spine?.length || 0
+        const isMegaBook = totalSpineCount > 800
+
+        if (isMegaBook) {
+          setLoadingStatus(`检测到大型图书合集（共 ${totalSpineCount} 章），正在建立快速排版索引...`)
+        }
         
         epubBook.spine.each((section) => {
           const href = section.href
-          let file = null
-          if (epubBook.archive && epubBook.archive.files) {
-            file = epubBook.archive.files[href]
-            if (!file) {
-              const cleanHref = href.split('/').pop()
-              const matchKey = Object.keys(epubBook.archive.files).find(k => k.endsWith(cleanHref))
-              if (matchKey) {
-                file = epubBook.archive.files[matchKey]
-              }
-            }
+          let file = archiveMap.get(href)
+          if (!file) {
+            const cleanHref = href.split('/').pop()
+            file = archiveMap.get(cleanHref)
           }
           
-          const size = file ? (file.length || 0) : 20000
+          const size = file ? (file.length || file._data?.uncompressedSize || 20000) : 20000
           spineItems.push({
             index: section.index,
             href: section.href,
@@ -242,11 +264,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           })
         }
 
-
-
         // 自动检测内嵌字体并优先使用
-        const files = epubBook.archive?.files || {}
-        const hasFontFiles = Object.keys(files).some(name => /\.(ttf|otf|woff2?)$/i.test(name))
         const isNewBook = !savedProgressRef.current || (!savedProgressRef.current.cfi && !savedProgressRef.current.percentage)
         if (isNewBook && hasFontFiles) {
           useStore.getState().updateSettings({ fontFamily: 'BookDefault' })
@@ -272,26 +290,33 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         // 应用阅读设置
         applySettings(rendition, settings)
 
-        // 加载目录
+        // 加载目录并建立快速哈希索引
         epubBook.loaded.navigation.then(nav => {
           if (!mounted) return
           const flat = flattenToc(nav.toc)
           setToc(flat)
           tocRef.current = flat
+
+          const map = new Map()
+          for (const item of flat) {
+            if (item && item.href) {
+              map.set(item.href, item)
+              const clean = item.href.split('#')[0]
+              if (!map.has(clean)) map.set(clean, item)
+              const fn = getFilename(item.href)
+              if (fn && !map.has(fn)) map.set(fn, item)
+            }
+          }
+          tocMapRef.current = map
           
-          // 执行首次章节名字匹配
+          // 执行首次章节名字匹配 (O(1) 毫秒级命中)
           try {
             const curLoc = renditionRef.current?.currentLocation()
             const href = curLoc?.start?.href
             if (href) {
-              const matched = flat.find(item => {
-                const clean1 = item.href.split('#')[0]
-                const clean2 = href.split('#')[0]
-                if (clean1 === clean2 || item.href === href) return true
-                const file1 = getFilename(item.href)
-                const file2 = getFilename(href)
-                return file1 && file2 && file1 === file2
-              })
+              const clean = href.split('#')[0]
+              const fn = getFilename(href)
+              const matched = map.get(href) || map.get(clean) || map.get(fn)
               if (matched && matched.label) {
                 setCurrentChapterName(matched.label.trim())
               }
@@ -350,18 +375,13 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           
           const href = location.start.href
 
-          // 极速模糊匹配章节名 (使用 tocRef.current 规避捕获空数组)
-          const currentToc = tocRef.current
+          // 极速模糊匹配章节名 (使用 tocMapRef 保证 O(1) 瞬时完成，彻底告别巨型大书翻页卡顿)
           setCurrentTocItem(href)
-          if (href && currentToc && currentToc.length > 0) {
-            const matched = currentToc.find(item => {
-              const clean1 = item.href.split('#')[0]
-              const clean2 = href.split('#')[0]
-              if (clean1 === clean2 || item.href === href) return true
-              const file1 = getFilename(item.href)
-              const file2 = getFilename(href)
-              return file1 && file2 && file1 === file2
-            })
+          if (href) {
+            const currentTocMap = tocMapRef.current
+            const clean = href.split('#')[0]
+            const fn = getFilename(href)
+            const matched = currentTocMap.get(href) || currentTocMap.get(clean) || currentTocMap.get(fn)
             if (matched && matched.label) {
               setCurrentChapterName(matched.label.trim())
               setCurrentTocItem(matched.href)
@@ -543,6 +563,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
 
 
         // 5. 首次显示：优先恢复进度
+        setLoadingStatus('正在排版呈现正文内容...')
         const startPos = savedProgressRef.current?.cfi || undefined
         console.log('EPUB: Displaying with target:', startPos || '(default)')
         await rendition.display(startPos).catch(async (err) => {
@@ -586,7 +607,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         try { viewerRef.current.innerHTML = '' } catch {}
       }
     }
-  }, [book.id, settings.layoutMode])
+  }, [book.id || book.filePath, settings.layoutMode])
 
   // 监听窗口大小变化以重新计算分页
   useEffect(() => {
@@ -1126,7 +1147,9 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         {loading && (
           <div className="loading-overlay">
             <div className="loading-spinner"/>
-            <span>正在加载书籍...</span>
+            <span style={{ fontSize: '13px', fontWeight: 500, maxWidth: '80%', textAlign: 'center', lineHeight: 1.6 }}>
+              {loadingStatus}
+            </span>
           </div>
         )}
         <div 

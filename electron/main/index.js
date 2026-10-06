@@ -201,11 +201,23 @@ function createReaderWindow(bookId) {
     console.log(`[READER WINDOW RENDERER] ${message} (at ${sourceId}:${line})`)
   })
 
+  const showSafeguard = setTimeout(() => {
+    if (!readerWin.isDestroyed() && !readerWin.isVisible()) {
+      readerWin.show()
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+        mainWindow.hide()
+      }
+    }
+  }, 600)
+
   readerWin.once('ready-to-show', () => {
-    readerWin.show()
-    // 打开书籍时，自动隐藏书库主窗口，无需展示书库
-    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
-      mainWindow.hide()
+    clearTimeout(showSafeguard)
+    if (!readerWin.isDestroyed() && !readerWin.isVisible()) {
+      readerWin.show()
+      // 打开书籍时，自动隐藏书库主窗口，无需展示书库
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+        mainWindow.hide()
+      }
     }
   })
 
@@ -290,8 +302,17 @@ function createFileReaderWindow(filePath) {
     console.log(`[FILE READER WINDOW RENDERER] ${message} (at ${sourceId}:${line})`)
   })
 
+  const fileReaderShowSafeguard = setTimeout(() => {
+    if (!readerWin.isDestroyed() && !readerWin.isVisible()) {
+      readerWin.show()
+    }
+  }, 600)
+
   readerWin.once('ready-to-show', () => {
-    readerWin.show()
+    clearTimeout(fileReaderShowSafeguard)
+    if (!readerWin.isDestroyed() && !readerWin.isVisible()) {
+      readerWin.show()
+    }
   })
 
   readerWin.on('maximize', () => readerWin.webContents.send('window-maximized', true))

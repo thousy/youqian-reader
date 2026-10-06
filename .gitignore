@@ -20,3 +20,8 @@ logo_base64.txt
 youqian_backup_*.json
 audit/
 history_records/
+*.epub
+*.pdf
+*.azw3
+*.mobi
+*.txt
