@@ -14,6 +14,7 @@ export function setupDatabase() {
       readingProgress: {},
       bookmarks: {},
       annotations: {},
+      vocabulary: {},
       settings: {
         fontSize: 18,
         fontFamily: 'Georgia',
@@ -128,14 +129,17 @@ export function removeBook(id) {
   const bookmarks = store.get('bookmarks', {})
   const annotations = store.get('annotations', {})
   const epubLocations = store.get('epubLocations', {})
+  const vocabulary = store.get('vocabulary', {})
   delete progress[id]
   delete bookmarks[id]
   delete annotations[id]
   delete epubLocations[id]
+  delete vocabulary[id]
   store.set('readingProgress', progress)
   store.set('bookmarks', bookmarks)
   store.set('annotations', annotations)
   store.set('epubLocations', epubLocations)
+  store.set('vocabulary', vocabulary)
   return true
 }
 
@@ -235,6 +239,150 @@ export function removeAnnotation(bookId, annotationId) {
 
 export function clearAnnotations(bookId) {
   store.set(`annotations.${bookId}`, [])
+  return true
+}
+
+// ===== 生词本 (Vocabulary) =====
+
+export function getVocabulary(bookId) {
+  return store.get(`vocabulary.${bookId}`, [])
+}
+
+export function addVocabularyWord(bookId, wordItem) {
+  const list = getVocabulary(bookId)
+  const queryWord = (wordItem.word || '').trim()
+  const existingIdx = list.findIndex(w => w.word.toLowerCase() === queryWord.toLowerCase())
+  const now = new Date().toISOString()
+  if (existingIdx !== -1) {
+    list[existingIdx] = {
+      ...list[existingIdx],
+      ...wordItem,
+      updatedAt: now
+    }
+    store.set(`vocabulary.${bookId}`, list)
+    return list[existingIdx]
+  }
+  const newItem = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+    createdAt: now,
+    updatedAt: now,
+    word: queryWord,
+    phonetic: wordItem.phonetic || '',
+    definition: wordItem.definition || '',
+    context: wordItem.context || '',
+    mastered: false,
+    ...wordItem
+  }
+  list.unshift(newItem)
+  store.set(`vocabulary.${bookId}`, list)
+  return newItem
+}
+
+export function updateVocabularyWord(bookId, wordId, updates) {
+  const list = getVocabulary(bookId)
+  const idx = list.findIndex(w => w.id === wordId)
+  if (idx === -1) return null
+  list[idx] = {
+    ...list[idx],
+    ...updates,
+    updatedAt: new Date().toISOString()
+  }
+  store.set(`vocabulary.${bookId}`, list)
+  return list[idx]
+}
+
+export function removeVocabularyWord(bookId, wordId) {
+  const list = getVocabulary(bookId).filter(w => w.id !== wordId)
+  store.set(`vocabulary.${bookId}`, list)
+  return true
+}
+
+export function clearVocabulary(bookId) {
+  store.set(`vocabulary.${bookId}`, [])
+  return true
+}
+
+/**
+ * 获取跨所有书籍的全量生词库汇总
+ * @returns {Array} 全量生词列表（附带bookId与来源信息）
+ */
+export function getAllVocabulary() {
+  const allVocabMap = store.get('vocabulary', {})
+  const allList = []
+  const seenWords = new Map()
+
+  for (const [bookId, list] of Object.entries(allVocabMap)) {
+    if (Array.isArray(list)) {
+      for (const item of list) {
+        const wordKey = (item.word || '').trim().toLowerCase()
+        if (!wordKey) continue
+
+        const enhancedItem = {
+          ...item,
+          bookId: item.bookId || bookId
+        }
+
+        if (!seenWords.has(wordKey)) {
+          seenWords.set(wordKey, enhancedItem)
+          allList.push(enhancedItem)
+        } else {
+          // 若同一单词在多本书中出现，合并来源书名并保持掌握状态
+          const existing = seenWords.get(wordKey)
+          if (item.mastered && !existing.mastered) {
+            existing.mastered = true
+          }
+          if (item.bookTitle && existing.bookTitle && !existing.bookTitle.includes(item.bookTitle)) {
+            existing.bookTitle = `${existing.bookTitle} / ${item.bookTitle}`
+          }
+        }
+      }
+    }
+  }
+
+  // 按创建或更新时间倒序排列
+  return allList.sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))
+}
+
+/**
+ * 全局更新生词掌握状态或信息（跨所有书籍）
+ * @param {string} wordId 生词ID
+ * @param {object} updates 更新字段
+ */
+export function updateVocabularyWordGlobal(wordId, updates) {
+  const allVocabMap = store.get('vocabulary', {})
+  let updatedItem = null
+
+  for (const [bookId, list] of Object.entries(allVocabMap)) {
+    if (Array.isArray(list)) {
+      const idx = list.findIndex(w => w.id === wordId)
+      if (idx !== -1) {
+        list[idx] = {
+          ...list[idx],
+          ...updates,
+          updatedAt: new Date().toISOString()
+        }
+        store.set(`vocabulary.${bookId}`, list)
+        updatedItem = list[idx]
+      }
+    }
+  }
+  return updatedItem
+}
+
+/**
+ * 全局删除生词（跨所有书籍）
+ * @param {string} wordId 生词ID
+ */
+export function removeVocabularyWordGlobal(wordId) {
+  const allVocabMap = store.get('vocabulary', {})
+  for (const [bookId, list] of Object.entries(allVocabMap)) {
+    if (Array.isArray(list)) {
+      const filtered = list.filter(w => w.id !== wordId)
+      if (filtered.length !== list.length) {
+        store.set(`vocabulary.${bookId}`, filtered)
+      }
+    }
+  }
   return true
 }
 

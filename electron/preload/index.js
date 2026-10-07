@@ -56,8 +56,19 @@ const api = {
   addAnnotation: (bookId, annotation) => ipcRenderer.invoke('add-annotation', bookId, annotation),
   updateAnnotation: (bookId, annotationId, updates) => ipcRenderer.invoke('update-annotation', bookId, annotationId, updates),
   removeAnnotation: (bookId, annotationId) => ipcRenderer.invoke('remove-annotation', bookId, annotationId),
-  clearAnnotations: (bookId) => ipcRenderer.invoke('clear-annotations', bookId),
   exportAnnotationsMarkdown: (data) => ipcRenderer.invoke('export-annotations-markdown', data),
+
+  // 生词本 (Vocabulary) 与 单词查询
+  getVocabulary: (bookId) => ipcRenderer.invoke('get-vocabulary', bookId),
+  getAllVocabulary: () => ipcRenderer.invoke('get-all-vocabulary'),
+  addVocabularyWord: (bookId, item) => ipcRenderer.invoke('add-vocabulary-word', bookId, item),
+  updateVocabularyWord: (bookId, wordId, updates) => ipcRenderer.invoke('update-vocabulary-word', bookId, wordId, updates),
+  updateVocabularyWordGlobal: (wordId, updates) => ipcRenderer.invoke('update-vocabulary-word-global', wordId, updates),
+  removeVocabularyWord: (bookId, wordId) => ipcRenderer.invoke('remove-vocabulary-word', bookId, wordId),
+  removeVocabularyWordGlobal: (wordId) => ipcRenderer.invoke('remove-vocabulary-word-global', wordId),
+  clearVocabulary: (bookId) => ipcRenderer.invoke('clear-vocabulary', bookId),
+  lookupWord: (query) => ipcRenderer.invoke('lookup-word', query),
+  translateSentence: (text, fromLang, toLang) => ipcRenderer.invoke('translate-sentence', text, fromLang, toLang),
 
   // 设置
   getSettings: () => ipcRenderer.invoke('get-settings'),

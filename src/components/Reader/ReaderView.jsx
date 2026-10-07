@@ -10,6 +10,7 @@ const Azw3Reader = React.lazy(() => import('./Azw3Reader').then(m => ({ default:
 const OnlineNovelReader = React.lazy(() => import('./OnlineNovelReader').then(m => ({ default: m.OnlineNovelReader })))
 import { BookmarkPanel } from './BookmarkPanel'
 import { AnnotationPanel } from './AnnotationPanel'
+import { VocabularyPanel } from './VocabularyPanel'
 import { TextSelectionToolbar } from './TextSelectionToolbar'
 import { SettingsPanel } from './SettingsPanel'
 import { BookInfoModal } from '../UI/BookInfoModal'
@@ -24,11 +25,13 @@ export function ReaderView() {
     showToc, setShowToc,
     showBookmarks, setShowBookmarks,
     showAnnotations, setShowAnnotations,
+    showVocabulary, setShowVocabulary,
     showSearch, setShowSearch,
     showTts, setShowTts,
     showSettings, setShowSettings,
     bookmarks, setBookmarks, addBookmarkToStore, removeBookmarkFromStore,
     annotations, setAnnotations, addAnnotationToStore, updateAnnotationInStore, removeAnnotationFromStore,
+    vocabulary, setVocabulary,
     readingProgress, setReadingProgress,
     showToast, settings,
     updateSettings
@@ -84,6 +87,9 @@ export function ReaderView() {
     } catch (_) {}
   }
 
+  const currentBookRef = useRef(currentBook)
+  currentBookRef.current = currentBook
+
   useEffect(() => {
     const handleMouseUp = (e) => {
       // 避免在工具条、翻页按钮、工具栏或状态栏操作时误当作划词
@@ -99,11 +105,21 @@ export function ReaderView() {
         return
       }
 
+      // EPUB 格式文本位于独立 iframe 内，划词选区与浮窗由 EpubReader 独立调度，切勿由主窗口处理
+      const curBook = currentBookRef.current
+      const curFormat = (curBook?.format || (curBook?.novelUrl ? 'ONLINE' : '')).toUpperCase()
+      if (curFormat === 'EPUB') {
+        return
+      }
+
       setTimeout(() => {
         const sel = window.getSelection()
         if (!sel || sel.isCollapsed) {
-          // 若当前选区已折叠或无有效选区，且点击不在工具条内，则主动退出划词浮窗
-          setSelectionState((prev) => (prev ? null : prev))
+          // 若当前选区已折叠，若已有选区来自 EPUB 或正处于已有划线编辑态，切勿清空
+          setSelectionState((prev) => {
+            if (prev?.cfiRange || prev?.existingAnnotation) return prev
+            return null
+          })
           return
         }
         const text = sel.toString().trim()
@@ -172,7 +188,7 @@ export function ReaderView() {
 
     const saved = await window.api.addAnnotation(currentBook.id, newAnn)
     addAnnotationToStore(saved)
-    showToast('已完成高亮划线', 'success')
+    showToast('已添加划线', 'success')
     setSelectionState(null)
     window.getSelection()?.removeAllRanges()
   }
@@ -331,10 +347,12 @@ export function ReaderView() {
   useEffect(() => {
     if (!currentBook || !currentBook.id) {
       setAnnotations([])
+      setVocabulary([])
       return
     }
     window.api.getBookmarks(currentBook.id).then(setBookmarks)
     window.api.getAnnotations(currentBook.id).then(setAnnotations)
+    window.api.getVocabulary?.(currentBook.id).then(v => setVocabulary(v || []))
     window.api.getReadingProgress(currentBook.id).then(p => {
       if (p) {
         setReadingProgress(p)
@@ -498,7 +516,7 @@ export function ReaderView() {
   }
 
   return (
-    <div className="reader-view">
+    <div className="reader-view" style={{ '--annotation-thickness': `${settings.annotationThickness || 2.5}px` }}>
       {/* 进度条 */}
       <div className="reading-progress-bar">
         <div className="reading-progress-fill" style={{width: `${progress * 100}%`}} />
@@ -639,6 +657,39 @@ export function ReaderView() {
                     borderRadius:'50%', width:'14px', height:'14px',
                     fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
                   }}>{annotations.length}</span>
+                )}
+              </button>
+
+              {/* 英文生词本 */}
+              <button
+                className={`reader-toolbar-btn ${showVocabulary ? 'active' : ''}`}
+                onClick={() => {
+                  setShowVocabulary(!showVocabulary)
+                  if (showBookmarks) setShowBookmarks(false)
+                  if (showAnnotations) setShowAnnotations(false)
+                }}
+                title="英文生词本"
+                id="btn-vocabulary"
+                style={{
+                  background: showVocabulary ? '#e8f0fe' : '#ffffff',
+                  border: showVocabulary ? '1px solid #185abd' : '1px solid #d0d0d0',
+                  color: showVocabulary ? '#185abd' : '#333333',
+                  position: 'relative'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                  <line x1="12" y1="6" x2="16" y2="6"/>
+                  <line x1="12" y1="10" x2="16" y2="10"/>
+                </svg>
+                {vocabulary.length > 0 && (
+                  <span style={{
+                    position:'absolute', top:'-4px', right:'-4px',
+                    background:'#185abd', color:'white',
+                    borderRadius:'50%', width:'14px', height:'14px',
+                    fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
+                  }}>{vocabulary.length}</span>
                 )}
               </button>
 
@@ -821,6 +872,34 @@ export function ReaderView() {
             )}
           </button>
 
+          {/* 英文生词本 */}
+          <button
+            className={`reader-toolbar-btn ${showVocabulary ? 'active' : ''}`}
+            onClick={() => {
+              setShowVocabulary(!showVocabulary)
+              if (showBookmarks) setShowBookmarks(false)
+              if (showAnnotations) setShowAnnotations(false)
+            }}
+            title="英文生词本"
+            id="btn-vocabulary"
+            style={{ position: 'relative' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              <line x1="12" y1="6" x2="16" y2="6"/>
+              <line x1="12" y1="10" x2="16" y2="10"/>
+            </svg>
+            {vocabulary.length > 0 && (
+              <span style={{
+                position:'absolute', top:'-4px', right:'-4px',
+                background:'var(--accent, #4f46e5)', color:'white',
+                borderRadius:'50%', width:'14px', height:'14px',
+                fontSize:'9px', display:'flex', alignItems:'center', justifyContent:'center'
+              }}>{vocabulary.length}</span>
+            )}
+          </button>
+
           {/* 听书朗读 */}
           <button
             className={`reader-toolbar-btn ${showTts ? 'active' : ''}`}
@@ -922,6 +1001,11 @@ export function ReaderView() {
             onRemove={handleRemoveAnnotation}
             onSelect={handleSelectAnnotation}
             onExport={handleExportAnnotations}
+            bookTitle={currentBook?.title}
+          />
+        )}
+        {showVocabulary && (
+          <VocabularyPanel
             bookTitle={currentBook?.title}
           />
         )}

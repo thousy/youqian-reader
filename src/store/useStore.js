@@ -17,9 +17,13 @@ export const useStore = create((set, get) => ({
   readingProgress: null,
   bookmarks: [],
   annotations: [],
+  vocabulary: [],
+  allVocabulary: [],
+  vocabularyScope: 'all', // 'all' (全量生词库) | 'book' (本书生词)
   showToc: false,
   showBookmarks: false,
   showAnnotations: false,
+  showVocabulary: false,
   showSearch: false,
   showTts: false,
   showSettings: false,
@@ -31,7 +35,8 @@ export const useStore = create((set, get) => ({
     theme: 'dark',
     lineHeight: 1.8,
     globalTheme: 'dark',
-    layoutMode: 'horizontal' // 'horizontal' | 'vertical'
+    layoutMode: 'horizontal', // 'horizontal' | 'vertical'
+    annotationThickness: 2.5 // 默认 2.5px，可调 1.0px ~ 5.0px
   },
 
   // ===== Toast 通知 =====
@@ -134,7 +139,7 @@ export const useStore = create((set, get) => ({
     }
     
     try { document.documentElement.removeAttribute('data-theme') } catch (_) {}
-    set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [], annotations: [], showTts: false })
+    set({ currentBook: null, currentView: 'library', readingProgress: null, bookmarks: [], annotations: [], vocabulary: [], showVocabulary: false, showTts: false })
   },
 
   setCurrentView: (view) => {
@@ -174,10 +179,51 @@ export const useStore = create((set, get) => ({
     set(s => ({ annotations: s.annotations.filter(a => a.id !== id) }))
   },
 
+  // ===== 生词本 (Vocabulary) =====
+  setVocabulary: (vocabulary) => set({ vocabulary }),
+  setAllVocabulary: (allVocabulary) => set({ allVocabulary }),
+  setVocabularyScope: (scope) => set({ vocabularyScope: scope }),
+
+  loadAllVocabulary: async () => {
+    try {
+      const list = await window.api?.getAllVocabulary?.()
+      if (Array.isArray(list)) {
+        set({ allVocabulary: list })
+      }
+    } catch (_) {}
+  },
+
+  addVocabularyToStore: (wordItem) => {
+    set(s => {
+      const q = (wordItem.word || '').toLowerCase()
+      const filteredBook = s.vocabulary.filter(w => (w.word || '').toLowerCase() !== q)
+      const filteredAll = s.allVocabulary.filter(w => (w.word || '').toLowerCase() !== q)
+      return {
+        vocabulary: [wordItem, ...filteredBook],
+        allVocabulary: [wordItem, ...filteredAll]
+      }
+    })
+  },
+
+  updateVocabularyInStore: (id, updates) => {
+    set(s => ({
+      vocabulary: s.vocabulary.map(w => w.id === id ? { ...w, ...updates } : w),
+      allVocabulary: s.allVocabulary.map(w => w.id === id ? { ...w, ...updates } : w)
+    }))
+  },
+
+  removeVocabularyFromStore: (id) => {
+    set(s => ({
+      vocabulary: s.vocabulary.filter(w => w.id !== id),
+      allVocabulary: s.allVocabulary.filter(w => w.id !== id)
+    }))
+  },
+
   // ===== UI 状态 =====
   setShowToc: (v) => set({ showToc: v }),
   setShowBookmarks: (v) => set({ showBookmarks: v }),
   setShowAnnotations: (v) => set({ showAnnotations: v }),
+  setShowVocabulary: (v) => set({ showVocabulary: v }),
   setShowSearch: (v) => set({ showSearch: v }),
   setShowTts: (v) => set({ showTts: v }),
   setShowSettings: (v) => set({ showSettings: v }),

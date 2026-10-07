@@ -6,6 +6,7 @@ import { BookListItem } from './BookListItem'
 import { BookInfoModal } from '../UI/BookInfoModal'
 import { SettingsPanel } from '../Reader/SettingsPanel'
 import { GlobalSettingsModal } from '../UI/GlobalSettingsModal'
+import { CategoryPopover } from './CategoryPopover'
 
 export function LibraryView({ onImport }) {
   const {
@@ -22,6 +23,12 @@ export function LibraryView({ onImport }) {
   const [appVersion, setAppVersion] = useState('2.1.3')
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const settingsMenuRef = useRef(null)
+
+  // 批量管理多选状态
+  const [isBatchMode, setIsBatchMode] = useState(false)
+  const [selectedBookIds, setSelectedBookIds] = useState([])
+  const [batchCatPopoverOpen, setBatchCatPopoverOpen] = useState(false)
+  const [batchCatAnchor, setBatchCatAnchor] = useState(null)
 
   // 像阅读3.0一样：动态计算当前分类标题
   const currentCategoryTitle = React.useMemo(() => {
@@ -214,6 +221,87 @@ export function LibraryView({ onImport }) {
     if (paths?.length) await onImport(paths)
   }
 
+  // 切换单本书籍选中状态
+  const handleToggleSelect = (bookId) => {
+    setSelectedBookIds(prev => 
+      prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
+    )
+  }
+
+  // 全选或取消全选
+  const handleToggleSelectAll = () => {
+    const currentFilteredIds = filteredBooks.map(b => b.id)
+    if (selectedBookIds.length === currentFilteredIds.length && currentFilteredIds.length > 0) {
+      setSelectedBookIds([])
+    } else {
+      setSelectedBookIds(currentFilteredIds)
+    }
+  }
+
+  // 批量移动到指定分类
+  const handleBatchSetCategory = async (catId) => {
+    if (selectedBookIds.length === 0) return
+    try {
+      for (const id of selectedBookIds) {
+        await window.api.updateBook(id, { categoryId: catId })
+      }
+      const updatedBooks = books.map(b => 
+        selectedBookIds.includes(b.id) ? { ...b, categoryId: catId } : b
+      )
+      setBooks(updatedBooks)
+      const targetCat = categories.find(c => c.id === catId)
+      const catName = targetCat ? targetCat.name : '未分类'
+      showToast(`已将 ${selectedBookIds.length} 本书籍移至「${catName}」`, 'success')
+      setBatchCatPopoverOpen(false)
+      setSelectedBookIds([])
+      setIsBatchMode(false)
+    } catch (err) {
+      showToast('批量设置分类失败: ' + err.message, 'error')
+    }
+  }
+
+  // 批量新建分类并移入
+  const handleBatchCreateCategory = async (name) => {
+    if (categories.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+      showToast('分类已存在', 'error')
+      return
+    }
+
+    const newCatId = 'cat_' + Date.now() + Math.random().toString(36).substr(2, 4)
+    const newCat = { id: newCatId, name }
+    const updatedCategories = [...categories, newCat]
+
+    try {
+      await window.api.saveCategories(updatedCategories)
+      setCategories(updatedCategories)
+      await handleBatchSetCategory(newCatId)
+    } catch (err) {
+      showToast('新建分类失败: ' + err.message, 'error')
+    }
+  }
+
+  // 批量删除选中的书籍
+  const handleBatchDelete = async () => {
+    if (selectedBookIds.length === 0) return
+    const confirmed = await showConfirm(
+      '批量删除书籍',
+      `确定要从书库中批量移除选中的 ${selectedBookIds.length} 本书籍吗？本地电子书文件不会被删除。`
+    )
+    if (!confirmed) return
+    try {
+      for (const id of selectedBookIds) {
+        await window.api.removeBook(id)
+      }
+      const allBooks = await window.api.getAllBooks()
+      setBooks(allBooks)
+      showToast(`已从书库批量移除 ${selectedBookIds.length} 本书籍`, 'success')
+      setSelectedBookIds([])
+      setIsBatchMode(false)
+    } catch (err) {
+      showToast('批量删除失败: ' + err.message, 'error')
+    }
+  }
+
   const formats = ['all', 'ONLINE', 'EPUB', 'PDF', 'AZW3', 'MOBI', 'TXT']
 
   return (
@@ -286,6 +374,33 @@ export function LibraryView({ onImport }) {
             </svg>
           </button>
         </div>
+
+        {/* 批量管理切换按钮 */}
+        <button
+          className={`btn ${isBatchMode ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => {
+            setIsBatchMode(prev => {
+              if (prev) setSelectedBookIds([])
+              return !prev
+            })
+          }}
+          title={isBatchMode ? '退出批量管理' : '批量管理书籍与移动分类'}
+          id="btn-batch-mode"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '5px 10px',
+            fontSize: '12px',
+            borderRadius: '6px'
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="9 11 12 14 22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
+          {isBatchMode ? '退出批量' : '批量管理'}
+        </button>
 
         {/* 一键追更按钮 */}
         <button
@@ -459,6 +574,9 @@ export function LibraryView({ onImport }) {
               onClick={() => openBook(book)}
               onDelete={(e) => handleRemoveBook(book, e)}
               onShowInfo={setInfoBook}
+              isBatchMode={isBatchMode}
+              isSelected={selectedBookIds.includes(book.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))}
         </div>
@@ -470,11 +588,101 @@ export function LibraryView({ onImport }) {
               book={book}
               onClick={() => openBook(book)}
               onDelete={(e) => handleRemoveBook(book, e)}
+              isBatchMode={isBatchMode}
+              isSelected={selectedBookIds.includes(book.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))}
         </div>
       )}
       {infoBook && <BookInfoModal book={infoBook} onClose={() => setInfoBook(null)} />}
+
+      {/* 底部浮动批量操作条 */}
+      {isBatchMode && (
+        <div className="library-batch-action-bar">
+          <div className="batch-bar-left">
+            <span className="batch-bar-count">
+              已选 <strong>{selectedBookIds.length}</strong> / {filteredBooks.length} 本
+            </span>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleToggleSelectAll}
+              style={{ fontSize: '12px', padding: '4px 10px', borderRadius: '6px' }}
+            >
+              {selectedBookIds.length === filteredBooks.length && filteredBooks.length > 0 ? '取消全选' : '全选'}
+            </button>
+          </div>
+
+          <div className="batch-bar-right">
+            <button
+              className="btn btn-primary btn-sm"
+              disabled={selectedBookIds.length === 0}
+              onClick={(e) => {
+                e.stopPropagation()
+                const rect = e.currentTarget.getBoundingClientRect()
+                setBatchCatAnchor(rect)
+                setBatchCatPopoverOpen(prev => !prev)
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '12px',
+                padding: '5px 12px',
+                borderRadius: '6px'
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              批量移至分类
+            </button>
+
+            <button
+              className="btn btn-danger btn-sm"
+              disabled={selectedBookIds.length === 0}
+              onClick={handleBatchDelete}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '12px',
+                padding: '5px 12px',
+                borderRadius: '6px'
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+              批量删除
+            </button>
+
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setIsBatchMode(false)
+                setSelectedBookIds([])
+              }}
+              style={{ fontSize: '12px', padding: '5px 12px', borderRadius: '6px' }}
+            >
+              完成
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 批量移动分类 Popover */}
+      <CategoryPopover
+        isOpen={batchCatPopoverOpen}
+        anchorRect={batchCatAnchor}
+        currentCategoryId={null}
+        categories={categories}
+        onSelectCategory={handleBatchSetCategory}
+        onCreateCategory={handleBatchCreateCategory}
+        onClose={() => setBatchCatPopoverOpen(false)}
+        title={`批量移至分类 (${selectedBookIds.length}本)`}
+      />
       
       {/* 书库阅读设置模态弹窗 */}
       {showReaderSettings && (

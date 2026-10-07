@@ -15,7 +15,8 @@ function injectAnnotationsToHtml(htmlContent, annotations = []) {
       try {
         const safeEscaped = escapeRegExp(ann.selectedText)
         const regex = new RegExp(`(?![^<]*>)${safeEscaped}`, 'g')
-        const markTag = `<mark class="user-annotation-highlight" data-ann-id="${ann.id}" style="background-color: ${ann.color || '#ffe066'}; color: #1a1a2e; border-radius: 2px; padding: 1px 2px; cursor: pointer;">${ann.selectedText}</mark>`
+        const annColor = ann.color || '#38bdf8'
+        const markTag = `<mark class="user-annotation-highlight" data-ann-id="${ann.id}" style="background-color: transparent; color: inherit; text-decoration: underline; text-decoration-color: ${annColor}; text-decoration-thickness: var(--annotation-thickness, 2.5px); text-underline-offset: 7px; text-decoration-skip-ink: none; padding: 0; border: none; outline: none; cursor: pointer;">${ann.selectedText}</mark>`
         result = result.replace(regex, markTag)
       } catch (_) {}
     }

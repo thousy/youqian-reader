@@ -24,6 +24,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
   const [globalTotalPages, setGlobalTotalPages] = useState(1)
   const [isLocationsReady, setIsLocationsReady] = useState(false)
   const spineItemsRef = useRef(null)
+  const lastSelectedTimeRef = useRef(0)
   const lastProgressRef = useRef({
     sectionIndex: -1,
     pageIndex: -1,
@@ -326,19 +327,36 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           }
         })
 
-        // 点击 EPUB iframe 中的正文同样视为点击设置面板外及关闭划词浮窗
+        // 点击 EPUB iframe 中的正文：关闭设置面板；若非划选操作且无选区，才关闭划词浮窗
         rendition.on('click', () => {
           setShowSettings(false)
-          onTextSelected?.(null)
+          // 若距最后一次选词不足 800ms，说明该 click 是鼠标松手伴随产生的原生副产物，坚决不能误杀浮窗
+          if (Date.now() - lastSelectedTimeRef.current < 800) {
+            return
+          }
+          let hasActiveSelection = false
           try {
-            const iframe = viewerRef.current?.querySelector('iframe')
-            iframe?.contentWindow?.getSelection()?.removeAllRanges()
+            const iframes = viewerRef.current?.querySelectorAll('iframe') || []
+            for (const iframe of iframes) {
+              const sel = iframe?.contentWindow?.getSelection()
+              if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+                hasActiveSelection = true
+                break
+              }
+            }
           } catch (_) {}
+
+          if (hasActiveSelection) {
+            return
+          }
+
+          onTextSelected?.(null)
         })
 
-        // 监听 EPUB 内部 iframe 划词选区
+        // 监听 EPUB 内部 iframe 划词选区（补齐 cfiRange 与精准坐标）
         rendition.on('selected', (cfiRange) => {
           try {
+            lastSelectedTimeRef.current = Date.now()
             const range = rendition.getRange(cfiRange)
             if (!range) return
             const text = range.toString().trim()
@@ -351,7 +369,8 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             const clientX = iframeRect.left + rect.left + rect.width / 2
             const clientY = iframeRect.top + rect.top
 
-            onTextSelected?.({
+            onTextSelected?.((prev) => ({
+              ...(prev || {}),
               position: {
                 x: Math.max(120, Math.min(window.innerWidth - 120, clientX)),
                 y: Math.max(80, clientY)
@@ -359,7 +378,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
               selectedText: text,
               cfiRange: cfiRange,
               existingAnnotation: null
-            })
+            }))
           } catch (e) {
             console.warn('EPUB 选区处理告警:', e)
           }
@@ -484,6 +503,71 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           const doc = contents.document
           doc.addEventListener('keydown', handleKeyInsideIframe)
           doc.addEventListener('wheel', handleWheelInsideIframe, { passive: false })
+
+          // 注册 iframe 内部原生划词选区与点击保护（双重保障：松手 0ms 即时响应，彻底杜绝误杀）
+          const handleDocMouseUp = () => {
+            setTimeout(() => {
+              try {
+                const win = contents?.window || doc?.defaultView
+                const sel = win?.getSelection()
+                if (!sel || sel.isCollapsed) return
+                const text = sel.toString().trim()
+                if (text.length < 1 || text.length > 1500) return
+
+                lastSelectedTimeRef.current = Date.now()
+                const range = sel.getRangeAt(0)
+                const rect = range.getBoundingClientRect()
+                if (rect.width === 0 && rect.height === 0) return
+
+                const frameEl = win?.frameElement || viewerRef.current?.querySelector('iframe')
+                const frameRect = frameEl ? frameEl.getBoundingClientRect() : { left: 0, top: 0 }
+
+                const clientX = frameRect.left + rect.left + rect.width / 2
+                const clientY = frameRect.top + rect.top
+
+                let cfiRange = null
+                try {
+                  cfiRange = contents.cfiFromRange ? contents.cfiFromRange(range) : null
+                } catch (_) {}
+
+                onTextSelected?.((prev) => ({
+                  ...(prev || {}),
+                  position: {
+                    x: Math.max(120, Math.min(window.innerWidth - 120, clientX)),
+                    y: Math.max(80, clientY)
+                  },
+                  selectedText: text,
+                  cfiRange: cfiRange || prev?.cfiRange || null,
+                  existingAnnotation: null
+                }))
+              } catch (err) {
+                console.warn('EPUB iframe 原生选区处理告警:', err)
+              }
+            }, 10)
+          }
+
+          const handleDocClick = () => {
+            setShowSettings(false)
+            // 铁律：只要当前 iframe 内部仍有有效选中文本，绝对不关闭工具栏，绝对不清除选区！
+            try {
+              const win = contents?.window || doc?.defaultView
+              const sel = win?.getSelection()
+              if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+                return
+              }
+            } catch (_) {}
+
+            // 若距最后一次划选不足 800ms，说明该 click 是松开鼠标伴随产生的事件，严禁误关
+            if (Date.now() - lastSelectedTimeRef.current < 800) {
+              return
+            }
+
+            // 纯空白无选区点击：安全关闭划词浮窗
+            onTextSelected?.(null)
+          }
+
+          doc.addEventListener('mouseup', handleDocMouseUp)
+          doc.addEventListener('click', handleDocClick)
 
           // 监听水平/垂直滚动事件
           doc.addEventListener('scroll', () => {
@@ -700,7 +784,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     }
   }, [])
 
-  // 同步 annotations 高亮到 EPUB 内部
+  // 同步 annotations 划线到 EPUB 内部
   useEffect(() => {
     const rendition = renditionRef.current
     if (!rendition || !rendition.annotations || !annotations) return
@@ -708,22 +792,38 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     annotations.forEach(ann => {
       if (ann.cfiRange) {
         try {
+          // 清理旧可能存在的同 cfiRange 标记（兼容旧版本 highlight 和当前 underline）
+          rendition.annotations.remove(ann.cfiRange, 'highlight')
+          rendition.annotations.remove(ann.cfiRange, 'underline')
+
           rendition.annotations.add(
-            'highlight',
+            'underline',
             ann.cfiRange,
-            {},
+            { id: ann.id, color: ann.color },
             (e) => {
               onAnnotationClick?.(ann, e)
             },
-            'epub-user-highlight',
+            'epub-user-underline',
             {
-              fill: ann.color || '#ffe066',
-              'fill-opacity': '0.45'
+              stroke: ann.color || '#38bdf8'
             }
           )
         } catch (_) {}
       }
     })
+
+    return () => {
+      if (rendition?.annotations) {
+        annotations.forEach(ann => {
+          if (ann.cfiRange) {
+            try {
+              rendition.annotations.remove(ann.cfiRange, 'underline')
+              rendition.annotations.remove(ann.cfiRange, 'highlight')
+            } catch (_) {}
+          }
+        })
+      }
+    }
   }, [annotations, onAnnotationClick])
 
   // 注册统一精准跳转定位器 (支持 cfiRange, cfi, href, percentage)
@@ -912,6 +1012,29 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
             display: none !important;
             width: 0 !important;
             height: 0 !important;
+          }
+          /* EPUB 划线下划线样式：纯净无框无底色，下移 3px */
+          .epub-user-underline {
+            cursor: pointer !important;
+          }
+          .epub-user-underline rect {
+            fill: transparent !important;
+            stroke: none !important;
+            pointer-events: all !important;
+            cursor: pointer !important;
+          }
+          .epub-user-underline:hover rect {
+            fill: transparent !important;
+            stroke: none !important;
+          }
+          .epub-user-underline line {
+            stroke: inherit !important;
+            stroke-width: ${s.annotationThickness || 2.5}px !important;
+            stroke-linecap: round !important;
+            stroke-opacity: 0.95 !important;
+            pointer-events: stroke !important;
+            cursor: pointer !important;
+            transform: translateY(3px) !important;
           }
         `
       }

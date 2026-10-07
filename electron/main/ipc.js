@@ -7,6 +7,8 @@ import {
   getReadingProgress, saveReadingProgress,
   getBookmarks, addBookmark, removeBookmark,
   getAnnotations, addAnnotation, updateAnnotation, removeAnnotation, clearAnnotations,
+  getVocabulary, addVocabularyWord, updateVocabularyWord, removeVocabularyWord, clearVocabulary,
+  getAllVocabulary, updateVocabularyWordGlobal, removeVocabularyWordGlobal,
   getSettings, saveSettings, getLastOpenedBook, setLastOpenedBook,
   getStore, getEpubLocations, saveEpubLocations,
   getWebdavConfig, saveWebdavConfig,
@@ -175,6 +177,157 @@ export function setupIpcHandlers() {
   ipcMain.handle('update-annotation', (_, bookId, annotationId, updates) => updateAnnotation(bookId, annotationId, updates))
   ipcMain.handle('remove-annotation', (_, bookId, annotationId) => removeAnnotation(bookId, annotationId))
   ipcMain.handle('clear-annotations', (_, bookId) => clearAnnotations(bookId))
+
+  // ===== 生词本 (Vocabulary) 与 单词查询 =====
+  ipcMain.handle('get-vocabulary', (_, bookId) => getVocabulary(bookId))
+  ipcMain.handle('get-all-vocabulary', () => getAllVocabulary())
+  ipcMain.handle('add-vocabulary-word', (_, bookId, wordItem) => addVocabularyWord(bookId, wordItem))
+  ipcMain.handle('update-vocabulary-word', (_, bookId, wordId, updates) => updateVocabularyWord(bookId, wordId, updates))
+  ipcMain.handle('update-vocabulary-word-global', (_, wordId, updates) => updateVocabularyWordGlobal(wordId, updates))
+  ipcMain.handle('remove-vocabulary-word', (_, bookId, wordId) => removeVocabularyWord(bookId, wordId))
+  ipcMain.handle('remove-vocabulary-word-global', (_, wordId) => removeVocabularyWordGlobal(wordId))
+  ipcMain.handle('clear-vocabulary', (_, bookId) => clearVocabulary(bookId))
+
+  // 单词查询代理（无跨域限制，获取完整各词性释义与音标）
+  ipcMain.handle('lookup-word', async (_, query) => {
+    try {
+      const rawWord = (query || '').trim()
+      if (!rawWord) return null
+
+      let exactWord = rawWord
+      let phonetic = ''
+      let ukPhonetic = ''
+      let usPhonetic = ''
+      let definitions = []
+
+      // 1. 优先调用完整词典接口，获取无省略号的各词性完整释义与音标
+      try {
+        const jsonUrl = `https://dict.youdao.com/jsonapi?q=${encodeURIComponent(rawWord)}`
+        const jsonRes = await fetch(jsonUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+        if (jsonRes.ok) {
+          const jsonData = await jsonRes.json()
+          const ecWord = jsonData?.ec?.word?.[0]
+          if (ecWord) {
+            exactWord = ecWord.return_phrase || rawWord
+            if (ecWord.ukphone) ukPhonetic = `/${ecWord.ukphone}/`
+            if (ecWord.usphone) usPhonetic = `/${ecWord.usphone}/`
+            phonetic = usPhonetic || ukPhonetic || ''
+            if (ecWord.trs?.length) {
+              definitions = ecWord.trs
+                .map(t => t?.tr?.[0]?.l?.i?.[0])
+                .filter(Boolean)
+                .map(str => str.trim())
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 2. 若完整接口未获取到释义，尝试联想建议接口兜底
+      if (definitions.length === 0) {
+        try {
+          const suggestUrl = `https://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(rawWord)}`
+          const res = await fetch(suggestUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+          if (res.ok) {
+            const data = await res.json()
+            const entry = data?.data?.entries?.[0]
+            if (entry) {
+              if (entry.entry) exactWord = entry.entry
+              const explain = entry.explain || ''
+              if (explain) {
+                // 智能按分号或词性拆分多行
+                const parts = explain.split(/;\s*(?=(?:n|v|adj|adv|prep|conj|pron|num|art|vi|vt|abbr)\.|\【)/i)
+                definitions = parts.map(p => p.trim()).filter(Boolean)
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 清洗去除结尾多余的省略号与空行
+      definitions = definitions.map(d => d.replace(/[\s.·…]+$/g, '').trim()).filter(Boolean)
+
+      return {
+        success: true,
+        word: exactWord,
+        query: rawWord,
+        phonetic: phonetic,
+        ukPhonetic: ukPhonetic,
+        usPhonetic: usPhonetic,
+        definitions: definitions.length > 0 ? definitions : ['点击播放发音'],
+        definition: definitions.join('; ') || '点击播放发音'
+      }
+    } catch (err) {
+      console.warn('查词失败:', err)
+      return { success: false, error: err.message, word: query }
+    }
+  })
+
+  // 双向整句/短语翻译代理（高质量直连，无需Key，毫秒级响应，支持英中互译）
+  ipcMain.handle('translate-sentence', async (_, text, fromLang, toLang) => {
+    try {
+      const rawText = (text || '').trim()
+      if (!rawText) return null
+
+      // 剥离小说对话中首尾孤立的单双引号、破折号与空隙（防止接口匹配到残缺词条）
+      const cleanedText = rawText.replace(/^['"‘“’”—\s]+|['"‘“’”—\s]+$/g, '')
+      const queryText = cleanedText || rawText
+
+      // 智能识别翻译语言对
+      let src = fromLang
+      let tgt = toLang
+      if (!src || !tgt) {
+        const zhCount = (queryText.match(/[\u4e00-\u9fa5]/g) || []).length
+        const enCount = (queryText.match(/[a-zA-Z]/g) || []).length
+        if (zhCount > enCount) {
+          src = 'zh-CN'
+          tgt = 'en'
+        } else {
+          src = 'en'
+          tgt = 'zh-CN'
+        }
+      }
+
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(queryText)}&langpair=${src}|${tgt}`
+      const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+      if (!res.ok) throw new Error('翻译网络响应异常: ' + res.status)
+
+      const data = await res.json()
+      let trans = (data?.responseData?.translatedText || '').trim()
+
+      // 多层级兜底：若主字段为空，从候选匹配池 matches 中提取有效高分译文
+      if (!trans && Array.isArray(data?.matches)) {
+        for (const m of data.matches) {
+          if (m?.translation && typeof m.translation === 'string' && m.translation.trim()) {
+            trans = m.translation.trim()
+            break
+          }
+        }
+      }
+
+      if (trans) {
+        // 清理 HTML 实体转义字符
+        trans = trans
+          .replace(/&#39;/g, "'")
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&nbsp;/g, ' ')
+      }
+
+      return {
+        success: !!trans,
+        original: rawText,
+        translation: trans || '暂无译文',
+        direction: `${src}->${tgt}`,
+        sourceLang: src,
+        targetLang: tgt
+      }
+    } catch (err) {
+      console.warn('翻译服务异常:', err)
+      return { success: false, error: err.message, original: text }
+    }
+  })
 
   // 导出划线笔记为 Markdown 文件
   ipcMain.handle('export-annotations-markdown', async (_, { bookTitle, bookAuthor, annotations }) => {

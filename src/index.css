@@ -171,16 +171,47 @@ button, input, optgroup, select, textarea {
   color: inherit !important;
 }
 
-/* 正文划线高亮标注视觉样式 */
+/* 正文划线视觉样式：纯净无框无底色，下移 3px */
 .user-annotation-highlight {
-  border-radius: 2px;
-  padding: 1px 2px;
+  background-color: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
   cursor: pointer;
-  transition: opacity 0.15s ease;
   user-select: text !important;
+  text-decoration: underline;
+  text-underline-offset: 7px;
+  text-decoration-thickness: var(--annotation-thickness, 2.5px) !important;
+  text-decoration-skip-ink: none;
+  transition: filter 0.15s ease;
 }
 .user-annotation-highlight:hover {
-  filter: brightness(0.92);
+  filter: brightness(1.15);
+}
+
+/* EPUB 划线：纯净彩色下划线，去除任何外框与背景，精准下移 3px */
+.epub-user-underline {
+  cursor: pointer !important;
+}
+.epub-user-underline rect {
+  fill: transparent !important;
+  stroke: none !important;
+  pointer-events: all !important;
+  cursor: pointer !important;
+}
+.epub-user-underline:hover rect {
+  fill: transparent !important;
+  stroke: none !important;
+}
+.epub-user-underline line {
+  stroke: inherit !important;
+  stroke-width: var(--annotation-thickness, 2.5px) !important;
+  stroke-linecap: round !important;
+  stroke-opacity: 0.95 !important;
+  pointer-events: stroke !important;
+  cursor: pointer !important;
+  transform: translateY(3px) !important;
 }
 
 /* ===== 滚动条 ===== */
@@ -1778,7 +1809,8 @@ button, input, optgroup, select, textarea {
   margin: 6px 4px;
 }
 
-.popover-add-trigger {
+.popover-add-trigger,
+.popover-add-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1794,7 +1826,8 @@ button, input, optgroup, select, textarea {
   transition: var(--transition);
   width: 100%;
 }
-.popover-add-trigger:hover {
+.popover-add-trigger:hover,
+.popover-add-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
@@ -1853,6 +1886,132 @@ button, input, optgroup, select, textarea {
 @keyframes catIn {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== 全局 Portal 分类弹出层 ===== */
+.category-popover.global-portal-popover {
+  position: fixed !important;
+  bottom: auto !important;
+  height: auto !important;
+  max-height: 280px;
+  background: var(--bg-layer1);
+  border: 1px solid var(--border);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--border);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: 12px;
+  z-index: 99999 !important;
+}
+
+/* 浅色主题下的分类弹窗样式：纯白优雅卡片、浅紫边框、柔和投影 */
+.category-popover.global-portal-popover[data-global-theme="light"],
+[data-global-theme="light"] .category-popover.global-portal-popover {
+  background: #ffffff !important;
+  border: 1px solid rgba(139, 92, 246, 0.22) !important;
+  box-shadow: 0 12px 36px rgba(31, 31, 56, 0.12), 0 2px 8px rgba(31, 31, 56, 0.05) !important;
+  color: #1f1f38 !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-title,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-title {
+  color: #8a8aaf !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-item,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-item {
+  color: #38385a !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-item:hover,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-item:hover {
+  background: #f0effc !important;
+  color: #1f1f38 !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-item.active,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-item.active {
+  background: rgba(139, 92, 246, 0.12) !important;
+  color: #6d28d9 !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-divider,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-divider {
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-add-btn,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-add-btn {
+  color: #6d28d9 !important;
+}
+.category-popover.global-portal-popover[data-global-theme="light"] .popover-add-btn:hover,
+[data-global-theme="light"] .category-popover.global-portal-popover .popover-add-btn:hover {
+  background: #f0effc !important;
+}
+
+/* ===== 书库批量管理操作栏 ===== */
+.library-batch-action-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: var(--bg-layer1);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 8px 18px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.2);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  animation: slideUpBatch 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpBatch {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.batch-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-right: 1px solid var(--border-subtle);
+  padding-right: 16px;
+}
+
+.batch-bar-count {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.batch-bar-count strong {
+  color: var(--accent-light);
+  font-size: 15px;
+  margin: 0 2px;
+}
+
+.batch-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 批量模式下的卡片微调 */
+.book-card.batch-mode {
+  user-select: none;
+}
+.book-card.batch-mode:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.book-list-item.batch-mode {
+  user-select: none;
+}
+.book-list-item.batch-mode:hover {
+  border-color: var(--accent);
 }
 
 /* ===== 电子书注释 Tooltip & Modal 样式 ===== */

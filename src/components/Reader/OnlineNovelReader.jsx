@@ -32,6 +32,7 @@ function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick
 
   return segments.map((seg, idx) => {
     if (seg.isHighlight && seg.annotation) {
+      const annColor = seg.annotation.color || '#38bdf8'
       return (
         <mark
           key={idx}
@@ -40,18 +41,23 @@ function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick
             e.stopPropagation()
             onAnnotationClick?.(seg.annotation, e)
           }}
-          title={seg.annotation.note ? `想法: ${seg.annotation.note}` : '划线高亮 (点击查看/编辑)'}
+          title={seg.annotation.note ? `想法: ${seg.annotation.note}` : '划线 (点击查看/编辑)'}
           style={{
-            backgroundColor: seg.annotation.color || '#ffe066',
-            color: '#1a1a2e',
-            borderRadius: '2px',
-            padding: '1px 2px',
+            backgroundColor: 'transparent',
+            color: 'inherit',
+            textDecoration: 'underline',
+            textDecorationColor: annColor,
+            textDecorationThickness: 'var(--annotation-thickness, 2.5px)',
+            textUnderlineOffset: '7px',
+            textDecorationSkipInk: 'none',
+            padding: 0,
             cursor: 'pointer',
-            borderBottom: '2px solid rgba(0,0,0,0.3)',
-            transition: 'opacity 0.15s ease'
+            border: 'none',
+            outline: 'none',
+            transition: 'filter 0.15s ease'
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.15)')}
+          onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
         >
           {seg.text}
         </mark>
