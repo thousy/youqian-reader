@@ -153,8 +153,8 @@ export function SourceSwitcherModal({ isOpen, onClose, book, currentChapterTitle
     handleSearchSources([], updated)
   }
 
-  const handleSelectSource = async (src) => {
-    if (src.sourceId === book.novelSourceId && src.novelUrl === book.novelUrl) {
+  const handleSelectSource = async (src, forceReload = false) => {
+    if (!forceReload && src.sourceId === book.novelSourceId && src.novelUrl === book.novelUrl) {
       onClose()
       return
     }
@@ -484,22 +484,42 @@ export function SourceSwitcherModal({ isOpen, onClose, book, currentChapterTitle
                     🚫 屏蔽
                   </button>
 
-                  <button
-                    disabled={isCurrent || isSwitching}
-                    onClick={() => !isSwitching && handleSelectSource(src)}
-                    style={{
-                      padding: '4px 12px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      border: 'none',
-                      backgroundColor: isCurrent ? 'transparent' : 'var(--accent)',
-                      color: isCurrent ? 'var(--text-muted)' : '#ffffff',
-                      cursor: isCurrent || isSwitching ? 'default' : 'pointer',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {isSwitching ? '对齐中...' : isCurrent ? '使用中' : '切换'}
-                  </button>
+                  {isCurrent ? (
+                    <button
+                      disabled={isSwitching}
+                      onClick={() => !isSwitching && handleSelectSource(src, true)}
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        border: '1px solid var(--accent)',
+                        backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                        color: 'var(--accent-light)',
+                        cursor: isSwitching ? 'default' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                      title="强制重新从该书源拉取全本最新目录并刷新对齐"
+                    >
+                      {isSwitching ? '刷新中...' : '🔄 刷新重载'}
+                    </button>
+                  ) : (
+                    <button
+                      disabled={isSwitching}
+                      onClick={() => !isSwitching && handleSelectSource(src)}
+                      style={{
+                        padding: '4px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        border: 'none',
+                        backgroundColor: 'var(--accent)',
+                        color: '#ffffff',
+                        cursor: isSwitching ? 'default' : 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {isSwitching ? '对齐中...' : '切换'}
+                    </button>
+                  )}
                 </div>
               </div>
             )

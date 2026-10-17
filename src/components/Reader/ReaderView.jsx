@@ -99,6 +99,7 @@ export function ReaderView() {
         e.target.closest('.reader-toolbar') ||
         e.target.closest('.status-bar') ||
         e.target.closest('.reader-toc-panel') ||
+        e.target.closest('.reader-toc-resizer') ||
         e.target.closest('.modal-overlay') ||
         e.target.closest('.online-novel-reader-root') && e.target.closest('button')
       )) {

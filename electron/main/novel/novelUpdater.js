@@ -6,6 +6,7 @@ import { getNovelChapters, getChapterContent, searchNovels, getAllSourcesInfo, g
 import { buildEpub } from './epubBuilder.js'
 import { toSimplified } from './utils.js'
 import { applyReplaceRules } from './replaceRuleEngine.js'
+import { parseBbsChapterInfo } from './ruleEngine.js'
 
 /**
  * 获取指定书籍的本地章节缓存目录 (data/novel_cache/<bookId>)
@@ -23,21 +24,39 @@ export function getNovelCacheDir(bookId) {
  */
 export function addSerialBookToShelf(novelInfo) {
   try {
+    // 纯净化论坛连载小说书名（去除【】与后面的分卷章节后缀如 （30-43），恢复为纯净主书名）
+    let cleanBookTitle = novelInfo.title || ''
+    const bbsParsed = parseBbsChapterInfo(cleanBookTitle)
+    if (bbsParsed && bbsParsed.mainName) {
+      cleanBookTitle = bbsParsed.mainName
+    }
+
+    // 纯净化作者名
+    let cleanAuthor = novelInfo.author || '网络作家'
+    if (cleanAuthor.includes('作者：') || cleanAuthor.includes('作者:')) {
+      cleanAuthor = cleanAuthor.split(/[：:]/)[1]?.trim() || cleanAuthor
+    }
+
     const books = getAllBooks()
     const existing = books.find(b => {
       if (b.novelUrl && novelInfo.novelUrl && b.novelUrl === novelInfo.novelUrl) return true
-      if (b.title && novelInfo.title && b.author && novelInfo.author && b.title === novelInfo.title && b.author === novelInfo.author) return true
+      if (b.title && cleanBookTitle && b.author && cleanAuthor && b.title === cleanBookTitle && b.author === cleanAuthor) return true
       return false
     })
 
     if (existing) {
+      if (cleanBookTitle && existing.title !== cleanBookTitle && /[（\(][^0-9（\)]*?\d+/.test(existing.title)) {
+        updateBook(existing.id, { title: cleanBookTitle, author: cleanAuthor })
+        existing.title = cleanBookTitle
+        existing.author = cleanAuthor
+      }
       return { success: true, alreadyExists: true, book: existing }
     }
 
     const newBook = {
       id: 'online_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
-      title: novelInfo.title,
-      author: novelInfo.author || '网络作家',
+      title: cleanBookTitle || novelInfo.title,
+      author: cleanAuthor,
       cover: novelInfo.cover || null,
       format: 'ONLINE',
       filePath: null,
@@ -56,6 +75,13 @@ export function addSerialBookToShelf(novelInfo) {
     if (res && res.success === false && res.book) {
       return { success: true, alreadyExists: true, book: res.book }
     }
+
+    // 🚀 后台全自动异步预热拉取全本目录，更新真实分卷数与章节列表
+    setTimeout(() => {
+      try {
+        getOrFetchBookChapters(newBook.id, true).catch(() => {})
+      } catch (_) {}
+    }, 100)
 
     return { success: true, alreadyExists: false, book: newBook }
   } catch (e) {
@@ -87,12 +113,38 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
   const cacheDir = getNovelCacheDir(bookId)
   const indexFile = join(cacheDir, 'chapters_index.json')
 
-  // 若不强制刷新且缓存存在，直接返回本地缓存
+  // 若不强制刷新且缓存存在，直接返回本地缓存（自动识别并自愈脏缓存）
   if (!forceRefresh && existsSync(indexFile)) {
     try {
       const cached = JSON.parse(readFileSync(indexFile, 'utf-8'))
       if (Array.isArray(cached) && cached.length > 0) {
-        return { success: true, chapters: cached, fromCache: true }
+        const hasDirtyJunk = cached.some(ch => {
+          const t = ch?.title || ''
+          return t.includes('用户前期主贴') || t.includes('返回禁忌书屋首页') || t.includes('我们联系') || t === '返回主帖'
+        })
+        // 自动自愈：若本地缓存仅有 1 章且为论坛连载书籍或标题含分卷标记，极可能是先前单帖未聚合成功的残留
+        const isBbsSource = (book.novelSourceId?.includes('cool18') || book.novelUrl?.includes('cool18') || book.novelUrl?.includes('bbs') || book.sourceName?.includes('论坛'))
+        const hasBbsTitleFeature = /[（\(][^0-9（\)]*?\d+/.test(book.title || '') || (book.latestChapter && /[（\(][^0-9（\)]*?\d+/.test(book.latestChapter))
+        const isSuspiciousSingleChapter = cached.length <= 1 && (isBbsSource || hasBbsTitleFeature)
+
+        // 自动自愈：检测是否出现上部与下部交错穿插错乱（如出现下部章节后，后续又出现上部章节）
+        let seenLowerPart = false
+        let hasPartInterleaving = false
+        for (const ch of cached) {
+          const t = ch?.title || ''
+          const isLower = t.includes('下部') || t.includes('第二部') || t.includes('后传') || t.includes('续')
+          const isUpper = t.includes('上部') || t.includes('第一部') || (!isLower && /[（\(][^0-9（\)]*?\d+/.test(t))
+          if (isLower) {
+            seenLowerPart = true
+          } else if (seenLowerPart && isUpper) {
+            hasPartInterleaving = true
+            break
+          }
+        }
+
+        if (!hasDirtyJunk && !isSuspiciousSingleChapter && !hasPartInterleaving) {
+          return { success: true, chapters: cached, fromCache: true }
+        }
       }
     } catch (_) {}
   }
@@ -114,6 +166,20 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
 
     try {
       writeFileSync(indexFile, JSON.stringify(formattedChapters, null, 2), 'utf-8')
+      // 若原先残留无分卷号或错位的旧单章缓存（如最初单帖保存的脏 ch_0.json），立即清理
+      const oldFiles = readdirSync(cacheDir)
+      for (const f of oldFiles) {
+        if (f.startsWith('ch_') && f.endsWith('.json')) {
+          try {
+            const chPath = join(cacheDir, f)
+            const d = JSON.parse(readFileSync(chPath, 'utf-8'))
+            const hasRange = /[（\(][^0-9（\)]*?\d+/.test(d?.title || '')
+            if (!hasRange) {
+              rmSync(chPath)
+            }
+          } catch (_) {}
+        }
+      }
     } catch (_) {}
 
     // 更新书籍的章节总数和最新章节
@@ -139,29 +205,43 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
   const cacheDir = getNovelCacheDir(bookId)
   const chapterFile = join(cacheDir, `ch_${chapterIndex}.json`)
 
-  // 1. 优先检查本地缓存
-  if (!forceFetch && existsSync(chapterFile)) {
-    try {
-      const data = JSON.parse(readFileSync(chapterFile, 'utf-8'))
-      if (data && data.content && data.content.length > 10) {
-        const cleaned = applyReplaceRules(data.content, { bookTitle: book.title, sourceName: book.sourceName })
-        return {
-          success: true,
-          title: data.title,
-          content: cleaned,
-          fromCache: true
-        }
-      }
-    } catch (_) {}
-  }
-
-  // 2. 本地无缓存，从章节列表中找到对应 URL
+  // 1. 获取当前章节列表中该索引对应的元数据 (chapterMeta)
   const chaptersRes = await getOrFetchBookChapters(bookId, false)
   if (!chaptersRes.success || !chaptersRes.chapters[chapterIndex]) {
     return { success: false, error: '未找到该章节的信息' }
   }
 
   const chapterMeta = chaptersRes.chapters[chapterIndex]
+
+  // 2. 检查本地缓存（严格校验标题与分卷范围，杜绝错位脏缓存）
+  if (!forceFetch && existsSync(chapterFile)) {
+    try {
+      const data = JSON.parse(readFileSync(chapterFile, 'utf-8'))
+      if (data && data.content && data.content.length > 10) {
+        let isCacheValid = true
+        // 校验标题一致性：若当前目录具有明确分卷号（如 1-8），而缓存无分卷号或标题错位，视为脏缓存
+        if (chapterMeta.title) {
+          const metaHasRange = /[（\(][^0-9（\)]*?\d+/.test(chapterMeta.title)
+          const cachedHasRange = /[（\(][^0-9（\)]*?\d+/.test(data.title || '')
+          if (metaHasRange && !cachedHasRange) {
+            isCacheValid = false
+          } else if (data.title && data.title !== chapterMeta.title && data.url && chapterMeta.url && data.url !== chapterMeta.url) {
+            isCacheValid = false
+          }
+        }
+
+        if (isCacheValid) {
+          const cleaned = applyReplaceRules(data.content, { bookTitle: book.title, sourceName: book.sourceName })
+          return {
+            success: true,
+            title: data.title || chapterMeta.title,
+            content: cleaned,
+            fromCache: true
+          }
+        }
+      }
+    } catch (_) {}
+  }
 
   try {
     const rawContent = await getChapterContent(chapterMeta.url, book.novelSourceId, chapterMeta.title)
@@ -174,6 +254,7 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
     const resultData = {
       index: chapterIndex,
       title: chapterMeta.title,
+      url: chapterMeta.url,
       content: cleanedContent,
       fetchedAt: new Date().toISOString()
     }
@@ -482,8 +563,15 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
       return false
     }
 
+    // 智能提取纯净主干书名（剥离论坛分卷长缀与作者标注）
+    let searchBaseName = title || ''
+    if (searchBaseName.includes('（') || searchBaseName.includes('(')) {
+      searchBaseName = searchBaseName.replace(/[【】\[\]]/g, ' ').split(/[（\(]/)[0].trim()
+    }
+    searchBaseName = searchBaseName.replace(/作者[：:].*$/, '').replace(/\s*\d+.*$/, '').trim()
+
     // 智能清洗书名符号与修饰词，统一转为简体小写对比
-    const pureTitle = toSimplified((title || '').replace(/[《》\s【】()（）[\]]/g, '')).trim().toLowerCase()
+    const pureTitle = toSimplified((searchBaseName || title || '').replace(/[《》\s【】()（）[\]]/g, '')).trim().toLowerCase()
     const cleanAuthor = toSimplified((author || '').replace(/[《》\s【】()（）[\]]/g, '')).trim().toLowerCase()
     const foundSources = []
     const seen = new Set()
@@ -491,18 +579,23 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
     // 1. 条件 1：书名一致校验
     const isValidCandidateTitle = (candTitle) => {
       if (!candTitle) return false
-      const candPure = toSimplified(candTitle.replace(/[《》\s【】()（）[\]]/g, '')).trim().toLowerCase()
+      let candClean = candTitle
+      if (candClean.includes('（') || candClean.includes('(')) {
+        candClean = candClean.replace(/[【】\[\]]/g, ' ').split(/[（\(]/)[0].trim()
+      }
+      candClean = candClean.replace(/作者[：:].*$/, '').replace(/\s*\d+.*$/, '').trim()
+      const candPure = toSimplified(candClean.replace(/[《》\s【】()（）[\]]/g, '')).trim().toLowerCase()
       if (!candPure || candPure.length < 2) return false
       
       const junkWords = ['首页', '排行榜', '书架', '分类', '搜索', '全本', '完本', '书库', '个人中心', '登录', '注册', '书单', '电脑版', '手机版', '更新列表', '最新更新']
       if (junkWords.some(j => candPure === j)) return false
 
       // 完全相同
-      if (candPure === pureTitle) return true
+      if (candPure === pureTitle || candPure.includes(pureTitle) || pureTitle.includes(candPure)) return true
 
       // 仅允许剥除通用非核心后缀后完全相同 (如 "新官路商途(全本)", "新官路商途全文阅读")
       const stripped = candPure.replace(/(全文阅读|最新章节|笔趣阁|txt下载|全本|完结|连载|精校版|无弹窗|无广告)/g, '').trim()
-      if (stripped === pureTitle) return true
+      if (stripped === pureTitle || stripped.includes(pureTitle) || pureTitle.includes(stripped)) return true
 
       return false
     }
@@ -565,8 +658,9 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
     // 单源快速搜索 + 实时目录探活预检
     const searchOne = async (src) => {
       try {
-        const promise = src.search(title)
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4500))
+        const searchKw = searchBaseName || title
+        const promise = src.search(searchKw)
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5500))
         const res = await Promise.race([promise, timeout])
         if (Array.isArray(res) && res.length > 0) {
           for (const item of res) {
@@ -589,7 +683,7 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
 
             // 关键：实时探活预检，验证真实目录是否可用以及最新章节信息
             try {
-              const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 3500))
+              const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 8000))
               const rawChapters = await Promise.race([
                 getNovelChapters(novelUrl, item.source || src.id),
                 verifyTimeout

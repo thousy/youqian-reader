@@ -921,12 +921,29 @@ button, input, optgroup, select, textarea {
 }
 
 .reader-toc-panel {
-  width: 260px;
+  width: var(--reader-toc-width, 280px);
+  min-width: 180px;
+  max-width: 700px;
   background: var(--bg-layer1);
   border-right: 1px solid var(--border-subtle);
   overflow-y: auto;
   flex-shrink: 0;
-  transition: var(--transition-slow);
+  user-select: none;
+}
+
+.reader-toc-resizer {
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 30;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.reader-toc-resizer:hover,
+.reader-toc-resizer.is-dragging {
+  background: var(--accent);
 }
 
 .toc-header {

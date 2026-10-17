@@ -13,7 +13,7 @@ import { getPortableDataDir, getPortableDownloadsDir } from '../portablePath.js'
 import { getSourceById } from './sourceManager.js'
 import { buildEpub } from './epubBuilder.js'
 import { buildPdf } from './pdfBuilder.js'
-import { sleep, toSimplified, stripDuplicateTitle } from './utils.js'
+import { sleep, toSimplified, stripDuplicateTitle, cleanBookTitleAndAuthor } from './utils.js'
 import { addBook, saveBookmarks } from '../database.js'
 
 // 下载任务 Map: taskId -> { status, progress, total, cancel, novelInfo, sourceId }
@@ -132,16 +132,17 @@ function getChapterRangeStr(chapters) {
 }
 
 /**
- * 格式化下载书籍文件名: 《书籍名称》作者：作者名称（多少章到多少章）_来源：书源名称_书源网址_日期时间.ext
+ * 格式化下载书籍文件名: 《书籍名称（多少章到多少章）》作者：作者名称_来源：书源名称_书源网址_日期时间.ext
  */
 function generateDownloadFileName(novelInfo, source, format, chapters = []) {
   const safeStr = (str) => (str || '未知').replace(/[\\/:*?"<>|\r\n\t]/g, '_').trim()
 
-  const rawTitle = (novelInfo.title || '未知书籍').replace(/^《|》$/g, '').trim()
-  const title = safeStr(rawTitle)
-  const author = safeStr(novelInfo.author || '未知')
+  const { cleanTitle, author: cleanAuthor, rangeStr } = cleanBookTitleAndAuthor(novelInfo.title, novelInfo.author, chapters)
+
+  const title = safeStr(cleanTitle)
+  const author = safeStr(cleanAuthor)
   const sourceName = safeStr(source?.name || novelInfo.sourceName || '未知书源')
-  const rangeStr = safeStr(getChapterRangeStr(chapters))
+  const safeRangeStr = safeStr(rangeStr)
 
   let rawUrl = source?.baseUrl || source?.rule?.url || novelInfo.url || ''
   try {
@@ -160,7 +161,7 @@ function generateDownloadFileName(novelInfo, source, format, chapters = []) {
   const ss = String(now.getSeconds()).padStart(2, '0')
   const timeStr = `${YYYY}${MM}${DD}_${hh}${mm}${ss}`
 
-  return `《${title}》作者：${author}${rangeStr}_来源：${sourceName}_${sourceUrl}_${timeStr}.${format.toLowerCase()}`
+  return `《${title}${safeRangeStr}》作者：${author}_来源：${sourceName}_${sourceUrl}_${timeStr}.${format.toLowerCase()}`
 }
 
 function getConfigFilePath() {
@@ -220,17 +221,34 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
   const MAX_RETRIES = Math.max(0, Math.min(5, cfg.maxRetries || 3))
   const targetFormat = (formatOverride || cfg.outputFormat || 'EPUB').toUpperCase()
 
+  // 智能清洗提取真实作者与纯净书名，并自动结合本次下载的章节生成完整范围（如《我这系统不正经（第1-217章）》）
+  const { cleanTitle, author: cleanAuthor, rangeStr, titleWithRange } = cleanBookTitleAndAuthor(novelInfo.title, novelInfo.author, chapters)
+  const normalizedNovelInfo = {
+    ...novelInfo,
+    title: titleWithRange,
+    rawCleanTitle: cleanTitle,
+    author: cleanAuthor
+  }
+
   let cancelled = false
   tasks.set(taskId, {
     status: 'running',
     progress: 0,
     total: chapters.length,
-    novelTitle: novelInfo.title,
+    novelTitle: normalizedNovelInfo.title,
+    novelAuthor: normalizedNovelInfo.author,
     format: targetFormat,
     cancel: () => { cancelled = true }
   })
 
-  pushProgress(taskId, { status: 'running', progress: 0, total: chapters.length, novelTitle: novelInfo.title, format: targetFormat })
+  pushProgress(taskId, {
+    status: 'running',
+    progress: 0,
+    total: chapters.length,
+    novelTitle: normalizedNovelInfo.title,
+    novelAuthor: normalizedNovelInfo.author,
+    format: targetFormat
+  })
 
   try {
     const completedChapters = []
@@ -305,18 +323,18 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     }
 
     const format = targetFormat
-    const fileName = generateDownloadFileName(novelInfo, source, format, completedChapters)
+    const fileName = generateDownloadFileName(normalizedNovelInfo, source, format, completedChapters)
     const outputPath = join(booksDir, fileName)
 
     let pdfRes = null
     if (format === 'PDF') {
       // 输出高清晰度排版 PDF 电子书
       pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在排版生成 PDF 电子书...' })
-      pdfRes = await buildPdf(novelInfo, completedChapters, outputPath)
+      pdfRes = await buildPdf(normalizedNovelInfo, completedChapters, outputPath)
     } else if (format === 'TXT') {
       // 输出 TXT 纯文本小说
       pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在生成 TXT 文件...' })
-      let txtContent = `${novelInfo.title}\n作者：${novelInfo.author || '未知'}\n\n简介：\n${novelInfo.description || ''}\n\n====================================\n\n`
+      let txtContent = `${normalizedNovelInfo.title}\n作者：${normalizedNovelInfo.author || '未知'}\n\n简介：\n${normalizedNovelInfo.description || ''}\n\n====================================\n\n`
       for (const ch of completedChapters) {
         txtContent += `\n\n${ch.title}\n\n${ch.content}\n`
       }
@@ -324,7 +342,7 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     } else {
       // 默认输出标准 EPUB
       pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在封装 EPUB 电子书...' })
-      await buildEpub(novelInfo, completedChapters, outputPath)
+      await buildEpub(normalizedNovelInfo, completedChapters, outputPath)
     }
 
     // 如果开启了自动入库（autoImport: true），自动将生成的文件及章节书签加入书库
@@ -335,14 +353,14 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
           filePath: outputPath,
           format: format, // TXT, PDF 或 EPUB
           fileSize: stat ? stat.size : 0,
-          title: novelInfo.title || safeTitle,
-          author: novelInfo.author || '未知',
-          cover: novelInfo.cover || null,
-          description: novelInfo.description || '',
+          title: normalizedNovelInfo.title,
+          author: normalizedNovelInfo.author || '未知',
+          cover: normalizedNovelInfo.cover || null,
+          description: normalizedNovelInfo.description || '',
           publisher: 'YouQian Reader 下载器',
           language: 'zh',
-          novelSourceId: novelInfo.sourceId || sourceId,
-          novelUrl: novelInfo.url || null,
+          novelSourceId: normalizedNovelInfo.sourceId || sourceId,
+          novelUrl: normalizedNovelInfo.url || null,
           totalChapters: chapters.length,
           latestChapterTitle: chapters[chapters.length - 1]?.title || '',
           isSerializing: true

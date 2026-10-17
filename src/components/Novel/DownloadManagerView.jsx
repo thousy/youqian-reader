@@ -310,9 +310,16 @@ export function DownloadManagerView() {
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)' }}>
-                          《{task.novelTitle || '网络小说'}》
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)' }}>
+                            《{(task.novelTitle || '网络小说').replace(/^《|》$/g, '')}》
+                          </span>
+                          {task.novelAuthor && task.novelAuthor !== '未知' && (
+                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                              作者：{task.novelAuthor}
+                            </span>
+                          )}
+                        </div>
                         <span style={{
                           fontSize: '12px', padding: '2px 8px', borderRadius: '10px',
                           background: `${STATUS_COLOR[task.status] || '#9ca3af'}20`,

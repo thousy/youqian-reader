@@ -7,7 +7,7 @@
 import * as cheerio from 'cheerio'
 import iconv from 'iconv-lite'
 import crypto from 'crypto'
-import { fetchWithRetry, cleanContent, toSimplified, sanitizeSearchResult, sanitizeHeaders } from './utils.js'
+import { fetchWithRetry, cleanContent, toSimplified, sanitizeSearchResult, sanitizeHeaders, cleanBookTitleAndAuthor } from './utils.js'
 
 /**
  * SPA / 加密小说站 Token 签名生成算法 (AES-128-CBC)
@@ -802,8 +802,22 @@ function resolveList(selector, $, root) {
 function applyFilterTxt(text, filterTxt) {
   if (!filterTxt) return text
   try {
-    const patterns = filterTxt.split('|')
+    let raw = filterTxt.trim()
     let result = text
+
+    // 兼容 Legado 的 ##pattern##replace 或 ##pattern 语法
+    if (raw.startsWith('##')) {
+      const parts = raw.split('##').filter(Boolean)
+      const pat = parts[0]
+      const rep = parts[1] || ''
+      try {
+        const re = new RegExp(pat, 'gim')
+        result = result.replace(re, rep)
+        return result
+      } catch (_) {}
+    }
+
+    const patterns = filterTxt.split('|')
     for (const p of patterns) {
       if (!p.trim()) continue
       try {
@@ -872,6 +886,111 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
 
   return text
 }
+
+/**
+ * 智能解析 BBS 论坛作品标题与章节范围（支持 1-4, 32-33, 1.1-1.13, 28.32--29.8, 上下部、第二部等复合分卷模式）
+ */
+export function parseBbsChapterInfo(rawTitle) {
+  if (!rawTitle) return null
+  const clean = rawTitle.replace(/[【】\[\]]/g, ' ').trim()
+  
+  // 支持普通章节 (32-33) 以及浮点复合分卷 (1.1-1.13), (28.32--29.8), (29.9--29.21), (1.1-28.01), (第一部1-226)
+  const rangeMatch = clean.match(/[（\(][^0-9（\)]*?(\d+(?:\.\d+)?)(?:[－\-~～、]+(\d+(?:\.\d+)?))?[^）\)]*[）\)]/) ||
+                     clean.match(/\s+(\d+(?:\.\d+)?)(?:[－\-~～]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译)/)
+  if (!rangeMatch) return null
+
+  // 1. 识别分部/分卷特征 (上部/下部/第一部/第二部/续等)
+  let partNumber = 1
+  const partMatch = clean.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  if (partMatch) {
+    const pStr = partMatch[0]
+    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续')) {
+      partNumber = 2
+    } else if (pStr.includes('上') || pStr.includes('前')) {
+      partNumber = 1
+    } else {
+      const numChar = partMatch[1]
+      const cnMap = { '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }
+      partNumber = parseInt(numChar, 10) || cnMap[numChar] || 1
+    }
+  }
+
+  // 2. 权重换算：
+  // 若浮点如 1.1 则换算为 1 * 1000 + 1 = 1001；28.32 换算为 28 * 1000 + 32 = 28032
+  // 若普通整数 32 则换算为 32 * 1000 = 32000
+  const normalizeWeight = (str) => {
+    if (!str) return 0
+    if (str.includes('.')) {
+      const parts = str.split('.')
+      const major = parseInt(parts[0], 10) || 0
+      const minor = parseInt(parts[1], 10) || 0
+      return major * 1000 + minor
+    }
+    return (parseInt(str, 10) || 0) * 1000
+  }
+
+  let start = normalizeWeight(rangeMatch[1])
+  let end = rangeMatch[2] ? normalizeWeight(rangeMatch[2]) : start
+  if (isNaN(start) || start <= 0) return null
+
+  // 3. 叠加分部偏移 (每个分部偏移 1,000,000)
+  // 如果是普通章节 (未含小数点)，按识别出的 partNumber 叠加偏移，彻底消除上部与下部交错错乱
+  const partOffset = (partNumber - 1) * 1000000
+  if (!rangeMatch[1].includes('.')) {
+    start += partOffset
+    end += partOffset
+  }
+
+  // 4. 纯净主书名提取 (剥离分部、括号、副标题)
+  let mainName = clean.split(/[（\(]/)[0].trim()
+  if (mainName.includes('——')) mainName = mainName.split('——')[0].trim()
+  if (mainName.includes('—')) mainName = mainName.split('—')[0].trim()
+  if (mainName.includes(' - ')) mainName = mainName.split(' - ')[0].trim()
+  mainName = mainName.replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, '').trim()
+  mainName = mainName.replace(/\s*\d+.*$/, '').trim()
+
+  return { mainName, start, end, partNumber, rawStart: rangeMatch[1], rawEnd: rangeMatch[2], rawTitle }
+}
+
+/**
+ * 严格校验候选分卷帖子是否真正属于当前小说 (防止短书名如"狩猎"导致"魔女狩猎"、"狩猎人妻"等不同作者/不同小说混入)
+ */
+function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '') {
+  if (!candidateTitle || !baseMainName) return false
+  const cleanBookName = (name) => {
+    return (name || '').replace(/[【】\[\]（）\(\)\s《》“”"']/g, '')
+      .replace(/(?:上部|下部|第一部|第二部|前传|外传|后传|全本|精校|连载|续|番外)/g, '')
+      .trim()
+  }
+
+  const baseNorm = cleanBookName(baseMainName)
+  const candInfo = parseBbsChapterInfo(candidateTitle)
+  if (!candInfo) return false
+
+  const candNorm = cleanBookName(candInfo.mainName)
+
+  // 1. 书名精准核对: 规范化后必须完全一致（短书名<=4字符绝不允许包含混入）
+  if (baseNorm.length <= 4) {
+    if (candNorm !== baseNorm) return false
+  } else {
+    if (candNorm !== baseNorm && !candNorm.includes(baseNorm) && !baseNorm.includes(candNorm)) {
+      return false
+    }
+  }
+
+  // 2. 作者严格对齐 (如果基准作者明确已知且非未知/网络作家)
+  if (baseAuthor && baseAuthor !== '未知' && baseAuthor !== '网络作家') {
+    const authorMatch = candidateTitle.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const candAuthor = authorMatch ? authorMatch[1].trim() : ''
+    // 若候选帖子自身明确标注了作者，且与原作者不一致，坚决剔除
+    if (candAuthor && !candAuthor.includes(baseAuthor) && !baseAuthor.includes(candAuthor)) {
+      return false
+    }
+  }
+
+  return true
+}
+
 
 // ─── 核心类 ─────────────────────────────────────────
 export class RuleSource {
@@ -1365,6 +1484,7 @@ export class RuleSource {
 
         results.push(sanitizeSearchResult({
           title: toSimplified(titleText),
+          rawTitle: toSimplified(titleText),
           author: toSimplified(authorText),
           cover: coverUrl || null,
           status: statusText || '',
@@ -1421,18 +1541,22 @@ export class RuleSource {
       const detailHtml = await fetchWithRetry(novelUrl)
       const $detail = cheerio.load(detailHtml)
 
-      const title = toSimplified(
-        ($detail('meta[property="og:novel:book_name"]').attr('content') ||
-         $detail('meta[name="og:novel:book_name"]').attr('content') ||
-         (book.bookName ? $detail(book.bookName.split('@')[0]).first().text().trim() : '') ||
-         $detail('h1').first().text().trim()).replace(/\s+/g, '')
+      const rawDetailTitle = (
+        $detail('meta[property="og:novel:book_name"]').attr('content') ||
+        $detail('meta[name="og:novel:book_name"]').attr('content') ||
+        (book.bookName ? $detail(book.bookName.split('@')[0]).first().text().trim() : '') ||
+        $detail('h1').first().text().trim()
       )
-      const author = toSimplified(
-        ($detail('meta[property="og:novel:author"]').attr('content') ||
-         $detail('meta[name="og:novel:author"]').attr('content') ||
-         (book.author ? $detail(book.author.split('@')[0]).first().text().trim() : '') ||
-         '未知')
+      const rawDetailAuthor = (
+        $detail('meta[property="og:novel:author"]').attr('content') ||
+        $detail('meta[name="og:novel:author"]').attr('content') ||
+        (book.author ? $detail(book.author.split('@')[0]).first().text().trim() : '') ||
+        '未知'
       )
+
+      const cleanedMeta = cleanBookTitleAndAuthor(rawDetailTitle, rawDetailAuthor)
+      const title = toSimplified(cleanedMeta.cleanTitle || rawDetailTitle.replace(/\s+/g, ''))
+      const author = toSimplified(cleanedMeta.author || rawDetailAuthor)
       const description = toSimplified(
         ($detail('meta[property="og:description"]').attr('content') ||
          $detail('meta[name="og:description"]').attr('content') ||
@@ -1516,10 +1640,17 @@ export class RuleSource {
           if (!text || !href) return
           if (href.startsWith('javascript:') || href === '#' || href.startsWith('void(')) return
 
+          const junkTexts = ['用户前期主贴', '返回禁忌书屋首页', '我们联系', 'contact us', '点“赞”', '无内容']
+          if (junkTexts.some(j => text.includes(j))) return
+
           const absHref = href.startsWith('http') ? href : (baseUri ? baseUri.replace('%s', '') + href : this._absUrl(href))
+          let finalTitle = toSimplified(text)
+          if (finalTitle === '返回主帖' || finalTitle === '返回主贴') {
+            finalTitle = title || '正文'
+          }
           if (!seen.has(absHref)) {
             seen.add(absHref)
-            chapters.push({ title: toSimplified(text), url: absHref })
+            chapters.push({ title: finalTitle, url: absHref })
           }
         })
       }
@@ -1546,6 +1677,14 @@ export class RuleSource {
         }
       }
 
+      // 论坛型单帖/短篇文学容错兜底：若页面未提取到子章节列表，自动将当前详情页识别为第一章
+      if (chapters.length === 0) {
+        chapters.push({
+          title: title || '正文',
+          url: novelUrl
+        })
+      }
+
       // 下一页（翻页目录）—— 仅处理 select option 格式
       if (toc.nextPage && chapters.length > 0) {
         const nextPageSel = toc.nextPage
@@ -1560,6 +1699,309 @@ export class RuleSource {
               extractChapters(cheerio.load(nextHtml))
             } catch (_) { break }
           }
+        }
+      }
+
+      // 🛡️ BBS 论坛多帖连载小说全本自动聚合 (Novel Multi-Thread Aggregation)
+      let bbsInfo = parseBbsChapterInfo(rawDetailTitle) || parseBbsChapterInfo(title)
+      if (!bbsInfo && cleanedMeta?.cleanTitle && cleanedMeta.cleanTitle.length >= 2) {
+        // 如果是论坛书源（如 cool18 / bbs / 论坛板块等），即便单帖标题未带分卷数字，也以纯净主书名尝试聚合召回
+        const isBbsSource = this.name?.includes('cool18') || this.baseUrl?.includes('bbs') || this.baseUrl?.includes('cool18') || (this.rule.comment && this.rule.comment.includes('论坛'))
+        if (isBbsSource) {
+          bbsInfo = {
+            mainName: cleanedMeta.cleanTitle,
+            start: 1000,
+            end: 1000,
+            rawStart: '1',
+            rawEnd: '1',
+            rawTitle: rawDetailTitle || title
+          }
+        }
+      }
+      if (bbsInfo && bbsInfo.mainName) {
+        try {
+          // 无论帖内包含多少个分卷超链接，只要匹配均全量作为真实分卷纳入
+          const intraVolumeLinks = []
+          for (const ch of chapters) {
+            if (isMatchingBbsChapter(ch.title, bbsInfo.mainName, author)) {
+              const cInfo = parseBbsChapterInfo(ch.title)
+              intraVolumeLinks.push({
+                title: ch.title,
+                url: ch.url,
+                start: cInfo.start,
+                end: cInfo.end
+              })
+            }
+          }
+
+          let parsedList = []
+
+          // 1. 将当前单帖自身先作为一个分卷纳入
+          if (novelUrl) {
+            let selfTitle = title
+            try {
+              const sampleText = $toc('.post-content, pre, #post-content').text().slice(0, 1000)
+              const firstLineMatch = sampleText.match(/[【\[]([^】\]]+)[】\]][\s\S]{0,30}?[（\(](\d+(?:\.\d+)?)(?:[－\-~～、]+(\d+(?:\.\d+)?))?[^）\)]*[）\)]/)
+              if (firstLineMatch) {
+                selfTitle = firstLineMatch[0].trim()
+              }
+            } catch (_) {}
+            const selfInfo = parseBbsChapterInfo(selfTitle) || bbsInfo
+            parsedList.push({
+              title: selfTitle || `【${bbsInfo.mainName}】（当前卷）`,
+              url: novelUrl,
+              start: selfInfo.start || bbsInfo.start,
+              end: selfInfo.end || bbsInfo.end
+            })
+          }
+
+          // 2. 将帖内提取到的所有历史/后续分卷超链接无条件纳入（解除先前>=5的阈值硬编码限制）
+          if (intraVolumeLinks.length > 0) {
+            parsedList.push(...intraVolumeLinks)
+          }
+
+          // 无论是汇总帖还是单帖连载，均检索分帖以实现连载补齐与前文递归（深度跨页召回全部历史分帖）
+          const relatedPosts = []
+          try {
+            let activeQuery = bbsInfo.mainName
+            let firstPage = await this.search(activeQuery)
+
+            // 通用长书名自动降级回退机制：若全名检索结果为空，且书名较长（>3字符），使用逐字连续自适应滑动探测
+            if ((!firstPage || firstPage.length === 0) && bbsInfo.mainName.length > 3) {
+              const fallbackCandidates = []
+              // 1. 若书名包含标点或空格，提取主标题段
+              const segMatch = bbsInfo.mainName.split(/[\s,，:：\-——_]/)[0]
+              if (segMatch && segMatch.length >= 3 && segMatch !== bbsInfo.mainName) {
+                fallbackCandidates.push(segMatch)
+              }
+              // 2. 自适应连续前缀探测（从 min(书名长-1, 10) 逐步递减至 3）
+              const maxL = Math.min(bbsInfo.mainName.length - 1, 10)
+              for (let len = maxL; len >= 3; len--) {
+                const sub = bbsInfo.mainName.slice(0, len)
+                if (!fallbackCandidates.includes(sub)) {
+                  fallbackCandidates.push(sub)
+                }
+              }
+
+              for (const fbQuery of fallbackCandidates) {
+                try {
+                  const fbRes = await this.search(fbQuery)
+                  if (Array.isArray(fbRes) && fbRes.length > 0) {
+                    firstPage = fbRes
+                    activeQuery = fbQuery
+                    break
+                  }
+                } catch (_) {}
+              }
+            }
+
+            if (Array.isArray(firstPage)) {
+              relatedPosts.push(...firstPage)
+              if (firstPage.length >= 50 && this.rule.search?.url) {
+                for (let page = 2; page <= 6; page++) {
+                  try {
+                    const nextUrl = this.rule.search.url
+                      .replace('%s', encodeURIComponent(activeQuery))
+                      .replace(/([?&]p=)\d+/, `$1${page}`)
+                    const html = await fetchWithRetry(nextUrl)
+                    const $p = cheerio.load(html)
+                    const pageItems = []
+                    $p('li.l-m1 a, td.gold_td a, .search-result a').each((_, a) => {
+                      const t = $p(a).text().trim()
+                      const h = $p(a).attr('href')
+                      if (h && !h.startsWith('javascript:')) {
+                        pageItems.push({
+                          title: t,
+                          url: h.startsWith('http') ? h : this._absUrl(h)
+                        })
+                      }
+                    })
+                    if (pageItems.length === 0) break
+                    relatedPosts.push(...pageItems)
+                    if (pageItems.length < 30) break
+                  } catch (_) { break }
+                }
+              }
+            }
+
+            // 🛡️ 通道二（作者维度召回补偿）：若有清晰作者名，且目前召回分卷未包含第一卷或数量不足，使用作者名检索补充
+            let cleanAuthor = (author && author !== '未知' && author !== '网络作家') ? author : ''
+            if (!cleanAuthor) {
+              const m = (rawDetailTitle || title).match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+              if (m && m[1]) cleanAuthor = m[1].trim()
+            }
+            if (cleanAuthor && cleanAuthor.length >= 2) {
+              try {
+                const authorPosts = await this.search(cleanAuthor)
+                if (Array.isArray(authorPosts) && authorPosts.length > 0) {
+                  for (const ap of authorPosts) {
+                    const apTitle = ap.rawTitle || ap.title
+                    if (isMatchingBbsChapter(apTitle, bbsInfo.mainName, cleanAuthor)) {
+                      if (!relatedPosts.some(rp => rp.url === ap.url)) {
+                        relatedPosts.push(ap)
+                      }
+                    }
+                  }
+                }
+              } catch (_) {}
+            }
+          } catch (_) {}
+
+          if (relatedPosts.length > 0) {
+            let summaryPostToExpand = null
+
+            for (const p of relatedPosts) {
+              const candTitle = p.rawTitle || p.title
+              if (isMatchingBbsChapter(candTitle, bbsInfo.mainName, author)) {
+                const pInfo = parseBbsChapterInfo(candTitle)
+                // 检查是否为跨度极大的历史汇总帖（浮点跨度>=2卷，或普通章节跨度>=20章）
+                const isHugeSpan = pInfo.rawStart && pInfo.rawStart.includes('.')
+                  ? (pInfo.end - pInfo.start >= 2000)
+                  : (pInfo.end - pInfo.start >= 20000)
+                if (isHugeSpan && !summaryPostToExpand) {
+                  summaryPostToExpand = p
+                }
+                parsedList.push({
+                  title: candTitle,
+                  url: p.url,
+                  start: pInfo.start,
+                  end: pInfo.end
+                })
+              }
+            }
+
+            // 若单帖入口且搜索到了历史汇总帖，递归拉取汇总帖补全历史前文
+            if (summaryPostToExpand && summaryPostToExpand.url !== novelUrl) {
+              try {
+                const sumHtml = await fetchWithRetry(summaryPostToExpand.url)
+                const $sum = cheerio.load(sumHtml)
+                $sum('.post-content a, pre a, td.tal a').each((_, a) => {
+                  const t = toSimplified($sum(a).text().trim())
+                  const h = $sum(a).attr('href')
+                  if (!h || h.startsWith('javascript:')) return
+                  const absH = h.startsWith('http') ? h : this._absUrl(h)
+                  if (isMatchingBbsChapter(t, bbsInfo.mainName, author)) {
+                    const sInfo = parseBbsChapterInfo(t)
+                    parsedList.push({
+                      title: t,
+                      url: absH,
+                      start: sInfo.start,
+                      end: sInfo.end
+                    })
+                  }
+                })
+                // 汇总帖自身第一卷也加入
+                const sumSelfInfo = parseBbsChapterInfo(summaryPostToExpand.title)
+                parsedList.push({
+                  title: summaryPostToExpand.title,
+                  url: summaryPostToExpand.url,
+                  start: sumSelfInfo ? sumSelfInfo.start : 1001,
+                  end: sumSelfInfo ? sumSelfInfo.end : 1013
+                })
+              } catch (_) {}
+            }
+          }
+
+          if (parsedList.length > 1) {
+            // 严格按 start 序号正序升序排序
+            parsedList.sort((a, b) => a.start - b.start)
+
+            // 去重（按 url 保真，若同一 url 优先保留精准分卷标题）
+            const aggChapters = []
+            const seenMap = new Map()
+            parsedList.forEach((p) => {
+              if (!seenMap.has(p.url)) {
+                seenMap.set(p.url, p)
+              } else {
+                const existing = seenMap.get(p.url)
+                const existingHasRange = /[（\(][^0-9（\)]*?\d+/.test(existing.title)
+                const pHasRange = /[（\(][^0-9（\)]*?\d+/.test(p.title)
+                if ((existing.end - existing.start > 2000) && (p.end - p.start <= 2000)) {
+                  seenMap.set(p.url, p)
+                } else if (!existingHasRange && pHasRange) {
+                  // 若已有项标题模糊（无章节数字），而当前项带有清晰章节数字，优先替换为清晰标题
+                  seenMap.set(p.url, p)
+                }
+              }
+            })
+
+            seenMap.forEach((p) => {
+              aggChapters.push({
+                title: p.title,
+                url: p.url,
+                start: p.start,
+                end: p.end,
+                index: aggChapters.length
+              })
+            })
+
+            // 检查是否已有细粒度起始卷（跨度 <= 20000 且 start <= 1001）
+            const hasFineGrainedFirstVol = aggChapters.some(c => {
+              const cInfo = parseBbsChapterInfo(c.title)
+              return cInfo && (cInfo.end - cInfo.start <= 20000) && cInfo.start <= 1001
+            })
+
+            // 若已有独立细粒度起始分卷，自动过滤掉跨度极大的纯合集索引帖
+            let filteredChapters = aggChapters
+            if (hasFineGrainedFirstVol) {
+              filteredChapters = aggChapters.filter(c => {
+                const cInfo = parseBbsChapterInfo(c.title)
+                if (cInfo && (cInfo.end - cInfo.start >= 20000)) {
+                  return false
+                }
+                return true
+              })
+            }
+
+            // 重设连续 index
+            aggChapters.length = 0
+            filteredChapters.forEach((c, idx) => {
+              c.index = idx
+              aggChapters.push(c)
+            })
+
+            if (aggChapters.length > 1) {
+              // 若首项标题为跨度极大的浮点汇总帖名称（如 1.1-28.01），且第二项为 1.14，微调首项为第一卷真实范围
+              const firstCh = aggChapters[0]
+              const secondCh = aggChapters[1]
+              const fInfo = parseBbsChapterInfo(firstCh.title)
+              const sInfo = parseBbsChapterInfo(secondCh.title)
+              const isHugeFloatingSpan = fInfo?.rawStart && fInfo.rawStart.includes('.') && (fInfo.end - fInfo.start > 2000)
+              if (fInfo && sInfo && isHugeFloatingSpan && sInfo.start > fInfo.start) {
+                const minor = sInfo.start % 1000
+                const endMinor = minor > 1 ? minor - 1 : 13
+                const rawStart = fInfo.rawStart || '1.1'
+                const major = Math.floor(fInfo.start / 1000)
+                firstCh.title = `【${bbsInfo.mainName}】（${rawStart}-${major}.${endMinor}）`
+              }
+
+              let finalAuthor = (author && author !== '未知' && author !== '网络作家') ? author : ''
+              if (!finalAuthor) {
+                const authorMatch = (rawDetailTitle || title).match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+                if (authorMatch && authorMatch[1]) {
+                  finalAuthor = authorMatch[1].trim()
+                } else {
+                  for (const p of parsedList) {
+                    const m = (p.title || '').match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+                    if (m && m[1]) {
+                      finalAuthor = m[1].trim()
+                      break
+                    }
+                  }
+                }
+              }
+              if (!finalAuthor) finalAuthor = '网络作家'
+              return {
+                title: toSimplified(bbsInfo.mainName),
+                author: toSimplified(finalAuthor),
+                description: description || '',
+                cover: cover || null,
+                chapters: aggChapters
+              }
+            }
+          }
+        } catch (aggErr) {
+          console.warn(`[RuleSource:${this.name}] BBS 全本聚合异常:`, aggErr.message)
         }
       }
 

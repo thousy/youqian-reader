@@ -287,6 +287,96 @@ export function sleep(ms) {
 }
 
 /**
+ * 智能清洗提纯小说书名与真实作者，并结合章节列表生成规范完整范围标题
+ * 例如:
+ *   rawTitle: "【我这系统不正经】 (29.22--29.30) 作者：棺材里的笑声"
+ *   rawAuthor: "未知"
+ *   chapters: Array(217)
+ * 输出:
+ *   cleanTitle: "我这系统不正经"
+ *   author: "棺材里的笑声"
+ *   rangeStr: "（第1-217章）"
+ *   titleWithRange: "我这系统不正经（第1-217章）"
+ */
+export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters = []) {
+  let title = (rawTitle || '').trim()
+  let author = (rawAuthor || '').trim()
+
+  // 1. 尝试从标题中提取真实作者 (支持: 作者：xxx, 作者:xxx, 原著:xxx, 文/xxx, by xxx 等)
+  const authorMatch = title.match(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+([^\s,，;；)）\]】]+)|(?:文\s*\/)\s*([^\s,，;；)）\]】]+)/i)
+  if (authorMatch) {
+    const extractedAuthor = (authorMatch[1] || authorMatch[2] || '').trim()
+    if (extractedAuthor && (!author || author === '未知' || author === 'unknown' || author === 'None' || author === '网络作家' || author.length > 20)) {
+      author = extractedAuthor
+    }
+  }
+
+  // 2. 从标题中剥离作者信息声明
+  title = title.replace(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+[^\s,，;；)）\]】]+/gi, '').trim()
+  title = title.replace(/(?:文\s*\/)\s*[^\s,，;；)）\]】]+/gi, '').trim()
+
+  // 3. 剥离标题中旧的局部章节分卷范围（如 (29.22--29.30)、(1-30)、（第1-20章）、[1-50章]、(32-33) 等）
+  title = title.replace(/[（\(]\s*\d+(?:\.\d+)?\s*(?:[－\-~～、—/]+|\s+至\s+|\s+到\s+)\s*\d+(?:\.\d+)?\s*(?:章|节|卷)?(?:\s*完)?\s*[）\)]/g, '')
+  title = title.replace(/[\[【]\s*\d+(?:\.\d+)?\s*(?:[－\-~～、—/]+|\s+至\s+|\s+到\s+)\s*\d+(?:\.\d+)?\s*(?:章|节|卷)?(?:\s*完)?\s*[\]】]/g, '')
+  title = title.replace(/[（\(]\s*(?:第\s*\d+\s*[-~至到]\s*\d+\s*[章节卷]|最新\s*\d+\s*章)\s*[）\)]/g, '')
+
+  // 4. 剥离常见的标签修饰符，如 [精校]、[校对全本]、[完结]、[全本]、[连载]、[都市]、[原创] 等
+  title = title.replace(/[\[【](?:精校|精校全本|全本校对|完结|全本|全集|连载|最新|热门|TXT|txt|ZIP|原创|转帖|都市|玄幻|仙侠|奇幻|科幻|武侠|历史|同人)[】\]]/gi, '')
+
+  // 5. 剥离外层成对的修饰符号：【书名】 -> 书名，《书名》 -> 书名，[书名] -> 书名
+  for (let i = 0; i < 3; i++) {
+    title = title.trim()
+    const prev = title
+    title = title.replace(/^《\s*(.*?)\s*》$/, '$1')
+    title = title.replace(/^【\s*(.*?)\s*】$/, '$1')
+    title = title.replace(/^\[\s*(.*?)\s*\]$/, '$1')
+    title = title.replace(/^“\s*(.*?)\s*”$/, '$1')
+    title = title.replace(/^"\s*(.*?)\s*"$/, '$1')
+    if (title === prev) break
+  }
+
+  // 6. 清理首尾多余标点与空格
+  title = title.replace(/^[、，,。\.\-_—\s]+|[、，,。\.\-_—\s]+$/g, '').trim()
+  if (!title) {
+    title = (rawTitle || '未知书籍').replace(/^《|》$/g, '').trim()
+  }
+
+  // 7. 计算本次下载的完整章节范围
+  let rangeStr = ''
+  if (chapters && chapters.length > 0) {
+    const firstCh = chapters[0]
+    const lastCh = chapters[chapters.length - 1]
+    let startNum = 1
+    let endNum = chapters.length
+
+    if (firstCh?.originalIndex !== undefined && lastCh?.originalIndex !== undefined) {
+      startNum = firstCh.originalIndex + 1
+      endNum = lastCh.originalIndex + 1
+    } else if (firstCh?.index !== undefined && lastCh?.index !== undefined) {
+      startNum = firstCh.index + 1
+      endNum = lastCh.index + 1
+    }
+
+    if (startNum === endNum) {
+      rangeStr = `（第${startNum}章）`
+    } else {
+      rangeStr = `（第${startNum}-${endNum}章）`
+    }
+  }
+
+  const cleanTitle = title
+  const finalAuthor = author || '未知'
+  const titleWithRange = rangeStr ? `${cleanTitle}${rangeStr}` : cleanTitle
+
+  return {
+    cleanTitle,
+    author: finalAuthor,
+    rangeStr,
+    titleWithRange
+  }
+}
+
+/**
  * 智能清洗和提纯书源搜索结果字段 (修复第三方书源选择器抓取整块 HTML/长字符串的异常)
  */
 export function sanitizeSearchResult(rawItem) {
@@ -297,10 +387,21 @@ export function sanitizeSearchResult(rawItem) {
   let lastUpdateTime = (rawItem.lastUpdateTime || '').trim()
   let status = (rawItem.status || '').trim()
 
-  const rawTextForBackup = title.length > author.length ? title : author
+  const rawTitle = rawItem.rawTitle || (rawItem.title || '').trim()
+  const rawTextForBackup = rawTitle.length > author.length ? rawTitle : author
 
-  // 1. 如果 title 中包含了目录、作者、类别等冗余长文本
-  if (title.includes('目录') || title.includes('作者') || title.includes('类别') || title.includes('字数') || title.includes('状态') || title.length > 40) {
+  // 0. 优先对包含作者/分卷的复合标题执行真实作者提取，同时剥离作者声明，完整保留分卷信息
+  const authorMatch = title.match(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+([^\s,，;；)）\]】]+)|(?:文\s*\/)\s*([^\s,，;；)）\]】]+)/i)
+  if (authorMatch) {
+    const extractedAuthor = (authorMatch[1] || authorMatch[2] || '').trim()
+    if (extractedAuthor && (!author || author === '未知' || author === 'None' || author === '网络作家')) {
+      author = extractedAuthor
+    }
+    title = title.replace(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+[^\s,，;；)）\]】]+/gi, '').replace(/(?:文\s*\/)\s*[^\s,，;；)）\]】]+/gi, '').trim()
+  }
+
+  // 1. 如果 title 中包含了目录、类别等冗余长文本
+  if (title.includes('目录') || title.includes('类别') || title.includes('字数') || title.includes('状态') || title.length > 50) {
     const m = title.match(/^([^\/\\|\n\r\t]+?)(?=\s*[\/\|]|\s*目录|\s*作者|\s*类别|\s*字数|\s*状态|\s*$)/)
     if (m && m[1].trim()) {
       title = m[1].trim()
@@ -352,6 +453,7 @@ export function sanitizeSearchResult(rawItem) {
   return {
     ...rawItem,
     title,
+    rawTitle,
     author: author || '未知',
     latestChapter,
     lastUpdateTime,

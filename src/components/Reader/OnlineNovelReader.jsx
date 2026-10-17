@@ -3,6 +3,8 @@ import { StatusBar } from './StatusBar'
 import { SourceSwitcherModal } from './SourceSwitcherModal'
 import { OfflineCacheModal } from './OfflineCacheModal'
 import { ReplaceRuleModal } from './ReplaceRuleModal'
+import { NovelDownloadModal } from '../Novel/NovelDownloadModal'
+import { useStore } from '../../store/useStore'
 
 // 高亮渲染函数
 function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick) {
@@ -102,10 +104,75 @@ export function OnlineNovelReader({
   // 当前章节名称（置顶声明，防止TDZ暂时性死区异常）
   const currentChapterTitle = chapters[currentChapterIndex]?.title || `第 ${currentChapterIndex + 1} 章`
 
-  // 弹窗控制
+  const { showToast } = useStore()
   const [showSwitcher, setShowSwitcher] = useState(false)
   const [showCacheModal, setShowCacheModal] = useState(false)
   const [showReplaceModal, setShowReplaceModal] = useState(false)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
+
+  // 目录侧边栏宽度自定义与拖拽调整 (支持 localStorage 持久化记忆)
+  const [tocWidth, setTocWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('youqian_reader_toc_width')
+      const num = parseInt(saved, 10)
+      if (num >= 180 && num <= 700) return num
+    } catch (_) {}
+    return 280
+  })
+  const [isDraggingToc, setIsDraggingToc] = useState(false)
+  const tocWidthRef = useRef(tocWidth)
+  tocWidthRef.current = tocWidth
+
+  const handleTocResizeMouseDown = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDraggingToc(true)
+
+    const startX = e.clientX
+    const startWidth = tocWidthRef.current
+
+    const handleMouseMove = (moveEvent) => {
+      moveEvent.preventDefault()
+      const deltaX = moveEvent.clientX - startX
+      const nextWidth = Math.max(180, Math.min(700, startWidth + deltaX))
+      setTocWidth(nextWidth)
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    }
+
+    const handleMouseUp = () => {
+      setIsDraggingToc(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      try {
+        localStorage.setItem('youqian_reader_toc_width', String(tocWidthRef.current))
+      } catch (_) {}
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleTocResetDefault = () => {
+    setTocWidth(280)
+    try {
+      localStorage.setItem('youqian_reader_toc_width', '280')
+    } catch (_) {}
+  }
+
+  // 启动下载小说书籍任务（支持全部/范围/最新章节，导出TXT/EPUB/PDF）
+  const handleStartDownloadBook = async (novelInfo, selectedChapters, sourceId, format = 'EPUB', concurrency = null) => {
+    try {
+      await window.api.novelStartDownload(novelInfo, selectedChapters, sourceId, format, concurrency)
+      setShowDownloadModal(false)
+      const threadTip = concurrency ? ` [${concurrency}线程]` : ''
+      showToast?.(`已在后台开始下载《${novelInfo.title}》[${format}]${threadTip}，共 ${selectedChapters.length} 章`, 'success')
+    } catch (e) {
+      showToast?.('启动下载失败: ' + e.message, 'error')
+    }
+  }
 
   // 换源前的原始章节锚点保护状态（防止新书源缺章或对齐偏差导致阅读进度被立即冲掉）
   const [preSwitchState, setPreSwitchState] = useState(null)
@@ -914,6 +981,27 @@ export function OnlineNovelReader({
             )}
           </button>
 
+          {/* 下载书籍按钮 */}
+          <button
+            onClick={() => setShowDownloadModal(true)}
+            title="选择全本或指定范围章节，保存导出为 TXT、EPUB 或 PDF 电子书"
+            style={{
+              padding: '3px 8px',
+              borderRadius: '5px',
+              border: '1px solid var(--border)',
+              backgroundColor: 'var(--bg-layer2)',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '11px',
+              transition: 'var(--transition)'
+            }}
+          >
+            <span>💾</span> 下载书籍
+          </button>
+
           {/* 自动阅读/自动滚屏按钮 */}
           <button
             onClick={() => {
@@ -1014,100 +1102,116 @@ export function OnlineNovelReader({
           height: '100%'
         }}
       >
-        {/* 目录面板（1:1 完全对齐本地图书 TxtReader/EpubReader 的 reader-toc-panel 嵌入式侧边栏） */}
+        {/* 目录面板（支持鼠标左右自由拖动拉伸宽度，双击快速重置） */}
         {showToc && chapters.length > 0 && (
-          <div className="reader-toc-panel">
-            <div className="toc-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>目录 (共 {chapters.length} 章)</span>
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>
-                已缓存 {cachedSet.size} 章
-              </span>
-            </div>
-
-            {/* 换源待确认期目录顶部提示 */}
-            {preSwitchState?.isPendingUserAction && (
-              <div
-                style={{
-                  margin: '8px 10px 4px',
-                  padding: '6px 10px',
-                  backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '4px',
-                  fontSize: '11px',
-                  lineHeight: '1.4'
-                }}
-              >
-                <div style={{ color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span>🔒</span> 换源前阅读进度
-                </div>
-                <div style={{ color: 'var(--text-primary)', marginTop: '2px', wordBreak: 'break-all', fontSize: '11px' }}>
-                  {preSwitchState.chapterTitle}
-                </div>
+          <>
+            <div
+              className="reader-toc-panel"
+              style={{
+                width: `${tocWidth}px`,
+                minWidth: `${tocWidth}px`,
+                maxWidth: `${tocWidth}px`
+              }}
+            >
+              <div className="toc-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>目录 (共 {chapters.length} 章)</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>
+                  已缓存 {cachedSet.size} 章
+                </span>
               </div>
-            )}
 
-            {/* 章节列表 */}
-            {chapters.map((ch, idx) => {
-              const isCurrent = idx === currentChapterIndex
-              const isCached = cachedSet.has(idx)
-              const isPreAnchor = preSwitchState?.isPendingUserAction && (
-                ch.title === preSwitchState.chapterTitle || idx === preSwitchState.chapterIndex
-              )
-
-              return (
+              {/* 换源待确认期目录顶部提示 */}
+              {preSwitchState?.isPendingUserAction && (
                 <div
-                  key={idx}
-                  ref={isCurrent ? activeTocRef : null}
-                  className={`toc-item level-1 ${isCurrent ? 'active' : ''}`}
-                  onClick={() => {
-                    confirmUserChapterAction(idx)
-                    loadChapter(idx, chapters, false, false, true)
-                  }}
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '6px'
+                    margin: '8px 10px 4px',
+                    padding: '6px 10px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    lineHeight: '1.4'
                   }}
                 >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                    {ch.title}
-                  </span>
-                  {isPreAnchor && (
-                    <span
-                      style={{
-                        fontSize: '9px',
-                        color: '#f59e0b',
-                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
-                        padding: '1px 4px',
-                        borderRadius: '3px',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0
-                      }}
-                    >
-                      原进度
-                    </span>
-                  )}
-                  {isCached && (
-                    <span
-                      title="已离线缓存到本地"
-                      style={{
-                        fontSize: '9px',
-                        color: '#22c55e',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        padding: '1px 4px',
-                        borderRadius: '3px',
-                        whiteSpace: 'nowrap',
-                        flexShrink: 0
-                      }}
-                    >
-                      已缓存
-                    </span>
-                  )}
+                  <div style={{ color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span>🔒</span> 换源前阅读进度
+                  </div>
+                  <div style={{ color: 'var(--text-primary)', marginTop: '2px', wordBreak: 'break-all', fontSize: '11px' }}>
+                    {preSwitchState.chapterTitle}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
+              )}
+
+              {/* 章节列表 */}
+              {chapters.map((ch, idx) => {
+                const isCurrent = idx === currentChapterIndex
+                const isCached = cachedSet.has(idx)
+                const isPreAnchor = preSwitchState?.isPendingUserAction && (
+                  ch.title === preSwitchState.chapterTitle || idx === preSwitchState.chapterIndex
+                )
+
+                return (
+                  <div
+                    key={idx}
+                    ref={isCurrent ? activeTocRef : null}
+                    className={`toc-item level-1 ${isCurrent ? 'active' : ''}`}
+                    onClick={() => {
+                      confirmUserChapterAction(idx)
+                      loadChapter(idx, chapters, false, false, true)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '6px'
+                    }}
+                  >
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                      {ch.title}
+                    </span>
+                    {isPreAnchor && (
+                      <span
+                        style={{
+                          fontSize: '9px',
+                          color: '#f59e0b',
+                          backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}
+                      >
+                        原进度
+                      </span>
+                    )}
+                    {isCached && (
+                      <span
+                        title="已离线缓存到本地"
+                        style={{
+                          fontSize: '9px',
+                          color: '#22c55e',
+                          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                          padding: '1px 4px',
+                          borderRadius: '3px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}
+                      >
+                        已缓存
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {/* 左右拖拽把手分割条 */}
+            <div
+              className={`reader-toc-resizer ${isDraggingToc ? 'is-dragging' : ''}`}
+              title="按住鼠标左键左右拖动调整目录宽度，双击恢复默认宽度"
+              onMouseDown={handleTocResizeMouseDown}
+              onDoubleClick={handleTocResetDefault}
+            />
+          </>
         )}
 
         {/* 右侧正文与控制阅读区 */}
@@ -1603,6 +1707,24 @@ export function OnlineNovelReader({
           }
         }}
       />
+
+      {/* 下载书籍弹窗（支持选择章节范围、导出TXT/EPUB/PDF及并发调节） */}
+      {showDownloadModal && (
+        <NovelDownloadModal
+          novelInfo={{
+            title: book?.title,
+            author: book?.author,
+            cover: book?.cover,
+            url: book?.novelUrl,
+            source: book?.novelSourceId,
+            sourceName: currentSource || book?.sourceName
+          }}
+          chapters={chapters}
+          sourceId={book?.novelSourceId}
+          onClose={() => setShowDownloadModal(false)}
+          onDownload={handleStartDownloadBook}
+        />
+      )}
 
       {/* 阅读 3.0 替换净化规则管理弹窗 */}
       <ReplaceRuleModal
