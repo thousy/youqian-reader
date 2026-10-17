@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useStore } from '../../store/useStore'
+import { cleanDisplayTitle } from '../../utils/titleCleaner'
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
 }
@@ -434,7 +435,7 @@ export function Sidebar() {
                   }
                 </div>
                 <div className="recent-book-info">
-                  <div className="recent-book-title">{book.title}</div>
+                  <div className="recent-book-title" title={cleanDisplayTitle(book.title)}>{cleanDisplayTitle(book.title)}</div>
                   <div className="recent-book-author">{book.author}</div>
                 </div>
               </div>

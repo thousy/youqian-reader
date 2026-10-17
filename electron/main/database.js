@@ -33,6 +33,47 @@ export function setupDatabase() {
   })
   console.log('便携数据库初始化完成:', store.path)
   autoHealTxtBooksToc()
+  autoCleanBooksBbsTitles()
+}
+
+/**
+ * 自动纠偏与自愈存量书籍的标题：剥离各类论坛分卷/章节后缀（如 (30-43), (114-115), (29.22--29.30)）
+ */
+function autoCleanBooksBbsTitles() {
+  try {
+    const books = store.get('books', [])
+    if (!Array.isArray(books) || books.length === 0) return
+    let changed = false
+    const updated = books.map(book => {
+      if (!book || !book.title) return book
+      let t = book.title
+      const hasBbsNoise = /[【】\[\]]/.test(t) || /[（\(][^0-9（\)]*?\d+(?:\.\d+)?(?:[－\-~～、.]+\d+(?:\.\d+)?)*[^）\)]*[）\)]/.test(t) || /作[者著][：:]/.test(t)
+      if (hasBbsNoise) {
+        let clean = t.replace(/[【】\[\]]/g, '').trim()
+        clean = clean.replace(/[（\(][^0-9（\)]*?\d+(?:\.\d+)?(?:[－\-~～、.]+\d+(?:\.\d+)?)*[^）\)]*[）\)]/g, '').trim()
+        clean = clean.replace(/\s*作[者著][：:][^\s]+.*$/, '').trim()
+        clean = clean.replace(/_来源：.*$/, '').trim()
+        clean = clean.replace(/\s*-\s*禁忌书屋.*$/, '').trim()
+        clean = clean.replace(/(?:上部|下部|第一部|第二部|续集|后传|续)$/g, '').trim()
+        if (clean.startsWith('《') && !clean.endsWith('》')) clean = clean.slice(1)
+        if (clean.endsWith('》') && !clean.startsWith('《')) clean = clean.slice(0, -1)
+        clean = clean.replace(/^[《<]/, '').replace(/[》>]$/, '').trim()
+        clean = clean.trim()
+        if (clean && clean !== t) {
+          console.log(`[Database] 智能清洗书籍书名: [${t}] -> [${clean}]`)
+          changed = true
+          return { ...book, title: clean }
+        }
+      }
+      return book
+    })
+    if (changed) {
+      store.set('books', updated)
+      console.log('[Database] 存量书籍书名智能清洗完成！')
+    }
+  } catch (err) {
+    console.warn('[Database] 存量书籍书名清洗异常:', err.message)
+  }
 }
 
 /**

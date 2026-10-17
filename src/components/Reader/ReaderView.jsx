@@ -17,6 +17,7 @@ import { BookInfoModal } from '../UI/BookInfoModal'
 import { InBookSearchModal } from './InBookSearchModal'
 import { TtsPlayerBar } from './TtsPlayerBar'
 import { GlobalSettingsModal } from '../UI/GlobalSettingsModal'
+import { cleanDisplayTitle } from '../../utils/titleCleaner'
 
 export function ReaderView() {
   const [showGlobalSettings, setShowGlobalSettings] = useState(false)
@@ -787,7 +788,7 @@ export function ReaderView() {
             onClick={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? () => setShowToc(!showToc) : undefined}
             title={['EPUB', 'MOBI', 'AZW3', 'TXT', 'PDF', 'ONLINE'].includes(format) ? "点击切换目录" : ""}
           >
-            <div className="reader-book-title">{currentBook.title}</div>
+            <div className="reader-book-title">{cleanDisplayTitle(currentBook.title)}</div>
             <div className="reader-book-author">{currentBook.author}</div>
           </div>
 

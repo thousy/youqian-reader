@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useStore } from '../../store/useStore'
 import defaultBookCover from '../../logo.png'
 import { CategoryPopover } from './CategoryPopover'
+import { cleanDisplayTitle } from '../../utils/titleCleaner'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
@@ -136,7 +137,7 @@ export function BookCard({ book, onClick, onDelete, onShowInfo, isBatchMode = fa
         ) : (
           <div className="book-cover-placeholder">
             <span style={{ fontSize: '32px', marginBottom: '8px', display: 'block' }}>📚</span>
-            <div className="book-cover-title">{book.title}</div>
+            <div className="book-cover-title">{cleanDisplayTitle(book.title)}</div>
             <div className="book-cover-author">{book.author || '未知作者'}</div>
           </div>
         )}
@@ -199,7 +200,7 @@ export function BookCard({ book, onClick, onDelete, onShowInfo, isBatchMode = fa
 
       {/* 书籍信息：100% 恢复原版紧凑字距与排版 */}
       <div className="book-info">
-        <div className="book-title">{book.title}</div>
+        <div className="book-title" title={cleanDisplayTitle(book.title)}>{cleanDisplayTitle(book.title)}</div>
         <div className="book-author" style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span>{book.author}</span>
           {book.latestChapter && (
