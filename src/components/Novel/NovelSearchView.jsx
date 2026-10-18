@@ -325,13 +325,15 @@ export function NovelSearchView() {
     }
   }
 
-  // 消费从外部（如书架搜索框）传递过来的关键词并自动触发搜索
+  // 消费从外部（如书架搜索框）传递过来的关键词并自动填入搜索框（不自动发起搜索，等待用户确认）
   useEffect(() => {
     if (novelSearchKeyword && novelSearchKeyword.trim()) {
       const kw = novelSearchKeyword.trim()
       setKeyword(kw)
       setNovelSearchKeyword('')
-      handleSearch(kw)
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 50)
     }
   }, [novelSearchKeyword])
 

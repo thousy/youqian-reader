@@ -568,6 +568,36 @@ export function LibraryView({ onImport }) {
               </div>
               <h3>没有找到相关书籍</h3>
               <p>尝试修改搜索词或筛选条件</p>
+              <button
+                className="empty-add-btn"
+                id="empty-go-novel-search-btn"
+                onClick={() => {
+                  if (searchQuery && searchQuery.trim()) {
+                    setNovelSearchKeyword(searchQuery.trim())
+                  }
+                  setCurrentView('novelSearch')
+                }}
+                style={{
+                  marginTop: '16px',
+                  background: 'linear-gradient(135deg, var(--accent), var(--accent-light, #6366f1))',
+                  border: 'none',
+                  boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                <span>🔍</span>
+                {searchQuery && searchQuery.trim()
+                  ? `前往在线找书「${searchQuery.trim()}」`
+                  : '前往在线找书'}
+              </button>
             </>
           )}
         </div>
