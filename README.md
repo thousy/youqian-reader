@@ -1,10 +1,18 @@
-# YouQian书籍阅读器 📚 (V2.1.5)
+# YouQian书籍阅读器 📚 (V2.2.18)
 
-[![Version](https://img.shields.io/badge/version-2.1.5-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.18-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.18 论坛单章小标题书名污染修复与全角前导零分卷解析 (Release Notes)
+* **单章小标题书名污染根治**：在书名清洗与展示层引入单章小标题截断机制，当遇到形如《女神代行者 第194章 姐妹情深》无括号单章标题时，自动剥离章节号与小标题，提炼纯净主书名《女神代行者》，成功召回酷18论坛全量 213 卷（第 1~290 章全本连载）；
+* **全角前导零分卷解析兼容**：在清洗入口统一引入 `toDBC` 全角标准化，彻底解决全角数字（如《男闺蜜》（００－１０））击穿 ASCII 正则的问题，书名纯净展示，中间 2~9 章不再被误杀；
+* **汇总帖智能自愈与细分卷无缝拼合**：优化中短跨度合集裁剪阈值，将首帖自动自愈保留为【第1章】，与 2~10 单章无缝拼合，实现 1 到 10 章全量连续无遗漏；
+* **论坛连载深度翻页召回**：翻页触发阈值由 `>=50` 调优为 `>=25`，深度翻页范围扩大至第 8 页，保证大跨度论坛多卷连载全量召回。
 
 ---
 
