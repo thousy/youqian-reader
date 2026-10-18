@@ -1177,10 +1177,14 @@ button, input, optgroup, select, textarea {
 
 /* ===== 设置面板 ===== */
 .settings-panel {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 280px;
+  position: fixed;
+  top: 54px;
+  right: 20px;
+  width: min(380px, 94vw);
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
   background: var(--glass-bg);
   backdrop-filter: var(--blur);
   border: 1px solid var(--glass-border);
@@ -1195,7 +1199,7 @@ button, input, optgroup, select, textarea {
   position: relative;
   top: auto;
   right: auto;
-  width: 340px;
+  width: min(380px, 94vw);
   max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
@@ -1211,9 +1215,10 @@ button, input, optgroup, select, textarea {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
-  margin-bottom: 14px;
+  margin-bottom: 0;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  user-select: none;
 }
 
 .settings-group { margin-bottom: 14px; }
@@ -1234,14 +1239,15 @@ button, input, optgroup, select, textarea {
 }
 
 .theme-btn {
-  padding: 6px 4px;
+  padding: 7px 2px;
   border-radius: 6px;
   border: 1px solid transparent;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   transition: var(--transition);
   text-align: center;
+  white-space: nowrap;
 }
 .theme-btn.active { border-color: var(--accent); }
 .theme-dark { background: #12121c; color: #d4d4e8; }

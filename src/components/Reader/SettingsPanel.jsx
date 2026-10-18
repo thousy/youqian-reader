@@ -209,12 +209,81 @@ export function SettingsPanel({ onClose, isModal = false, onOpenGlobalSettings }
   const weightMapReverse = { 300: 1, 400: 2, 600: 3, 800: 4, 900: 5 }
   const sliderWeight = weightMapReverse[settings.fontWeight] || 2
 
+  // ===== 自由拖拽定位逻辑 =====
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const isDraggingRef = useRef(false)
+  const dragStartRef = useRef({ mouseX: 0, mouseY: 0, startOffsetX: 0, startOffsetY: 0 })
+
+  const handleTitleMouseDown = (e) => {
+    if (e.target.closest('button, input, select, textarea, a')) return
+    isDraggingRef.current = true
+    dragStartRef.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startOffsetX: dragOffset.x,
+      startOffsetY: dragOffset.y
+    }
+    document.body.style.userSelect = 'none'
+
+    const handleMouseMove = (moveEvent) => {
+      if (!isDraggingRef.current) return
+      const deltaX = moveEvent.clientX - dragStartRef.current.mouseX
+      const deltaY = moveEvent.clientY - dragStartRef.current.mouseY
+      setDragOffset({
+        x: dragStartRef.current.startOffsetX + deltaX,
+        y: dragStartRef.current.startOffsetY + deltaY
+      })
+    }
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false
+      document.body.style.userSelect = ''
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+  }
+
   return (
-    <div className={`settings-panel ${isModal ? 'settings-panel-modal' : ''}`} id="settings-panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-        <div className="settings-title">📖 阅读排版偏好</div>
-        <button style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px' }}
-          onClick={handleClose}
+    <div
+      className={`settings-panel ${isModal ? 'settings-panel-modal' : ''}`}
+      id="settings-panel"
+      style={!isModal ? {
+        transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)`,
+        willChange: 'transform'
+      } : undefined}
+    >
+      {/* 可拖拽标题栏 */}
+      <div
+        onMouseDown={handleTitleMouseDown}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '14px',
+          cursor: isModal ? 'default' : 'grab',
+          paddingBottom: '8px',
+          borderBottom: '1px solid var(--border-subtle, rgba(128,128,128,0.12))',
+          userSelect: 'none'
+        }}
+        title={!isModal ? '按住鼠标左键可自由拖动菜单位置' : undefined}
+      >
+        <div className="settings-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>📖</span> 阅读排版偏好
+          {!isModal && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400, marginLeft: '4px' }}>
+              (按住拖动)
+            </span>
+          )}
+        </div>
+        <button
+          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleClose()
+          }}
           title="关闭设置"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
