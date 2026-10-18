@@ -9,6 +9,7 @@ import https from 'https'
 import http from 'http'
 import { URL } from 'url'
 import iconv from 'iconv-lite'
+import { getProxyAgent, shouldUseProxy } from './proxyManager.js'
 
 // 禁用严格证书验证，保证老旧小说网站能够正常连接
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
@@ -42,7 +43,12 @@ export function sanitizeHeaders(rawHeaders = {}) {
 /**
  * 强容错 HTTP 请求核心方法
  */
-async function doFetch(url, options = {}, timeoutMs = 6000) {
+async function doFetch(url, options = {}, timeoutMs = 15000) {
+  // 若目标 URL 需要走代理分流，直接交由支持 Agent 的 rawHttpsRequest 处理
+  if (shouldUseProxy(url) || options.agent) {
+    return await rawHttpsRequest(url, options, timeoutMs)
+  }
+
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
@@ -89,9 +95,9 @@ async function doFetch(url, options = {}, timeoutMs = 6000) {
 }
 
 /**
- * Node 原生 https 请求作为第二重 Fallback
+ * Node 原生 https 请求作为第二重 Fallback (支持 Agent 代理)
  */
-function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 6000, redirectCount = 0) {
+function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 15000, redirectCount = 0) {
   if (redirectCount > 4) {
     return Promise.reject(new Error('重定向次数过多'))
   }
@@ -128,6 +134,12 @@ function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 6000, redirectCoun
       rejectUnauthorized: false,
       insecureHTTPParser: true,
       timeout: timeoutMs
+    }
+
+    // 挂载代理 Agent
+    const proxyAgent = options.agent || getProxyAgent(targetUrl)
+    if (proxyAgent) {
+      reqOptions.agent = proxyAgent
     }
 
     let timer = null
@@ -177,9 +189,10 @@ function rawHttpsRequest(targetUrl, options = {}, timeoutMs = 6000, redirectCoun
 }
 
 /**
- * 带重试与自动 GBK/UTF-8 解码的网络请求
+ * 带重试与自动 GBK/UTF-8 解码的网络请求 (默认超时提升至 15000ms，失败自动重试)
  */
-export async function fetchWithRetry(url, options = {}, retries = 2, timeoutMs = 6000) {
+export async function fetchWithRetry(url, options = {}, retries = 3, timeoutMs = 15000) {
+  let lastErr = null
   for (let i = 0; i < retries; i++) {
     try {
       const res = await doFetch(url, options, timeoutMs)
@@ -196,10 +209,12 @@ export async function fetchWithRetry(url, options = {}, retries = 2, timeoutMs =
       return buf.toString('utf-8')
 
     } catch (err) {
+      lastErr = err
       if (i === retries - 1) throw err
-      await sleep(300 * (i + 1))
+      await sleep(400 * (i + 1))
     }
   }
+  throw lastErr
 }
 
 /**

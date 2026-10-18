@@ -45,6 +45,9 @@ import {
 import {
   getCustomFonts, openAndImportFontFiles, deleteCustomFont, deleteCustomFonts, readCustomFontDataUrl, readCustomFontBuffer
 } from './fontManager.js'
+import {
+  getProxyConfig, saveProxyConfig, detectLocalProxies, testProxyConnection, applyToElectronSession
+} from './novel/proxyManager.js'
 import { randomUUID } from 'crypto'
 
 export function setupIpcHandlers() {
@@ -822,5 +825,41 @@ export function setupIpcHandlers() {
   ipcMain.handle('custom-font-read-buffer', async (_, fileName) => {
     return readCustomFontBuffer(fileName)
   })
+
+  // ===== 下载文件定位 (查看文件) =====
+  ipcMain.handle('novel-show-item-in-folder', async (_, filePath) => {
+    try {
+      if (!filePath) return false
+      if (existsSync(filePath)) {
+        shell.showItemInFolder(filePath)
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('[IPC] showItemInFolder 异常:', err)
+      return false
+    }
+  })
+
+  // ===== 代理分流与网络控制 (Zero Omega 规则引擎) =====
+  ipcMain.handle('get-proxy-config', () => getProxyConfig())
+  ipcMain.handle('save-proxy-config', async (_, cfg) => {
+    const res = saveProxyConfig(cfg)
+    if (res.success) {
+      try {
+        const allWindows = BrowserWindow.getAllWindows()
+        for (const win of allWindows) {
+          if (win && win.webContents && win.webContents.session) {
+            await applyToElectronSession(win.webContents.session)
+          }
+        }
+      } catch (err) {
+        console.error('[IPC] 同步代理到窗口会话失败:', err)
+      }
+    }
+    return res
+  })
+  ipcMain.handle('detect-local-proxies', () => detectLocalProxies())
+  ipcMain.handle('test-proxy-connection', (_, targetUrl, customProxyUrl) => testProxyConnection(targetUrl, customProxyUrl))
 }
 

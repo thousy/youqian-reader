@@ -159,6 +159,22 @@ export function DownloadManagerView() {
     }
   }
 
+  // 在文件夹中高亮定位下载的文件
+  const handleShowFile = async (filePath) => {
+    if (!filePath) {
+      showToast('文件路径为空，无法定位', 'warning')
+      return
+    }
+    try {
+      const ok = await window.api.novelShowItemInFolder?.(filePath)
+      if (!ok) {
+        showToast('未找到该文件或文件已被移动', 'warning')
+      }
+    } catch (e) {
+      showToast('定位文件失败: ' + e.message, 'error')
+    }
+  }
+
   const handleCancel = async (taskId) => {
     try {
       await window.api.novelCancelDownload(taskId)
@@ -374,15 +390,29 @@ export function DownloadManagerView() {
                       )}
 
                       {task.status === 'done' && (
-                        <button
-                          onClick={() => handleRead(task)}
-                          style={{
-                            padding: '6px 14px', borderRadius: '6px', border: 'none',
-                            background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600
-                          }}
-                        >
-                          立即阅读
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleShowFile(task.outputPath)}
+                            style={{
+                              padding: '6px 12px', borderRadius: '6px', border: '1px solid var(--border)',
+                              background: 'var(--bg-layer2)', color: 'var(--text-secondary)', cursor: 'pointer',
+                              fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px',
+                              transition: 'all 0.2s'
+                            }}
+                            title="在文件夹中打开并定位此文件"
+                          >
+                            <span>📁</span> 查看文件
+                          </button>
+                          <button
+                            onClick={() => handleRead(task)}
+                            style={{
+                              padding: '6px 14px', borderRadius: '6px', border: 'none',
+                              background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: 600
+                            }}
+                          >
+                            立即阅读
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

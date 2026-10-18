@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useStore } from '../../store/useStore'
 import { registerSingleCustomFont } from '../../utils/fontLoader'
+import { NetworkProxySettings } from '../Settings/NetworkProxySettings'
 
 export function GlobalSettingsModal({ isOpen, onClose }) {
   const {
@@ -8,7 +9,7 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
     setBooks, setCategories, currentBook, setReadingProgress, setBookmarks, setAnnotations
   } = useStore()
 
-  // 导航分类: 'rules' | 'webdav' | 'backup' | 'appearance' | 'about'
+  // 导航分类: 'rules' | 'network' | 'webdav' | 'backup' | 'appearance' | 'about'
   const [currentTab, setCurrentTab] = useState('rules')
 
   // ==========================================
@@ -626,6 +627,14 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
             </button>
 
             <button
+              className={`global-settings-nav-btn ${currentTab === 'network' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('network')}
+            >
+              <span style={{ fontSize: '16px' }}>🌐</span>
+              <span>网络与代理分流</span>
+            </button>
+
+            <button
               className={`global-settings-nav-btn ${currentTab === 'webdav' ? 'active' : ''}`}
               onClick={() => setCurrentTab('webdav')}
             >
@@ -671,6 +680,7 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '16px', fontWeight: 600 }}>
                 {currentTab === 'rules' && '📚 书源与净化规则管理'}
+                {currentTab === 'network' && '🌐 网络与代理分流 (Zero Omega 规则引擎)'}
                 {currentTab === 'webdav' && '☁️ WebDAV 多端云同步'}
                 {currentTab === 'backup' && '💾 数据备份、恢复与重置'}
                 {currentTab === 'appearance' && '🎨 外观主题与系统字体库'}
@@ -679,6 +689,11 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
               {currentTab === 'rules' && (
                 <span className="global-settings-badge badge-cyan">
                   阅读 3.0 (Legado) 规则体系兼容
+                </span>
+              )}
+              {currentTab === 'network' && (
+                <span className="global-settings-badge badge-green">
+                  Auto Switch 智能分流
                 </span>
               )}
             </div>
@@ -1391,6 +1406,13 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* =========================================================
+                TAB: 网络与代理分流 (Zero Omega 规则引擎)
+               ========================================================= */}
+            {currentTab === 'network' && (
+              <NetworkProxySettings showToast={showToast} />
             )}
 
             {/* =========================================================

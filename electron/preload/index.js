@@ -180,7 +180,16 @@ const api = {
   customFontReadBuffer: (fileName) => ipcRenderer.invoke('custom-font-read-buffer', fileName),
 
   // 应用版本信息
-  getAppVersion: () => ipcRenderer.invoke('get-app-version')
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+
+  // 文件定位与下载文件查看
+  novelShowItemInFolder: (filePath) => ipcRenderer.invoke('novel-show-item-in-folder', filePath),
+
+  // 代理分流与网络控制 (Zero Omega 规则引擎)
+  getProxyConfig: () => ipcRenderer.invoke('get-proxy-config'),
+  saveProxyConfig: (cfg) => ipcRenderer.invoke('save-proxy-config', cfg),
+  detectLocalProxies: () => ipcRenderer.invoke('detect-local-proxies'),
+  testProxyConnection: (targetUrl, customProxyUrl) => ipcRenderer.invoke('test-proxy-connection', targetUrl, customProxyUrl)
 }
 
 contextBridge.exposeInMainWorld('api', api)

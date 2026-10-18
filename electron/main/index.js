@@ -25,6 +25,7 @@ import { setupDatabase } from './database'
 import { setupIpcHandlers } from './ipc'
 import { setupContextMenu } from './contextMenu'
 import { setMainWindow } from './novel/downloader'
+import { applyToElectronSession } from './novel/proxyManager'
 
 // ===== 隐私保护：禁用 Chromium 内置的网络连通性探测 =====
 // Chromium 默认会向 Google DNS (8.8.4.4 / 8.8.8.8) 发送 captive portal 检测请求
@@ -135,6 +136,9 @@ function createWindow(showImmediately = true) {
   mainWindow.once('ready-to-show', () => {
     // showImmediately=false 时主窗口静默加载（文件关联启动场景）
     if (showImmediately) mainWindow.show()
+    try {
+      applyToElectronSession(mainWindow.webContents.session)
+    } catch (_) {}
   })
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true))
