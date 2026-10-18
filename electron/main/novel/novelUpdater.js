@@ -6,7 +6,7 @@ import { getNovelChapters, getChapterContent, searchNovels, getAllSourcesInfo, g
 import { buildEpub } from './epubBuilder.js'
 import { toSimplified } from './utils.js'
 import { applyReplaceRules } from './replaceRuleEngine.js'
-import { parseBbsChapterInfo } from './ruleEngine.js'
+import { parseBbsChapterInfo, filterOverlappingBbsChapters } from './ruleEngine.js'
 
 /**
  * 获取指定书籍的本地章节缓存目录 (data/novel_cache/<bookId>)
@@ -139,6 +139,22 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           } else if (seenLowerPart && isUpper) {
             hasPartInterleaving = true
             break
+          }
+        }
+
+        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余
+        if (cached.length > 1) {
+          const dedupped = filterOverlappingBbsChapters(cached)
+          if (dedupped.length < cached.length) {
+            // 发现本地缓存存在重复分卷，立即修复本地缓存并持久化
+            try {
+              writeFileSync(indexFile, JSON.stringify(dedupped, null, 2), 'utf-8')
+              updateBook(bookId, {
+                totalChapters: dedupped.length,
+                latestChapter: dedupped[dedupped.length - 1]?.title || ''
+              })
+            } catch (_) {}
+            return { success: true, chapters: dedupped, fromCache: true }
           }
         }
 

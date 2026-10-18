@@ -69,6 +69,29 @@ function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick
   })
 }
 
+// 净化侧边栏目录中的章节标题（去除与书名冗余重复的前缀，保留卷号与作者）
+function cleanDisplayChapterTitle(title, bookTitle) {
+  if (!title) return ''
+  let cleaned = title.trim()
+  if (bookTitle) {
+    const rawCleanBook = bookTitle.replace(/[《》【】\[\]\s]/g, '').trim()
+    if (rawCleanBook && rawCleanBook.length >= 2) {
+      // 移除开头的 【书名】 或 书名
+      const escaped = rawCleanBook.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
+      const pattern1 = new RegExp(`^【?\\s*${escaped}\\s*】?\\s*`, 'i')
+      cleaned = cleaned.replace(pattern1, '').trim()
+      // 也可能书名带有部分副标题，比如书名是《我的超绝校花美娇妻展颜》，章节名为《我的超绝校花美娇妻》
+      const prefixCandidate = rawCleanBook.slice(0, Math.min(rawCleanBook.length, 8))
+      if (prefixCandidate.length >= 4) {
+        const escPrefix = prefixCandidate.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
+        const pattern2 = new RegExp(`^【?\\s*${escPrefix}[^】\\]]{0,6}】?\\s*`, 'i')
+        cleaned = cleaned.replace(pattern2, '').trim()
+      }
+    }
+  }
+  return cleaned || title
+}
+
 export function OnlineNovelReader({
   book,
   savedProgress,
@@ -1166,8 +1189,11 @@ export function OnlineNovelReader({
                       gap: '6px'
                     }}
                   >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                      {ch.title}
+                    <span
+                      title={ch.title}
+                      style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
+                    >
+                      {cleanDisplayChapterTitle(ch.title, book?.title)}
                     </span>
                     {isPreAnchor && (
                       <span

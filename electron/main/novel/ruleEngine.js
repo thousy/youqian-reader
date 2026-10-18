@@ -953,6 +953,92 @@ export function parseBbsChapterInfo(rawTitle) {
 }
 
 /**
+ * 论坛连载分卷区间智能去重与主链优选 (Interval Greedy Overlap Deduplication)
+ * 1. 单项真子集剔除 (Strict Subset Elimination)：当项 B 的章节范围完全被项 A 包含且 A 的跨度更大，剔除 B
+ * 2. 连续无缝合集主链识别与横跨重叠剔除 (Union Overlap Suppression)：
+ *    若合集构成无缝相接的连续链（如 [10, 25] 与 [26, 39]），任何横跨并完全落在该联合体内部的散帖（如 21-30）予以剔除
+ */
+export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
+  if (!Array.isArray(chapters) || chapters.length <= 1) return chapters
+
+  // 1. 补齐并提取统一 start 和 end
+  const items = chapters.map(c => {
+    let start = c.start
+    let end = c.end
+    if (start === undefined || end === undefined) {
+      const info = parseBbsChapterInfo(c.title)
+      start = info ? info.start : 0
+      end = info ? info.end : 0
+    }
+    return {
+      ...c,
+      start,
+      end
+    }
+  })
+
+  // 按 start 升序排序，若 start 相同则跨度大（end 靠后）的排在前面
+  items.sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start
+    return (b.end - b.start) - (a.end - a.start)
+  })
+
+  // 2. 第一轮：单项真子集剔除 (Strict Subset Elimination)
+  const nonSubset = []
+  for (let i = 0; i < items.length; i++) {
+    const cur = items[i]
+    let isSubset = false
+    for (let j = 0; j < items.length; j++) {
+      if (i === j) continue
+      const other = items[j]
+      const otherSpan = other.end - other.start
+      const curSpan = cur.end - cur.start
+      if (other.start <= cur.start && other.end >= cur.end && otherSpan > curSpan) {
+        isSubset = true
+        break
+      }
+    }
+    if (!isSubset) {
+      nonSubset.push(cur)
+    }
+  }
+
+  // 3. 第二轮：跨界冗余与多卷连续联合覆盖剔除 (Union Overlap Suppression)
+  const finalChapters = []
+  for (let i = 0; i < nonSubset.length; i++) {
+    const cand = nonSubset[i]
+    let isCoveredByContinuousNeighbors = false
+
+    const prevItem = nonSubset[i - 1]
+    const nextItem = nonSubset[i + 1]
+    if (prevItem && nextItem) {
+      const prevSpan = prevItem.end - prevItem.start
+      const nextSpan = nextItem.end - nextItem.start
+      const candSpan = cand.end - cand.start
+
+      const isPrevNextAdjacent = nextItem.start <= prevItem.end + 2000
+      const isCandInsideUnion = cand.start >= prevItem.start && cand.end <= nextItem.end
+      const isBothLarger = prevSpan >= candSpan && nextSpan >= candSpan
+
+      if (isPrevNextAdjacent && isCandInsideUnion && isBothLarger) {
+        isCoveredByContinuousNeighbors = true
+      }
+    }
+
+    if (!isCoveredByContinuousNeighbors) {
+      finalChapters.push(cand)
+    }
+  }
+
+  // 重新按 start 升序排序并编排连续 index
+  finalChapters.sort((a, b) => a.start - b.start)
+  return finalChapters.map((c, idx) => ({
+    ...c,
+    index: idx
+  }))
+}
+
+/**
  * 严格校验候选分卷帖子是否真正属于当前小说 (防止短书名如"狩猎"导致"魔女狩猎"、"狩猎人妻"等不同作者/不同小说混入)
  */
 function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '') {
@@ -1952,6 +2038,9 @@ export class RuleSource {
                 return true
               })
             }
+
+            // 🛡️ 智能区间覆盖与冗余重叠分卷消除 (Interval Greedy Overlap Deduplication)
+            filteredChapters = filterOverlappingBbsChapters(filteredChapters, bbsInfo)
 
             // 重设连续 index
             aggChapters.length = 0
