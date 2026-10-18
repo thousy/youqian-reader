@@ -223,492 +223,526 @@ export function SettingsPanel({ onClose, isModal = false, onOpenGlobalSettings }
         </button>
       </div>
 
-      {/* 主题 */}
-      <div className="settings-group">
-        <div className="settings-label">背景主题 (含阅读3.0经典预设)</div>
-        <div className="settings-theme-btns">
-          {[
-            { key: 'sepia', label: '羊皮纸', cls: 'theme-sepia' },
-            { key: 'green', label: '护眼绿', cls: 'theme-green' },
-            { key: 'cyan', label: '远山黛', cls: 'theme-cyan' },
-            { key: 'peach', label: '胭脂粉', cls: 'theme-peach' },
-            { key: 'ivory', label: '象牙白', cls: 'theme-ivory' },
-            { key: 'coffee', label: '暗褐', cls: 'theme-coffee' },
-            { key: 'light', label: '亮白', cls: 'theme-light' },
-            { key: 'dark', label: '暗黑', cls: 'theme-dark' },
-            { key: 'night', label: '纯黑', cls: 'theme-night' },
-            { key: 'word', label: 'Word', cls: 'theme-word' },
-          ].map(t => (
-            <button
-              key={t.key}
-              className={`theme-btn ${t.cls} ${settings.theme === t.key ? 'active' : ''}`}
-              onClick={() => updateSettings({ theme: t.key })}
-              id={`theme-${t.key}`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* 1. 视觉主题 */}
+      <div style={{
+        marginBottom: '14px',
+        background: 'var(--bg-layer2)',
+        borderRadius: '10px',
+        padding: '12px 14px',
+        border: '1px solid var(--border-subtle, rgba(128,128,128,0.12))'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>🎨</span> 视觉主题
         </div>
-      </div>
-
-      {/* 字号 */}
-      <div className="settings-group">
-        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>字体大小</span>
-          <span style={{ color: 'var(--text-secondary)' }}>{settings.fontSize}px</span>
-        </div>
-        <input
-          type="range"
-          className="settings-slider"
-          min="12" max="32" step="1"
-          value={settings.fontSize}
-          onChange={e => updateSettings({ fontSize: Number(e.target.value) })}
-          id="font-size-slider"
-        />
-      </div>
-
-      {/* 行高 */}
-      <div className="settings-group">
-        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>行间距</span>
-          <span style={{ color: 'var(--text-secondary)' }}>{settings.lineHeight}</span>
-        </div>
-        <input
-          type="range"
-          className="settings-slider"
-          min="1.2" max="2.5" step="0.1"
-          value={settings.lineHeight}
-          onChange={e => updateSettings({ lineHeight: Number(e.target.value) })}
-          id="line-height-slider"
-        />
-      </div>
-
-      {/* 字体粗细 */}
-      <div className="settings-group">
-        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>字体粗细</span>
-          <span style={{ color: 'var(--text-secondary)' }}>
-            {settings.fontWeight === 300 ? '细体' :
-              settings.fontWeight === 400 ? '常规' :
-                settings.fontWeight === 600 ? '小粗' :
-                  settings.fontWeight === 800 ? '中粗' :
-                    settings.fontWeight === 900 ? '大粗' : '常规'}
-          </span>
-        </div>
-        <input
-          type="range"
-          className="settings-slider"
-          min="1" max="5" step="1"
-          value={sliderWeight}
-          onChange={e => updateSettings({ fontWeight: weightMap[Number(e.target.value)] || 400 })}
-          id="font-weight-slider"
-        />
-      </div>
-
-      {/* 排版模式 */}
-      <div className="settings-group">
-        <div className="settings-label">排版模式</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
-          <button
-            className={`theme-btn ${settings.layoutMode === 'horizontal' ? 'active' : ''}`}
-            style={{
-              padding: '6px 2px',
-              borderRadius: '6px',
-              border: '1px solid transparent',
-              cursor: 'pointer',
-              fontSize: '10.5px',
-              fontWeight: '600',
-              textAlign: 'center',
-              backgroundColor: 'var(--bg-layer3)',
-              color: 'var(--text-secondary)',
-              borderColor: settings.layoutMode === 'horizontal' ? 'var(--accent)' : 'transparent'
-            }}
-            onClick={() => updateSettings({ layoutMode: 'horizontal' })}
-            id="layout-horizontal-btn"
-          >
-            全窗口显示
-          </button>
-          <button
-            className={`theme-btn ${settings.layoutMode === 'horizontal-scroll' ? 'active' : ''}`}
-            style={{
-              padding: '6px 2px',
-              borderRadius: '6px',
-              border: '1px solid transparent',
-              cursor: 'pointer',
-              fontSize: '10.5px',
-              fontWeight: '600',
-              textAlign: 'center',
-              backgroundColor: 'var(--bg-layer3)',
-              color: 'var(--text-secondary)',
-              borderColor: settings.layoutMode === 'horizontal-scroll' ? 'var(--accent)' : 'transparent'
-            }}
-            onClick={() => updateSettings({ layoutMode: 'horizontal-scroll' })}
-            id="layout-horizontal-scroll-btn"
-          >
-            左右滚动
-          </button>
-          <button
-            className={`theme-btn ${settings.layoutMode === 'vertical' ? 'active' : ''}`}
-            style={{
-              padding: '6px 2px',
-              borderRadius: '6px',
-              border: '1px solid transparent',
-              cursor: 'pointer',
-              fontSize: '10.5px',
-              fontWeight: '600',
-              textAlign: 'center',
-              backgroundColor: 'var(--bg-layer3)',
-              color: 'var(--text-secondary)',
-              borderColor: settings.layoutMode === 'vertical' ? 'var(--accent)' : 'transparent'
-            }}
-            onClick={() => updateSettings({ layoutMode: 'vertical' })}
-            id="layout-vertical-btn"
-          >
-            上下滚动
-          </button>
-        </div>
-      </div>
-
-      {/* 繁简中文转换 */}
-      <div className="settings-group">
-        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>繁简转换</span>
-          <span style={{ fontSize: '11px', color: 'var(--accent-light)' }}>
-            {settings.chineseConversion === 't2s' ? '已开启繁转简' : settings.chineseConversion === 's2t' ? '已开启简转繁' : '原文显示'}
-          </span>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
-          {[
-            { key: 'none', label: '保持原文' },
-            { key: 't2s', label: '繁体转简体' },
-            { key: 's2t', label: '简体转繁体' }
-          ].map(opt => {
-            const isActive = (settings.chineseConversion || 'none') === opt.key
-            return (
+        <div className="settings-group" style={{ marginBottom: 0 }}>
+          <div className="settings-label">背景主题预设 (含阅读3.0经典)</div>
+          <div className="settings-theme-btns">
+            {[
+              { key: 'sepia', label: '羊皮纸', cls: 'theme-sepia' },
+              { key: 'green', label: '护眼绿', cls: 'theme-green' },
+              { key: 'cyan', label: '远山黛', cls: 'theme-cyan' },
+              { key: 'peach', label: '胭脂粉', cls: 'theme-peach' },
+              { key: 'ivory', label: '象牙白', cls: 'theme-ivory' },
+              { key: 'coffee', label: '暗褐', cls: 'theme-coffee' },
+              { key: 'light', label: '亮白', cls: 'theme-light' },
+              { key: 'dark', label: '暗黑', cls: 'theme-dark' },
+              { key: 'night', label: '纯黑', cls: 'theme-night' },
+              { key: 'word', label: 'Word', cls: 'theme-word' },
+            ].map(t => (
               <button
-                key={opt.key}
-                className={`theme-btn ${isActive ? 'active' : ''}`}
-                style={{
-                  padding: '6px 2px',
-                  borderRadius: '6px',
-                  border: '1px solid transparent',
-                  cursor: 'pointer',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  textAlign: 'center',
-                  backgroundColor: 'var(--bg-layer3)',
-                  color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)',
-                  borderColor: isActive ? 'var(--accent)' : 'transparent'
-                }}
-                onClick={() => {
-                  updateSettings({ chineseConversion: opt.key })
-                  if (opt.key === 't2s') {
-                    showToast('已切换为繁体转简体显示', 'success')
-                  } else if (opt.key === 's2t') {
-                    showToast('已切换为简体转繁体显示', 'info')
-                  } else {
-                    showToast('已恢复原文显示', 'info')
-                  }
-                }}
-                id={`chinese-conv-${opt.key}-btn`}
+                key={t.key}
+                className={`theme-btn ${t.cls} ${settings.theme === t.key ? 'active' : ''}`}
+                onClick={() => updateSettings({ theme: t.key })}
+                id={`theme-${t.key}`}
               >
-                {opt.label}
+                {t.label}
               </button>
-            )
-          })}
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* 页码与进度模式 */}
-      <div className="settings-group">
-        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>页码显示范围</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            {(settings.pageProgressMode || 'chapter') === 'chapter' ? '⚡ 零卡顿秒开' : '📚 全书测算'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {[
-            { key: 'chapter', label: '当前章节 (推荐)', tip: '零卡顿秒开，掌握本章节奏' },
-            { key: 'book', label: '全书所有页面', tip: '后台测算整本书的累加总页数' }
-          ].map(opt => {
-            const isActive = (settings.pageProgressMode || 'chapter') === opt.key
-            return (
-              <button
-                key={opt.key}
-                title={opt.tip}
-                style={{
-                  flex: 1,
-                  padding: '7px 10px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: isActive ? 600 : 400,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  background: isActive ? 'var(--accent-glow, rgba(99, 102, 241, 0.15))' : 'var(--bg-secondary)',
-                  border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
-                  color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)'
-                }}
-                onClick={() => {
-                  updateSettings({ pageProgressMode: opt.key })
-                  if (opt.key === 'chapter') {
-                    showToast('已切换为当前章节页码 (极速省电)', 'success')
-                  } else {
-                    showToast('已切换为全书所有页面', 'info')
-                  }
-                }}
-                id={`page-mode-${opt.key}-btn`}
-              >
-                {opt.label}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* 字体设置区域 */}
-      <div className="settings-group">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <div className="settings-label" style={{ margin: 0 }}>预设字体</div>
-          <button
-            onClick={handleImportFont}
-            disabled={importingFont}
-            style={{
-              background: 'rgba(56, 189, 248, 0.12)',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              borderRadius: '6px',
-              padding: '3px 8px',
-              color: 'var(--accent-light)',
-              fontSize: '11px',
-              fontWeight: 600,
-              cursor: importingFont ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
-            title="支持导入电脑本地的 .ttf / .otf / .woff / .woff2 字体文件"
-          >
-            <span>📥 导入本地字体</span>
-          </button>
+      {/* 2. 字体与字形 */}
+      <div style={{
+        marginBottom: '14px',
+        background: 'var(--bg-layer2)',
+        borderRadius: '10px',
+        padding: '12px 14px',
+        border: '1px solid var(--border-subtle, rgba(128,128,128,0.12))'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>🔤</span> 字体与字形
         </div>
 
-        {/* 预设安全字体列表 */}
-        <div className="settings-font-btns">
-          {PRESET_FONT_OPTIONS.map(f => (
+        {/* 预设安全字体列表与导入 */}
+        <div className="settings-group">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div className="settings-label" style={{ margin: 0 }}>预设字体</div>
             <button
-              key={f}
-              className={`font-btn ${settings.fontFamily === f ? 'active' : ''}`}
-              onClick={() => updateSettings({ fontFamily: f })}
-              style={{ fontFamily: f }}
-              id={`font-${f.replace(/\s/g, '-')}`}
-            >
-              {PRESET_FONT_MAP[f] || f}
-            </button>
-          ))}
-        </div>
-
-        {/* 用户自定义导入字体列表 */}
-        {customFonts.length > 0 && (
-          <div style={{ marginTop: '12px' }}>
-            {!isBatchMode ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  📂 我的自定义字体 ({customFonts.length})
-                </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setIsBatchMode(true)
-                    setSelectedFontFiles([])
-                  }}
-                  style={{
-                    background: 'none',
-                    border: '1px solid var(--border)',
-                    borderRadius: '4px',
-                    padding: '2px 7px',
-                    fontSize: '11px',
-                    color: 'var(--text-secondary)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'all 0.15s'
-                  }}
-                  title="开启批量删除字体"
-                  id="btn-font-batch-delete-mode"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                  <span>批量删除</span>
-                </button>
-              </div>
-            ) : (
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px',
-                padding: '5px 8px',
-                background: 'var(--bg-layer3)',
+              onClick={handleImportFont}
+              disabled={importingFont}
+              style={{
+                background: 'rgba(56, 189, 248, 0.12)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
                 borderRadius: '6px',
-                border: '1px solid var(--border)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button
-                    onClick={handleToggleSelectAll}
-                    style={{
-                      background: 'var(--bg-layer2)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '4px',
-                      padding: '2px 6px',
-                      fontSize: '10.5px',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {selectedFontFiles.length === customFonts.length ? '全不选' : '全选'}
-                  </button>
-                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                    已选 <b style={{ color: selectedFontFiles.length > 0 ? '#ef4444' : 'inherit' }}>{selectedFontFiles.length}</b>/{customFonts.length}
-                  </span>
-                </div>
+                padding: '3px 8px',
+                color: 'var(--accent-light)',
+                fontSize: '11px',
+                fontWeight: 600,
+                cursor: importingFont ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+              title="支持导入电脑本地的 .ttf / .otf / .woff / .woff2 字体文件"
+            >
+              <span>📥 导入本地字体</span>
+            </button>
+          </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <button
-                    onClick={handleBatchDelete}
-                    disabled={selectedFontFiles.length === 0}
-                    style={{
-                      background: selectedFontFiles.length === 0 ? 'rgba(239, 68, 68, 0.2)' : '#ef4444',
-                      border: 'none',
-                      borderRadius: '4px',
-                      padding: '2px 8px',
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: selectedFontFiles.length === 0 ? 'var(--text-muted)' : '#ffffff',
-                      cursor: selectedFontFiles.length === 0 ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      transition: 'all 0.15s'
-                    }}
-                    id="btn-font-batch-delete-confirm"
-                  >
-                    <span>删除所选 ({selectedFontFiles.length})</span>
-                  </button>
+          <div className="settings-font-btns">
+            {PRESET_FONT_OPTIONS.map(f => (
+              <button
+                key={f}
+                className={`font-btn ${settings.fontFamily === f ? 'active' : ''}`}
+                onClick={() => updateSettings({ fontFamily: f })}
+                style={{ fontFamily: f }}
+                id={`font-${f.replace(/\s/g, '-')}`}
+              >
+                {PRESET_FONT_MAP[f] || f}
+              </button>
+            ))}
+          </div>
+
+          {/* 用户自定义导入字体列表 */}
+          {customFonts.length > 0 && (
+            <div style={{ marginTop: '12px' }}>
+              {!isBatchMode ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    📂 我的自定义字体 ({customFonts.length})
+                  </div>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      setIsBatchMode(false)
+                      setIsBatchMode(true)
                       setSelectedFontFiles([])
                     }}
                     style={{
                       background: 'none',
                       border: '1px solid var(--border)',
                       borderRadius: '4px',
-                      padding: '2px 6px',
-                      fontSize: '10.5px',
-                      color: 'var(--text-muted)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    取消
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
-              {customFonts.map(cf => {
-                const isActive = settings.fontFamily === cf.name
-                const isSelected = selectedFontFiles.includes(cf.fileName)
-
-                if (isBatchMode) {
-                  return (
-                    <div
-                      key={cf.fileName}
-                      onClick={(e) => handleToggleSelectFont(cf.fileName, e)}
-                      style={{
-                        padding: '6px 8px',
-                        borderRadius: '6px',
-                        border: isSelected ? '1px solid #ef4444' : '1px solid var(--border)',
-                        background: isSelected ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-layer2)',
-                        color: isSelected ? '#ef4444' : 'var(--text-primary)',
-                        fontSize: '12px',
-                        fontFamily: `"${cf.name}", sans-serif`,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        transition: 'all 0.15s',
-                        userSelect: 'none'
-                      }}
-                      title={isSelected ? '点击取消勾选' : '点击勾选'}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {cf.name}
-                      </span>
-                      <span style={{
-                        color: isSelected ? '#ef4444' : 'var(--text-muted)',
-                        fontSize: '13px',
-                        fontWeight: 'bold',
-                        marginLeft: '4px'
-                      }}>
-                        {isSelected ? '☑' : '☐'}
-                      </span>
-                    </div>
-                  )
-                }
-
-                return (
-                  <div
-                    key={cf.fileName}
-                    onClick={() => updateSettings({ fontFamily: cf.name })}
-                    style={{
-                      padding: '6px 8px',
-                      borderRadius: '6px',
-                      border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-                      background: isActive ? 'rgba(56, 189, 248, 0.15)' : 'var(--bg-layer2)',
-                      color: isActive ? 'var(--accent-light)' : 'var(--text-primary)',
-                      fontSize: '12px',
-                      fontFamily: `"${cf.name}", sans-serif`,
+                      padding: '2px 7px',
+                      fontSize: '11px',
+                      color: 'var(--text-secondary)',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between',
+                      gap: '4px',
                       transition: 'all 0.15s'
                     }}
-                    title={`点击切换为自定义字体: ${cf.name}`}
+                    title="开启批量删除字体"
+                    id="btn-font-batch-delete-mode"
                   >
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {cf.name}
-                    </span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    <span>批量删除</span>
+                  </button>
+                </div>
+              ) : (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px',
+                  padding: '5px 8px',
+                  background: 'var(--bg-layer3)',
+                  borderRadius: '6px',
+                  border: '1px solid var(--border)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button
-                      onClick={(e) => handleDeleteCustomFont(cf, e)}
+                      onClick={handleToggleSelectAll}
+                      style={{
+                        background: 'var(--bg-layer2)',
+                        border: '1px solid var(--border)',
+                        borderRadius: '4px',
+                        padding: '2px 6px',
+                        fontSize: '10.5px',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {selectedFontFiles.length === customFonts.length && customFonts.length > 0 ? '全不选' : '全选'}
+                    </button>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      已选 {selectedFontFiles.length} 项
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      onClick={handleBatchDeleteCustomFonts}
+                      disabled={selectedFontFiles.length === 0}
+                      style={{
+                        background: selectedFontFiles.length > 0 ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-layer2)',
+                        border: '1px solid ' + (selectedFontFiles.length > 0 ? 'rgba(239, 68, 68, 0.4)' : 'var(--border)'),
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontSize: '10.5px',
+                        color: selectedFontFiles.length > 0 ? '#ef4444' : 'var(--text-muted)',
+                        cursor: selectedFontFiles.length > 0 ? 'pointer' : 'not-allowed',
+                        fontWeight: 600
+                      }}
+                    >
+                      确认删除
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsBatchMode(false)
+                        setSelectedFontFiles([])
+                      }}
                       style={{
                         background: 'none',
                         border: 'none',
                         color: 'var(--text-muted)',
                         cursor: 'pointer',
-                        padding: '0 2px',
-                        fontSize: '12px',
-                        lineHeight: 1,
-                        opacity: 0.7
+                        fontSize: '11px',
+                        padding: '2px 4px'
                       }}
-                      title="删除此字体"
                     >
-                      ✕
+                      取消
                     </button>
                   </div>
-                )
-              })}
+                </div>
+              )}
+
+              <div className="settings-font-btns">
+                {customFonts.map(cf => {
+                  const isSelected = selectedFontFiles.includes(cf.fileName)
+                  const isActive = settings.fontFamily === cf.name
+
+                  if (isBatchMode) {
+                    return (
+                      <div
+                        key={cf.fileName}
+                        onClick={() => handleToggleSelectFont(cf.fileName)}
+                        className={`font-btn ${isSelected ? 'active' : ''}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          cursor: 'pointer',
+                          borderColor: isSelected ? 'var(--accent)' : 'transparent',
+                          background: isSelected ? 'var(--accent-glow)' : 'var(--bg-layer3)',
+                          userSelect: 'none'
+                        }}
+                      >
+                        <div style={{
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '2px',
+                          border: '1.5px solid ' + (isSelected ? 'var(--accent)' : 'var(--text-muted)'),
+                          background: isSelected ? 'var(--accent)' : 'transparent',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}>
+                          {isSelected && <span style={{ color: '#fff', fontSize: '9px', fontWeight: 'bold' }}>✓</span>}
+                        </div>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {cf.name}
+                        </span>
+                      </div>
+                    )
+                  }
+
+                  return (
+                    <div
+                      key={cf.fileName}
+                      className={`font-btn ${isActive ? 'active' : ''}`}
+                      onClick={() => updateSettings({ fontFamily: cf.name })}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingRight: '6px',
+                        borderColor: isActive ? 'var(--accent)' : 'transparent',
+                        background: isActive ? 'var(--accent-glow)' : 'var(--bg-layer3)',
+                        transition: 'all 0.15s'
+                      }}
+                      title={`点击切换为自定义字体: ${cf.name}`}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cf.name}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteCustomFont(cf, e)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--text-muted)',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                          fontSize: '12px',
+                          lineHeight: 1,
+                          opacity: 0.7
+                        }}
+                        title="删除此字体"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
+          )}
+        </div>
+
+        {/* 字号 */}
+        <div className="settings-group">
+          <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>字体大小</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{settings.fontSize}px</span>
           </div>
-        )}
+          <input
+            type="range"
+            className="settings-slider"
+            min="12" max="32" step="1"
+            value={settings.fontSize}
+            onChange={e => updateSettings({ fontSize: Number(e.target.value) })}
+            id="font-size-slider"
+          />
+        </div>
+
+        {/* 字体粗细 */}
+        <div className="settings-group">
+          <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>字体粗细</span>
+            <span style={{ color: 'var(--text-secondary)' }}>
+              {settings.fontWeight === 300 ? '细体' :
+                settings.fontWeight === 400 ? '常规' :
+                  settings.fontWeight === 600 ? '小粗' :
+                    settings.fontWeight === 800 ? '中粗' :
+                      settings.fontWeight === 900 ? '大粗' : '常规'}
+            </span>
+          </div>
+          <input
+            type="range"
+            className="settings-slider"
+            min="1" max="5" step="1"
+            value={sliderWeight}
+            onChange={e => updateSettings({ fontWeight: weightMap[Number(e.target.value)] || 400 })}
+            id="font-weight-slider"
+          />
+        </div>
+
+        {/* 行高 */}
+        <div className="settings-group" style={{ marginBottom: 0 }}>
+          <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>行间距</span>
+            <span style={{ color: 'var(--text-secondary)' }}>{settings.lineHeight}</span>
+          </div>
+          <input
+            type="range"
+            className="settings-slider"
+            min="1.2" max="2.5" step="0.1"
+            value={settings.lineHeight}
+            onChange={e => updateSettings({ lineHeight: Number(e.target.value) })}
+            id="line-height-slider"
+          />
+        </div>
       </div>
 
-      {/* 恢复默认设置 */}
+      {/* 3. 翻阅与版式 */}
+      <div style={{
+        marginBottom: '14px',
+        background: 'var(--bg-layer2)',
+        borderRadius: '10px',
+        padding: '12px 14px',
+        border: '1px solid var(--border-subtle, rgba(128,128,128,0.12))'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>📐</span> 翻阅与版式
+        </div>
+        <div className="settings-group" style={{ marginBottom: 0 }}>
+          <div className="settings-label">排版模式</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+            <button
+              className={`theme-btn ${settings.layoutMode === 'horizontal' ? 'active' : ''}`}
+              style={{
+                padding: '7px 4px',
+                borderRadius: '6px',
+                border: '1px solid transparent',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: '600',
+                textAlign: 'center',
+                backgroundColor: 'var(--bg-layer3)',
+                color: 'var(--text-secondary)',
+                borderColor: settings.layoutMode === 'horizontal' ? 'var(--accent)' : 'transparent'
+              }}
+              onClick={() => updateSettings({ layoutMode: 'horizontal' })}
+              id="layout-horizontal-btn"
+            >
+              全窗口显示
+            </button>
+            <button
+              className={`theme-btn ${settings.layoutMode === 'horizontal-scroll' ? 'active' : ''}`}
+              style={{
+                padding: '7px 4px',
+                borderRadius: '6px',
+                border: '1px solid transparent',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: '600',
+                textAlign: 'center',
+                backgroundColor: 'var(--bg-layer3)',
+                color: 'var(--text-secondary)',
+                borderColor: settings.layoutMode === 'horizontal-scroll' ? 'var(--accent)' : 'transparent'
+              }}
+              onClick={() => updateSettings({ layoutMode: 'horizontal-scroll' })}
+              id="layout-horizontal-scroll-btn"
+            >
+              左右滚动
+            </button>
+            <button
+              className={`theme-btn ${settings.layoutMode === 'vertical' ? 'active' : ''}`}
+              style={{
+                padding: '7px 4px',
+                borderRadius: '6px',
+                border: '1px solid transparent',
+                cursor: 'pointer',
+                fontSize: '11px',
+                fontWeight: '600',
+                textAlign: 'center',
+                backgroundColor: 'var(--bg-layer3)',
+                color: 'var(--text-secondary)',
+                borderColor: settings.layoutMode === 'vertical' ? 'var(--accent)' : 'transparent'
+              }}
+              onClick={() => updateSettings({ layoutMode: 'vertical' })}
+              id="layout-vertical-btn"
+            >
+              上下滚动
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. 阅读功能与辅助 */}
+      <div style={{
+        marginBottom: '14px',
+        background: 'var(--bg-layer2)',
+        borderRadius: '10px',
+        padding: '12px 14px',
+        border: '1px solid var(--border-subtle, rgba(128,128,128,0.12))'
+      }}>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span>⚙️</span> 阅读功能与辅助
+        </div>
+
+        {/* 繁简中文转换 */}
+        <div className="settings-group">
+          <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>繁简转换</span>
+            <span style={{ fontSize: '11px', color: 'var(--accent-light)' }}>
+              {settings.chineseConversion === 't2s' ? '已开启繁转简' : settings.chineseConversion === 's2t' ? '已开启简转繁' : '原文显示'}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+            {[
+              { key: 'none', label: '保持原文' },
+              { key: 't2s', label: '繁体转简体' },
+              { key: 's2t', label: '简体转繁体' }
+            ].map(opt => {
+              const isActive = (settings.chineseConversion || 'none') === opt.key
+              return (
+                <button
+                  key={opt.key}
+                  className={`theme-btn ${isActive ? 'active' : ''}`}
+                  style={{
+                    padding: '7px 4px',
+                    borderRadius: '6px',
+                    border: '1px solid transparent',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    textAlign: 'center',
+                    backgroundColor: 'var(--bg-layer3)',
+                    color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)',
+                    borderColor: isActive ? 'var(--accent)' : 'transparent'
+                  }}
+                  onClick={() => {
+                    updateSettings({ chineseConversion: opt.key })
+                    if (opt.key === 't2s') {
+                      showToast('已切换为繁体转简体显示', 'success')
+                    } else if (opt.key === 's2t') {
+                      showToast('已切换为简体转繁体显示', 'info')
+                    } else {
+                      showToast('已恢复原文显示', 'info')
+                    }
+                  }}
+                  id={`chinese-conv-${opt.key}-btn`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* 页码与进度模式 */}
+        <div className="settings-group" style={{ marginBottom: 0 }}>
+          <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>页码显示范围</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              {(settings.pageProgressMode || 'chapter') === 'chapter' ? '⚡ 零卡顿秒开' : '📚 全书测算'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {[
+              { key: 'chapter', label: '当前章节 (推荐)', tip: '零卡顿秒开，掌握本章节奏' },
+              { key: 'book', label: '全书所有页面', tip: '后台测算整本书的累加总页数' }
+            ].map(opt => {
+              const isActive = (settings.pageProgressMode || 'chapter') === opt.key
+              return (
+                <button
+                  key={opt.key}
+                  title={opt.tip}
+                  style={{
+                    flex: 1,
+                    padding: '7px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: isActive ? 600 : 400,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    background: isActive ? 'var(--accent-glow, rgba(99, 102, 241, 0.15))' : 'var(--bg-layer3)',
+                    border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                    color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)'
+                  }}
+                  onClick={() => {
+                    updateSettings({ pageProgressMode: opt.key })
+                    if (opt.key === 'chapter') {
+                      showToast('已切换为当前章节页码 (极速省电)', 'success')
+                    } else {
+                      showToast('已切换为全书所有页面', 'info')
+                    }
+                  }}
+                  id={`page-mode-${opt.key}-btn`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+{/* 恢复默认设置 */}
       <button
         className="settings-restore-btn"
         onClick={() => updateSettings(DEFAULT_SETTINGS)}

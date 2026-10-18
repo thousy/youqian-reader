@@ -1777,7 +1777,7 @@ export function GlobalSettingsModal({ isOpen, onClose }) {
                 <div className="global-settings-card" style={{ textAlign: 'center', padding: '30px 20px' }}>
                   <div style={{ fontSize: '42px', marginBottom: '10px' }}>📖</div>
                   <div style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    YouQian Reader (有前阅读器)
+                    YouQian Reader (YouQian阅读器)
                   </div>
                   <div style={{ fontSize: '12px', color: 'var(--accent-light)', marginBottom: '16px' }}>
                     版本: v{appVersion} (现代化纯粹阅读与全网书源追更神器)
