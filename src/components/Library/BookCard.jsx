@@ -198,17 +198,54 @@ export function BookCard({ book, onClick, onDelete, onShowInfo, isBatchMode = fa
         </div>
       </div>
 
-      {/* 书籍信息：100% 恢复原版紧凑字距与排版 */}
+      {/* 书籍信息：分行优雅展示书名、作者与最新连载进度 */}
       <div className="book-info">
         <div className="book-title" title={cleanDisplayTitle(book.title)}>{cleanDisplayTitle(book.title)}</div>
-        <div className="book-author" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>{formatDisplayAuthor(book.author, book.title)}</span>
-          {book.latestChapter && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85px' }} title={book.latestChapter}>
+        <div
+          className="book-author"
+          title={formatDisplayAuthor(book.author, book.title)}
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {formatDisplayAuthor(book.author, book.title)}
+        </div>
+        {book.latestChapter && (
+          <div
+            className="book-latest-chapter"
+            title={`最新章节: ${book.latestChapter}`}
+            style={{
+              fontSize: '10.5px',
+              color: 'var(--text-muted)',
+              marginTop: '3px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              overflow: 'hidden'
+            }}
+          >
+            <span
+              style={{
+                fontSize: '9px',
+                fontWeight: 600,
+                color: '#38bdf8',
+                backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                padding: '0.5px 3.5px',
+                borderRadius: '3px',
+                lineHeight: 1.2,
+                flexShrink: 0
+              }}
+            >
+              最新
+            </span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
               {book.latestChapter}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       
       {/* 悬停动作层：非批量模式下正常展示 */}
