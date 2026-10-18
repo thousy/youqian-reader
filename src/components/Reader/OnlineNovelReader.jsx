@@ -70,33 +70,63 @@ function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick
   })
 }
 
-// 净化并统一侧边栏目录中的章节标题，规范为 【XXX-XXX】 风格，消除截断残缺
+// 全角转半角工具函数
+function toDBC(str) {
+  if (!str) return ''
+  let res = ''
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i)
+    if (code >= 0xff01 && code <= 0xff5e) {
+      res += String.fromCharCode(code - 0xfee0)
+    } else if (code === 0x3000) {
+      res += ' '
+    } else {
+      res += str[i]
+    }
+  }
+  return res
+}
+
+// 净化并统一侧边栏目录中的章节标题，规范为 【XXX-XXX】 风格，保留分部（第二部等）标记
 function cleanDisplayChapterTitle(title, bookTitle) {
   if (!title) return ''
-  const t = title.trim()
+  const t = toDBC(title).trim()
 
-  // 1. 优先匹配明确的分卷范围（如 001-009、053-062、121-128 等）
-  const rangeMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
+  // 1. 识别并保留分部特征 (如 第二部、下部、续、番外等)
+  let partPrefix = ''
+  const partMatch = t.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  if (partMatch) {
+    const pStr = partMatch[0]
+    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {
+      partPrefix = '第二部 '
+    } else if (pStr.includes('上') || pStr.includes('前') || pStr.includes('一')) {
+      partPrefix = ''
+    } else {
+      partPrefix = `${pStr} `
+    }
+  }
+
+  const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+  const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1].trim()}` : ''
+
+  // 2. 匹配明确的分卷范围（如 001-009、1-7、10-14、1.1-2.59 等）
+  const rangeMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
                      t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
   if (rangeMatch) {
     const rawStart = rangeMatch[1]
     const rawEnd = rangeMatch[2]
-    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
-    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
-    return `【${rawStart}-${rawEnd}】${authorSuffix}`
+    return `【${partPrefix}${rawStart}-${rawEnd}】${authorSuffix}`
   }
 
-  // 2. 匹配单卷/单章，如 (8)、第8章
-  const singleMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+  // 3. 匹配单卷/单章，如 (8)、第8章
+  const singleMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
                       t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
   if (singleMatch) {
     const rawNum = singleMatch[1]
-    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
-    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
-    return `【第${rawNum}章】${authorSuffix}`
+    return `【${partPrefix}第${rawNum}章】${authorSuffix}`
   }
 
-  // 3. 通用前缀剥离兜底（严格禁止跨越括号匹配）
+  // 4. 通用前缀剥离兜底（严格禁止跨越括号匹配）
   let cleaned = t
   if (bookTitle) {
     const rawCleanBook = bookTitle.replace(/[《》【】\[\]\s]/g, '').trim()

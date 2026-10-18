@@ -888,11 +888,21 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
 }
 
 /**
+ * 全角转半角（标准化全角数字、全角英文字母、全角标点符号）
+ */
+export function toDBC(str) {
+  if (!str) return ''
+  return str
+    .replace(/[\uff01-\uff5e]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/\u3000/g, ' ')
+}
+
+/**
  * 智能提炼纯净小说主书名（剥离题材标签、副标题、分部、分卷数字、作者等一切噪音）
  */
 export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
   if (!rawTitle) return ''
-  let title = rawTitle.trim()
+  let title = toDBC(rawTitle).trim()
 
   // 1. 若以【书名】或[书名]或《书名》开头，且括号内不全为数字/章节标记
   const bracketMatch = title.match(/^[【\[《]([^】\]》]+)[】\]》]/)
@@ -920,7 +930,7 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
   }
 
   // 5. 剥离分部、章节字眼与中文/阿拉伯数字
-  clean = clean.replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
+  clean = clean.replace(/(?:上部|下部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
   clean = clean.replace(/(?:第\s*)?[一二三四五六七八九十百千万\d]+(?:\.\d+)?(?:[－\-~～、至到]+[一二三四五六七八九十百千万\d]+(?:\.\d+)?)?\s*(?:章|节|卷)?/g, ' ')
 
   // 6. 剥离副标题连接符
@@ -937,24 +947,25 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
  */
 export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   if (!rawTitle) return null
+  const normTitle = toDBC(rawTitle).trim()
 
   // 1. 优先提取明确的章节区间或单章节
   // 模式1: 括号包围的分卷 (【10-14】, [1-7], (46-55), （1.1-1.13）, 【第36章】)
-  let rangeMatch = rawTitle.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?\s*[】\]）\)]/)
+  let rangeMatch = normTitle.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?\s*[】\]）\)]/)
 
   // 模式2: 明确的 "第X-Y章" 或 "第X章"
   if (!rangeMatch) {
-    rangeMatch = rawTitle.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)/)
+    rangeMatch = normTitle.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)/)
   }
 
   // 模式3: 开头或空白后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8)
   if (!rangeMatch) {
-    rangeMatch = rawTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
   }
 
   // 模式4: 纯数字或独立章节标号
   if (!rangeMatch) {
-    rangeMatch = rawTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)(\d+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)(\d+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
   }
 
   if (!rangeMatch) return null
@@ -964,12 +975,12 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
 
   // 2. 识别分部/分卷特征 (上部/下部/第一部/第二部/续等)
   let partNumber = 1
-  const partMatch = rawTitle.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  const partMatch = normTitle.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
   if (partMatch) {
     const pStr = partMatch[0]
-    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续')) {
+    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {
       partNumber = 2
-    } else if (pStr.includes('上') || pStr.includes('前')) {
+    } else if (pStr.includes('上') || pStr.includes('前') || pStr.includes('一')) {
       partNumber = 1
     } else {
       const numChar = partMatch[1]
@@ -1005,17 +1016,33 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   }
 
   // 5. 纯净主书名提取 (通过 extractCleanBookName 剥离标签、分卷、括号、副标题、作者等)
-  let mainName = extractCleanBookName(rawTitle, fallbackAuthor)
+  let mainName = extractCleanBookName(normTitle, fallbackAuthor)
 
   return { mainName, start, end, partNumber, rawStart, rawEnd: rawEnd || rawStart, rawTitle }
 }
 
 /**
- * 统一规范化论坛分卷标题，强制对齐为 【XXX-XXX】 风格，消除截断残缺
+ * 统一规范化论坛分卷标题，强制对齐为 【XXX-XXX】 风格，显式保留分部标记
  */
-export function formatUnifiedChapterTitle(title, fallbackAuthor = '') {
+export function formatUnifiedChapterTitle(title, fallbackAuthor = '', partNumber = 1) {
   if (!title) return ''
-  const t = title.trim()
+  const t = toDBC(title).trim()
+
+  // 1. 识别并保留分部特征 (第二部/下部等)
+  let partPrefix = ''
+  const partMatch = t.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  if (partMatch) {
+    const pStr = partMatch[0]
+    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {
+      partPrefix = '第二部 '
+    } else if (pStr.includes('上') || pStr.includes('前') || pStr.includes('一')) {
+      partPrefix = ''
+    } else {
+      partPrefix = `${pStr} `
+    }
+  } else if (partNumber > 1) {
+    partPrefix = `第${partNumber}部 `
+  }
 
   const rangeMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)/) ||
@@ -1028,7 +1055,7 @@ export function formatUnifiedChapterTitle(title, fallbackAuthor = '') {
   if (rangeMatch) {
     const rawStart = rangeMatch[1]
     const rawEnd = rangeMatch[2]
-    return `【${rawStart}-${rawEnd}】${authorSuffix}`
+    return `【${partPrefix}${rawStart}-${rawEnd}】${authorSuffix}`
   }
 
   const singleMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
@@ -1036,7 +1063,7 @@ export function formatUnifiedChapterTitle(title, fallbackAuthor = '') {
                       t.match(/^(\d+(?:\.\d+)?)$/)
   if (singleMatch) {
     const rawNum = singleMatch[1]
-    return `【第${rawNum}章】${authorSuffix}`
+    return `【${partPrefix}第${rawNum}章】${authorSuffix}`
   }
 
   return t
@@ -1070,11 +1097,13 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     const info = parseBbsChapterInfo(c.title)
     let start = c.start !== undefined && c.start > 0 ? c.start : (info ? info.start : 0)
     let end = c.end !== undefined && c.end > 0 ? c.end : (info ? info.end : start)
+    const partNum = c.partNumber || info?.partNumber || (start >= 1000000 ? 2 : 1)
     return {
       ...c,
-      title: formatUnifiedChapterTitle(c.title, fallbackAuthor),
+      title: formatUnifiedChapterTitle(c.title, fallbackAuthor, partNum),
       start,
-      end
+      end,
+      partNumber: partNum
     }
   })
 
