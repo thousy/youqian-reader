@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { URL } from 'url'
+import * as httpsProxyAgentModule from 'https-proxy-agent'
+const HttpsProxyAgent = httpsProxyAgentModule.default || httpsProxyAgentModule.HttpsProxyAgent || httpsProxyAgentModule
 import { getPortableDataDir } from '../portablePath.js'
 import { fetchWithRetry } from './utils.js'
 
@@ -198,17 +200,56 @@ export function matchGfwlist(urlStr) {
 }
 
 /**
- * 在线更新 GFWList 规则列表
+ * 在线更新 GFWList 规则列表 (支持显式挂载代理 Agent 与主备源自愈)
  */
-export async function updateGfwlistOnline(url = 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt') {
-  console.log('[GFWList] 正在从目标网址下载规则列表:', url)
-  try {
-    // 强制超时设为 25 秒，使用带重试的网络抓取（优先走代理通道）
-    const rawData = await fetchWithRetry(url, {}, 3, 25000)
-    if (!rawData || rawData.length < 50) {
-      throw new Error('下载的内容为空或数据异常')
+export async function updateGfwlistOnline(url = 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt', proxyUrl = null) {
+  console.log('[GFWList] 正在从目标网址下载规则列表:', url, proxyUrl ? `(使用代理: ${proxyUrl})` : '')
+  
+  let agent = null
+  if (proxyUrl) {
+    try {
+      agent = new HttpsProxyAgent(proxyUrl, {
+        rejectUnauthorized: false,
+        timeout: 20000
+      })
+    } catch (e) {
+      console.warn('[GFWList] 创建代理 Agent 失败:', e.message)
     }
+  }
 
+  // 主源与备用全球 CDN 镜像源
+  const candidateUrls = [
+    url,
+    'https://cdn.jsdelivr.net/gh/gfwlist/gfwlist@master/gfwlist.txt',
+    'https://raw.gitmirror.com/gfwlist/gfwlist/master/gfwlist.txt'
+  ].filter(Boolean)
+
+  let rawData = null
+  let lastErr = null
+
+  for (const candidate of candidateUrls) {
+    try {
+      console.log(`[GFWList] 尝试从 ${candidate} 获取规则列表...`)
+      // 带重试抓取，强制传入 agent
+      rawData = await fetchWithRetry(candidate, { agent }, 2, 20000)
+      if (rawData && rawData.length >= 50) {
+        console.log(`[GFWList] 成功从 ${candidate} 获取到数据 (${rawData.length} 字节)`)
+        break
+      }
+    } catch (err) {
+      console.warn(`[GFWList] 从 ${candidate} 下载失败: ${err.message}`)
+      lastErr = err
+    }
+  }
+
+  if (!rawData || rawData.length < 50) {
+    return {
+      success: false,
+      error: lastErr ? `下载失败: ${lastErr.message}` : '下载内容为空或未能连接'
+    }
+  }
+
+  try {
     const parsed = parseAutoProxyText(rawData)
     const ruleCount = parsed.domainRules.length + parsed.whitelist.length + parsed.regexRules.length
     if (ruleCount === 0) {
@@ -246,10 +287,10 @@ export async function updateGfwlistOnline(url = 'https://raw.githubusercontent.c
       message: `成功更新并加载 ${ruleCount} 条规则`
     }
   } catch (err) {
-    console.error('[GFWList] 更新规则列表失败:', err)
+    console.error('[GFWList] 解析规则列表失败:', err)
     return {
       success: false,
-      error: `更新失败: ${err.message}`
+      error: `解析规则失败: ${err.message}`
     }
   }
 }

@@ -371,17 +371,19 @@ export function testProxyConnection(targetUrl = 'https://www.cool18.com', custom
  * 在线更新规则列表 (gfwlist)
  */
 export async function updateRuleList(url) {
-  const targetUrl = url || getProxyConfig().ruleList.url
-  const res = await updateGfwlistOnline(targetUrl)
+  const current = getProxyConfig()
+  const targetUrl = url || current.ruleList?.url || 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt'
+  const proxyUrl = current.proxyUrl || 'http://127.0.0.1:1080'
+  const res = await updateGfwlistOnline(targetUrl, proxyUrl)
   if (res.success) {
     const store = getStore()
+    const updatedRuleList = {
+      ...(current.ruleList || {}),
+      lastUpdated: res.lastUpdated,
+      ruleCount: res.ruleCount
+    }
     if (store) {
-      const current = getProxyConfig()
-      store.set('proxyConfig.ruleList', {
-        ...current.ruleList,
-        lastUpdated: res.lastUpdated,
-        ruleCount: res.ruleCount
-      })
+      store.set('proxyConfig.ruleList', updatedRuleList)
     }
   }
   return res
