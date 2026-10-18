@@ -888,9 +888,54 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
 }
 
 /**
+ * 智能提炼纯净小说主书名（剥离题材标签、副标题、分部、分卷数字、作者等一切噪音）
+ */
+export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
+  if (!rawTitle) return ''
+  let title = rawTitle.trim()
+
+  // 1. 若以【书名】或[书名]或《书名》开头，且括号内不全为数字/章节标记
+  const bracketMatch = title.match(/^[【\[《]([^】\]》]+)[】\]》]/)
+  if (bracketMatch) {
+    const candidate = bracketMatch[1].trim()
+    const isOnlyChapter = /^(?:第\s*)?[一二三四五六七八九十百千万\d]+(?:\.\d+)?(?:[－\-~～、至到]+[一二三四五六七八九十百千万\d]+(?:\.\d+)?)?(?:\s*章)?$/.test(candidate)
+    if (!isOnlyChapter && candidate.length >= 2) {
+      // 剥离分部等标签
+      let bName = candidate.replace(/(?:上部|下部|第一部|第二部|前传|外传|后传|全本|精校|连载|续|番外)/g, '').trim()
+      bName = bName.replace(/\s*\d+.*$/, '').trim()
+      if (bName.length >= 2) return bName
+    }
+  }
+
+  // 2. 剥离所有圆括号内容（通常为分卷号、逆ntr、未删节、高H等副标题或标签）
+  let clean = title.replace(/[（\(][^）\)]*[）\)]/g, ' ')
+
+  // 3. 剥离所有方括号与书名号
+  clean = clean.replace(/[【】\[\]《》]/g, ' ')
+
+  // 4. 剥离作者标记与已知作者名
+  clean = clean.replace(/[作|原][者|著][：:]\s*[^\s\[【<]+/g, ' ')
+  if (fallbackAuthor && fallbackAuthor !== '未知' && fallbackAuthor !== '网络作家') {
+    clean = clean.replace(new RegExp(fallbackAuthor, 'g'), ' ')
+  }
+
+  // 5. 剥离分部、章节字眼与中文/阿拉伯数字
+  clean = clean.replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
+  clean = clean.replace(/(?:第\s*)?[一二三四五六七八九十百千万\d]+(?:\.\d+)?(?:[－\-~～、至到]+[一二三四五六七八九十百千万\d]+(?:\.\d+)?)?\s*(?:章|节|卷)?/g, ' ')
+
+  // 6. 剥离副标题连接符
+  if (clean.includes('——')) clean = clean.split('——')[0].trim()
+  if (clean.includes('—')) clean = clean.split('—')[0].trim()
+  if (clean.includes(' - ')) clean = clean.split(' - ')[0].trim()
+  clean = clean.replace(/\s*[0-9一二三四五六七八九十百千万].*$/, '').trim()
+
+  return clean.replace(/\s+/g, '').trim()
+}
+
+/**
  * 智能解析 BBS 论坛作品标题与章节范围（支持 【10-14】, 1-7, 32-33, 1.1-1.13, 28.32--29.8, 上下部、第二部等复合分卷模式）
  */
-export function parseBbsChapterInfo(rawTitle) {
+export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   if (!rawTitle) return null
 
   // 1. 优先提取明确的章节区间或单章节
@@ -959,18 +1004,8 @@ export function parseBbsChapterInfo(rawTitle) {
     end += partOffset
   }
 
-  // 5. 纯净主书名提取 (剥离分卷标记、分部、括号、副标题、作者等)
-  let mainName = rawTitle
-    .replace(rangeMatch[0], ' ')
-    .replace(/[【】\[\]（）\(\)]/g, ' ')
-    .replace(/[作|原][者|著][：:]\s*[^\s\[【<]+/g, ' ')
-    .replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
-    .trim()
-
-  if (mainName.includes('——')) mainName = mainName.split('——')[0].trim()
-  if (mainName.includes('—')) mainName = mainName.split('—')[0].trim()
-  if (mainName.includes(' - ')) mainName = mainName.split(' - ')[0].trim()
-  mainName = mainName.replace(/\s*\d+.*$/, '').trim()
+  // 5. 纯净主书名提取 (通过 extractCleanBookName 剥离标签、分卷、括号、副标题、作者等)
+  let mainName = extractCleanBookName(rawTitle, fallbackAuthor)
 
   return { mainName, start, end, partNumber, rawStart, rawEnd: rawEnd || rawStart, rawTitle }
 }
@@ -1871,13 +1906,17 @@ export class RuleSource {
       }
 
       // 🛡️ BBS 论坛多帖连载小说全本自动聚合 (Novel Multi-Thread Aggregation)
-      let bbsInfo = parseBbsChapterInfo(rawDetailTitle) || parseBbsChapterInfo(title)
-      if (!bbsInfo && cleanedMeta?.cleanTitle && cleanedMeta.cleanTitle.length >= 2) {
+      const cleanMainName = extractCleanBookName(rawDetailTitle, author) || extractCleanBookName(title, author) || cleanedMeta?.cleanTitle || ''
+      let bbsInfo = parseBbsChapterInfo(rawDetailTitle, author) || parseBbsChapterInfo(title, author)
+      if (bbsInfo && cleanMainName && cleanMainName.length >= 2) {
+        bbsInfo.mainName = cleanMainName
+      }
+      if (!bbsInfo && cleanMainName && cleanMainName.length >= 2) {
         // 如果是论坛书源（如 cool18 / bbs / 论坛板块等），即便单帖标题未带分卷数字，也以纯净主书名尝试聚合召回
         const isBbsSource = this.name?.includes('cool18') || this.baseUrl?.includes('bbs') || this.baseUrl?.includes('cool18') || (this.rule.comment && this.rule.comment.includes('论坛'))
         if (isBbsSource) {
           bbsInfo = {
-            mainName: cleanedMeta.cleanTitle,
+            mainName: cleanMainName,
             start: 1000,
             end: 1000,
             rawStart: '1',
@@ -2102,6 +2141,24 @@ export class RuleSource {
                 index: aggChapters.length
               })
             })
+
+            // 🛡️ 首帖大跨度自愈修正 (Initial Post Span Self-Healing)
+            // 若首帖标为全本/大跨度范围（如 1-55、1-100），但紧随其后的第二项为细分卷（如 4-6、10-12），
+            // 说明首帖真实承载的是从第1章到第二项起始前一章的正文（作者连载后期修改了首帖标题），
+            // 自动将其动态修正为衔接范围，例如 1-3，杜绝首帖正文被误杀或发生区间冲突
+            if (aggChapters.length > 1) {
+              const first = aggChapters[0]
+              const second = aggChapters[1]
+              const firstSpan = first.end - first.start
+              if (first.start <= 1000 && firstSpan >= 20000 && second.start > first.start && second.start <= 20000) {
+                const realEndNum = Math.floor(second.start / 1000) - 1
+                if (realEndNum >= 1) {
+                  first.end = realEndNum * 1000
+                  const authorSuffix = author && author !== '未知' && author !== '网络作家' ? ` 作者: ${author}` : ''
+                  first.title = `【1-${realEndNum}】${authorSuffix}`
+                }
+              }
+            }
 
             // 检查是否已有细粒度起始卷（跨度 <= 20000 且 start <= 1001）
             const hasFineGrainedFirstVol = aggChapters.some(c => {

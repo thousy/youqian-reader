@@ -127,6 +127,11 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
         const hasBbsTitleFeature = /[（\(][^0-9（\)]*?\d+/.test(book.title || '') || (book.latestChapter && /[（\(][^0-9（\)]*?\d+/.test(book.latestChapter))
         const isSuspiciousSingleChapter = cached.length <= 1 && (isBbsSource || hasBbsTitleFeature)
 
+        // 自动自愈2：若论坛书籍首章起始序号明显大于前置卷（例如从10或13章开始）且总分卷偏少，说明严重缺失前置卷，强制在线重拉
+        const firstChInfo = cached[0] ? parseBbsChapterInfo(cached[0].title) : null
+        const firstChStart = cached[0]?.start !== undefined && cached[0].start > 0 ? cached[0].start : (firstChInfo?.start || 0)
+        const isMissingFirstChapters = isBbsSource && cached.length <= 8 && firstChStart > 3000
+
         // 自动自愈：检测是否出现上部与下部交错穿插错乱（如出现下部章节后，后续又出现上部章节）
         let seenLowerPart = false
         let hasPartInterleaving = false
@@ -175,7 +180,7 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           }
         }
 
-        if (!hasDirtyJunk && !isSuspiciousSingleChapter && !hasPartInterleaving) {
+        if (!hasDirtyJunk && !isSuspiciousSingleChapter && !hasPartInterleaving && !isMissingFirstChapters) {
           return { success: true, chapters: cached, fromCache: true }
         }
       }
