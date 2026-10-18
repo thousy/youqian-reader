@@ -1113,13 +1113,42 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     return (b.end - b.start) - (a.end - a.start)
   })
 
-  // 3. 第一轮：单项真子集剔除 (Strict Subset Elimination)
+  // 3. 第一轮：汇总帖智能裁剪与单项真子集剔除 (Directory Post Head Truncation & Subset Elimination)
+  // 首先检测是否存在跨度巨大的目录汇总帖（如 1-55、1-100 跨度 >= 20000），而内部包含 >= 3 个连续/独立细分卷
+  const directoryPostIndices = new Set()
+  for (let j = 0; j < items.length; j++) {
+    const parent = items[j]
+    const parentSpan = parent.end - parent.start
+    if (parentSpan >= 20000) {
+      const children = items.filter((it, idx) => idx !== j && it.start >= parent.start && it.end <= parent.end)
+      if (children.length >= 3) {
+        // 检查子分卷的最小起始点
+        const minChildStart = Math.min(...children.map(c => c.start))
+        if (minChildStart > parent.start + 1000) {
+          // 该汇总帖自身实际承载了子分卷未覆盖的头部章节（如 1-3 或 1-12）
+          // 将其智能裁剪为头部章节，赋予对应标题，绝不剔除！
+          const rawHeadStart = Math.floor(parent.start / 1000) || 1
+          const rawHeadEnd = Math.floor(minChildStart / 1000) - 1
+          if (rawHeadEnd >= rawHeadStart) {
+            parent.end = rawHeadEnd * 1000
+            parent.title = rawHeadEnd > rawHeadStart ? `【${rawHeadStart}-${rawHeadEnd}】` : `【第${rawHeadStart}章】`
+            if (fallbackAuthor) parent.title += ` 作者: ${fallbackAuthor}`
+            continue // 成功裁剪为头部独立分卷，保留！
+          }
+        }
+        // 若头部已被其他分卷完全覆盖，则确认作为冗余汇总帖容器剔除
+        directoryPostIndices.add(j)
+      }
+    }
+  }
+
   const nonSubset = []
   for (let i = 0; i < items.length; i++) {
+    if (directoryPostIndices.has(i)) continue
     const cur = items[i]
     let isSubset = false
     for (let j = 0; j < items.length; j++) {
-      if (i === j) continue
+      if (i === j || directoryPostIndices.has(j)) continue
       const other = items[j]
       const otherSpan = other.end - other.start
       const curSpan = cur.end - cur.start
@@ -1974,20 +2003,44 @@ export class RuleSource {
 
           // 1. 将当前单帖自身先作为一个分卷纳入
           if (novelUrl) {
-            let selfTitle = title
+            let selfTitle = rawDetailTitle || title
+            // 若正文首部前 500 字内明确带有精准细粒度分卷标记（如 【新婚】(1-3)），优先识别为当前帖真实正文范围
             try {
               const sampleText = $toc('.post-content, pre, #post-content').text().slice(0, 1000)
               const firstLineMatch = sampleText.match(/[【\[]([^】\]]+)[】\]][\s\S]{0,30}?[（\(](\d+(?:\.\d+)?)(?:[－\-~～、]+(\d+(?:\.\d+)?))?[^）\)]*[）\)]/)
               if (firstLineMatch) {
-                selfTitle = firstLineMatch[0].trim()
+                const headInfo = parseBbsChapterInfo(firstLineMatch[0])
+                if (headInfo && (headInfo.end - headInfo.start <= 10000) && headInfo.start <= 2000) {
+                  selfTitle = firstLineMatch[0].trim()
+                }
               }
             } catch (_) {}
-            const selfInfo = parseBbsChapterInfo(selfTitle) || bbsInfo
+
+            let selfInfo = parseBbsChapterInfo(selfTitle) || bbsInfo
+            let selfStart = selfInfo.start || bbsInfo.start
+            let selfEnd = selfInfo.end || bbsInfo.end
+
+            // 智能识别首序章节承载 (Head Range Auto-Convergence)：
+            // 若当前主帖标题涵盖大跨度（如 1-55 或 1.1-2.59），而帖内提取到的分卷超链接最小起始序号明显大于主帖开头
+            if (intraVolumeLinks.length > 0) {
+              const minSubStart = Math.min(...intraVolumeLinks.map(l => l.start).filter(s => s > 0))
+              if (minSubStart > 1000 && selfStart < minSubStart) {
+                // 计算主帖自身承载的未外链首序分卷范围（例如 1 到 12，或 1 到 3）
+                const rawHeadStart = Math.floor(selfStart / 1000) || 1
+                const rawHeadEnd = Math.floor(minSubStart / 1000) - 1
+                if (rawHeadEnd >= rawHeadStart) {
+                  selfEnd = rawHeadEnd * 1000
+                  const authorSuffix = bbsInfo.author && bbsInfo.author !== '未知' && bbsInfo.author !== '网络作家' ? ` 作者: ${bbsInfo.author}` : ''
+                  selfTitle = rawHeadEnd > rawHeadStart ? `【${rawHeadStart}-${rawHeadEnd}】${authorSuffix}` : `【第${rawHeadStart}章】${authorSuffix}`
+                }
+              }
+            }
+
             parsedList.push({
               title: selfTitle || `【${bbsInfo.mainName}】（当前卷）`,
               url: novelUrl,
-              start: selfInfo.start || bbsInfo.start,
-              end: selfInfo.end || bbsInfo.end
+              start: selfStart,
+              end: selfEnd
             })
           }
 
@@ -2152,7 +2205,15 @@ export class RuleSource {
                 const existing = seenMap.get(p.url)
                 const existingHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(existing.title)
                 const pHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(p.title)
-                if ((existing.end - existing.start > 2000) && (p.end - p.start <= 2000)) {
+                const existingHasPart = /(?:第二部|第2部|下部|后传|续)/.test(existing.title)
+                const pHasPart = /(?:第二部|第2部|下部|后传|续)/.test(p.title)
+                if (!existingHasPart && pHasPart) {
+                  // 优先保留显式含有分部标记（如第二部）的项
+                  seenMap.set(p.url, p)
+                } else if ((existing.end - existing.start > 20000) && (p.end - p.start <= 20000)) {
+                  // 优先保留细分卷而非大跨度汇总帖
+                  seenMap.set(p.url, p)
+                } else if ((existing.end - existing.start > 2000) && (p.end - p.start <= 2000)) {
                   seenMap.set(p.url, p)
                 } else if (!existingHasRange && pHasRange) {
                   // 若已有项标题模糊（无章节数字），而当前项带有清晰章节数字，优先替换为清晰标题
@@ -2171,6 +2232,12 @@ export class RuleSource {
               })
             })
 
+            // 严格重新按 start 升序排序
+            aggChapters.sort((a, b) => {
+              if (a.start !== b.start) return a.start - b.start
+              return (b.end - b.start) - (a.end - a.start)
+            })
+
             // 🛡️ 首帖大跨度自愈修正 (Initial Post Span Self-Healing)
             // 若首帖标为全本/大跨度范围（如 1-55、1-100），但紧随其后的第二项为细分卷（如 4-6、10-12），
             // 说明首帖真实承载的是从第1章到第二项起始前一章的正文（作者连载后期修改了首帖标题），
@@ -2179,12 +2246,12 @@ export class RuleSource {
               const first = aggChapters[0]
               const second = aggChapters[1]
               const firstSpan = first.end - first.start
-              if (first.start <= 1000 && firstSpan >= 20000 && second.start > first.start && second.start <= 20000) {
+              if (first.start <= 1000 && firstSpan >= 20000 && second.start > first.start) {
                 const realEndNum = Math.floor(second.start / 1000) - 1
                 if (realEndNum >= 1) {
                   first.end = realEndNum * 1000
                   const authorSuffix = author && author !== '未知' && author !== '网络作家' ? ` 作者: ${author}` : ''
-                  first.title = `【1-${realEndNum}】${authorSuffix}`
+                  first.title = realEndNum > 1 ? `【1-${realEndNum}】${authorSuffix}` : `【第1章】${authorSuffix}`
                 }
               }
             }

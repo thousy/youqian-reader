@@ -127,10 +127,10 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
         const hasBbsTitleFeature = /[（\(][^0-9（\)]*?\d+/.test(book.title || '') || (book.latestChapter && /[（\(][^0-9（\)]*?\d+/.test(book.latestChapter))
         const isSuspiciousSingleChapter = cached.length <= 1 && (isBbsSource || hasBbsTitleFeature)
 
-        // 自动自愈2：若论坛书籍首章起始序号明显大于前置卷（例如从10或13章开始）且总分卷偏少，说明严重缺失前置卷，强制在线重拉
+        // 自动自愈2：若论坛书籍首章起始序号明显大于第1卷（例如从4、10或13章开始），说明严重缺失前置卷，强制在线重拉
         const firstChInfo = cached[0] ? parseBbsChapterInfo(cached[0].title) : null
         const firstChStart = cached[0]?.start !== undefined && cached[0].start > 0 ? cached[0].start : (firstChInfo?.start || 0)
-        const isMissingFirstChapters = isBbsSource && cached.length <= 8 && firstChStart > 3000
+        const isMissingFirstChapters = isBbsSource && firstChStart > 3000
 
         // 自动自愈：检测是否出现上部与下部交错穿插错乱（如出现下部章节后，后续又出现上部章节）
         let seenLowerPart = false
@@ -180,7 +180,17 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           }
         }
 
-        if (!hasDirtyJunk && !isSuspiciousSingleChapter && !hasPartInterleaving && !isMissingFirstChapters) {
+        if (hasDirtyJunk || isSuspiciousSingleChapter || hasPartInterleaving || isMissingFirstChapters) {
+          // 清理所有旧的正文缓存，避免重新拉取后新目录索引与旧正文错位
+          try {
+            const oldFiles = readdirSync(cacheDir)
+            for (const f of oldFiles) {
+              if (f.startsWith('ch_') && f.endsWith('.json')) {
+                try { rmSync(join(cacheDir, f)) } catch (_) {}
+              }
+            }
+          } catch (_) {}
+        } else {
           return { success: true, chapters: cached, fromCache: true }
         }
       }
@@ -204,17 +214,12 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
 
     try {
       writeFileSync(indexFile, JSON.stringify(formattedChapters, null, 2), 'utf-8')
-      // 若原先残留无分卷号或错位的旧单章缓存（如最初单帖保存的脏 ch_0.json），立即清理
+      // 彻底清理旧单章缓存，杜绝新目录索引与旧单章正文错位串位
       const oldFiles = readdirSync(cacheDir)
       for (const f of oldFiles) {
         if (f.startsWith('ch_') && f.endsWith('.json')) {
           try {
-            const chPath = join(cacheDir, f)
-            const d = JSON.parse(readFileSync(chPath, 'utf-8'))
-            const hasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(d?.title || '')
-            if (!hasRange) {
-              rmSync(chPath)
-            }
+            rmSync(join(cacheDir, f))
           } catch (_) {}
         }
       }
