@@ -1,10 +1,17 @@
-# YouQian书籍阅读器 📚 (V2.2.18)
+# YouQian书籍阅读器 📚 (V2.2.19)
 
-[![Version](https://img.shields.io/badge/version-2.2.18-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.19-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.19 通用论坛多卷连载接力与超千章大长篇解析架构重构 (Release Notes)
+* **论坛连载多坛友接力转帖全量接纳**：彻底重构 BBS 分卷匹配算法，在主书名一致时绝不因论坛发帖人（转帖人）用户名不同而互相排斥，全量纳入接力转帖分卷（如《超级房东》前部“风过留痕”转帖与后部“俗人”续更分卷无缝合璧，分卷数由 50 卷剧增至 128 卷）；
+* **超千章大长篇取模与截断彻底根治**：废除隐式分部推断与危险的 `val % 1000000` 算法，分部偏移量提升至一亿（100,000,000），第 1051 章真实呈现为【1051-1055】（绝不再倒退截断为【51-55】），章节单调严格递增，彻底消除乱序与混排；
+* **自适应持续翻页深度召回**：优化论坛搜索翻页算法，持续自适应翻页直至末页，一次性召回论坛全部历史帖子，杜绝大长篇早期分卷丢失。
 
 ---
 

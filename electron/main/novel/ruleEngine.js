@@ -1071,9 +1071,10 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   }
   if (start <= 0 && end <= 0) return null
 
-  // 4. 叠加分部偏移 (每个分部偏移 1,000,000)
+  // 4. 叠加分部偏移 (每个分部偏移 100,000,000 亿级偏移，绝不影响千万章以内单部大长篇的真实章节序号)
   // 如果是普通章节 (未含小数点)，按识别出的 partNumber 叠加偏移，彻底消除上部与下部交错错乱
-  const partOffset = (partNumber - 1) * 1000000
+  const PART_OFFSET = 100000000
+  const partOffset = (partNumber - 1) * PART_OFFSET
   if (!String(rawStart).includes('.')) {
     start += partOffset
     end += partOffset
@@ -1114,15 +1115,17 @@ export function formatUnifiedChapterTitle(title, fallbackAuthor = '', partNumber
   const authorSuffix = authorName ? ` 作者: ${authorName}` : ''
 
   if (info) {
-    const numPart = (val) => {
-      const pure = val >= 1000000 ? val % 1000000 : val
+    const numPart = (val, pNum = 1) => {
+      // 仅当显式标记为多部 (pNum > 1) 且叠加了亿级偏移时才扣除偏移，绝不修改超千章普通小说的真实章号
+      const pure = (pNum > 1 && val >= 100000000) ? val - (pNum - 1) * 100000000 : val
       if (pure % 1000 === 0) return (pure / 1000).toString()
       const major = Math.floor(pure / 1000)
       const minor = pure % 1000
       return `${major}.${minor}`
     }
-    const sStr = numPart(info.start)
-    const eStr = numPart(info.end)
+    const effPartNum = info.partNumber || partNumber
+    const sStr = numPart(info.start, effPartNum)
+    const eStr = numPart(info.end, effPartNum)
     if (sStr !== eStr) {
       return `【${partPrefix}${sStr}-${eStr}】${authorSuffix}`
     } else {
@@ -1161,7 +1164,7 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     const info = parseBbsChapterInfo(c.title)
     let start = c.start !== undefined && c.start > 0 ? c.start : (info ? info.start : 0)
     let end = c.end !== undefined && c.end > 0 ? c.end : (info ? info.end : start)
-    const partNum = c.partNumber || info?.partNumber || (start >= 1000000 ? 2 : 1)
+    const partNum = c.partNumber || info?.partNumber || (start >= 100000000 ? 2 : 1)
     return {
       ...c,
       title: formatUnifiedChapterTitle(c.title, fallbackAuthor, partNum),
@@ -1325,9 +1328,13 @@ function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '', all
   if (baseAuthor && baseAuthor !== '未知' && baseAuthor !== '网络作家') {
     const authorMatch = candidateTitle.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
     const candAuthor = authorMatch ? authorMatch[1].trim() : ''
-    // 若候选帖子自身明确标注了作者，且与原作者不一致，坚决剔除
+    // 若候选帖子自身明确标注了作者，且与原作者不一致：
     if (candAuthor && !candAuthor.includes(baseAuthor) && !baseAuthor.includes(candAuthor)) {
-      return false
+      // 论坛长篇连载中常由不同坛友接力转帖（如《超级房东》前部为风过留痕转帖，后部为俗人续发）
+      // 当主书名完全一致且书名长度 >= 3（非极短同名短篇）时，绝不因发帖人/转帖人不同而误杀合法分卷！
+      if (baseNorm.length <= 2 || candNorm !== baseNorm) {
+        return false
+      }
     }
   }
 
@@ -2168,8 +2175,8 @@ export class RuleSource {
 
             if (Array.isArray(firstPage)) {
               relatedPosts.push(...firstPage)
-              if (firstPage.length >= 25 && this.rule.search?.url) {
-                for (let page = 2; page <= 8; page++) {
+              if (firstPage.length >= 20 && this.rule.search?.url) {
+                for (let page = 2; page <= 10; page++) {
                   try {
                     const nextUrl = this.rule.search.url
                       .replace('%s', encodeURIComponent(activeQuery))
@@ -2189,7 +2196,7 @@ export class RuleSource {
                     })
                     if (pageItems.length === 0) break
                     relatedPosts.push(...pageItems)
-                    if (pageItems.length < 30) break
+                    if (pageItems.length < 15) break
                   } catch (_) { break }
                 }
               }
