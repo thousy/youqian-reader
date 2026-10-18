@@ -33,10 +33,10 @@ export function formatDisplayAuthor(author, title = '') {
   if (!author) return '作者：未知'
   let raw = String(author).trim()
 
-  // 1. 如果 author 包含了分卷标记（如 【159-167】）或与当前书名高度相同，提取真实作者或置为未知
+  // 1. 如果 author 包含了分卷标记（如 【159-167】、第194章）或与当前书名高度相同，提取真实作者或置为未知
   const cleanTitle = title ? title.replace(/[《》【】\[\]\s]/g, '') : ''
   const cleanAuth = raw.replace(/[《》【】\[\]\s]/g, '')
-  if (cleanTitle && (cleanAuth === cleanTitle || cleanAuth.startsWith(cleanTitle) || raw.includes('【') || raw.includes('('))) {
+  if (cleanTitle && (cleanAuth === cleanTitle || cleanAuth.startsWith(cleanTitle) || raw.includes('【') || raw.includes('(') || raw.includes('（') || /第\s*[一二三四五六七八九十\d]+[章节卷]/.test(raw))) {
     const authorMatch = raw.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
     if (authorMatch && authorMatch[1]) {
       return `作者：${authorMatch[1].trim()}`
