@@ -939,33 +939,87 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
   if (clean.includes(' - ')) clean = clean.split(' - ')[0].trim()
   clean = clean.replace(/\s*[0-9一二三四五六七八九十百千万].*$/, '').trim()
 
+  // 7. 剥离尾部空格隔开的疑似作者名（如 "新婚 东风瘦" 剥离为 "新婚"）
+  const spaceParts = clean.trim().split(/\s+/)
+  if (spaceParts.length === 2 && spaceParts[0].length >= 2 && spaceParts[1].length >= 2 && spaceParts[1].length <= 8) {
+    if (!/^(?:第?[一二三四五六七八九十\d]+[部卷季章节]|完结|全本|上部|下部|番外|精校|连载)$/.test(spaceParts[1])) {
+      clean = spaceParts[0]
+    }
+  }
+
   return clean.replace(/\s+/g, '').trim()
 }
 
 /**
- * 智能解析 BBS 论坛作品标题与章节范围（支持 【10-14】, 1-7, 32-33, 1.1-1.13, 28.32--29.8, 上下部、第二部等复合分卷模式）
+/**
+ * 中文数字快速换算为半角阿拉伯数字整数
+ */
+export function cnToInt(str) {
+  if (!str) return 0
+  const s = String(str).trim()
+  if (/^\d+(?:\.\d+)?$/.test(s)) {
+    return parseFloat(s)
+  }
+  const cnDigits = { '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 }
+  let total = 0
+  let current = 0
+  let hasCn = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (cnDigits[ch] !== undefined) {
+      current = cnDigits[ch]
+      hasCn = true
+    } else if (ch === '十') {
+      hasCn = true
+      if (current === 0) current = 1
+      total += current * 10
+      current = 0
+    } else if (ch === '百') {
+      hasCn = true
+      total += (current || 1) * 100
+      current = 0
+    } else if (ch === '千') {
+      hasCn = true
+      total += (current || 1) * 1000
+      current = 0
+    } else if (ch === '万') {
+      hasCn = true
+      total = (total + current) * 10000
+      current = 0
+    }
+  }
+  if (hasCn) {
+    total += current
+    return total
+  }
+  return parseInt(s, 10) || 0
+}
+
+/**
+ * 智能解析 BBS 论坛作品标题与章节范围（支持 【10-14】, 1-7, 32-33, 1.1-1.13, 28.32--29.8, 中文数字章节, 复合分部模式）
  */
 export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   if (!rawTitle) return null
   const normTitle = toDBC(rawTitle).trim()
 
-  // 1. 优先提取明确的章节区间或单章节
-  // 模式1: 括号包围的分卷 (【10-14】, [1-7], (46-55), （1.1-1.13）, 【第36章】)
-  let rangeMatch = normTitle.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?\s*[】\]）\)]/)
+  // 1. 优先提取明确的章节区间或单章节（支持中文数字）
+  // 模式1: 括号包围的分卷 (【10-14】, [1-7], (46-55), （1.1-1.13）, 【第36章】, （第二部１７－２３）, (第三十章-第三十一章))
+  let rangeMatch = normTitle.match(/[【\[（\(]\s*(?:(?:第?[一二三四五六七八九十\d]+[部卷季]|上部|下部|续|番外)\s*)?(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?))?\s*(?:章|节|卷)?(?:\s*完)?(?:\s*本卷终)?\s*[】\]）\)]/)
 
   // 模式2: 明确的 "第X-Y章" 或 "第X章"
   if (!rangeMatch) {
-    rangeMatch = normTitle.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)/)
+    rangeMatch = normTitle.match(/(?:第\s*)([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?\s*(?:[－\-~～、至到]+)\s*(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)/) ||
+                 normTitle.match(/(?:第\s*)([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)/)
   }
 
-  // 模式3: 开头或空白后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8)
+  // 模式3: 开头或空白后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8, 第十三章-第十六章)
   if (!rangeMatch) {
-    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
   }
 
   // 模式4: 纯数字或独立章节标号
   if (!rangeMatch) {
-    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)(\d+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
   }
 
   if (!rangeMatch) return null
@@ -989,18 +1043,17 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
     }
   }
 
-  // 3. 权重换算：
-  // 若浮点如 1.1 则换算为 1 * 1000 + 1 = 1001；28.32 换算为 28 * 1000 + 32 = 28032
-  // 若普通整数 32 则换算为 32 * 1000 = 32000
+  // 3. 权重换算（兼容中文数字与浮点数字）：
   const normalizeWeight = (str) => {
     if (!str) return 0
-    if (str.includes('.')) {
-      const parts = str.split('.')
-      const major = parseInt(parts[0], 10) || 0
-      const minor = parseInt(parts[1], 10) || 0
+    const s = String(str).trim()
+    if (s.includes('.')) {
+      const parts = s.split('.')
+      const major = cnToInt(parts[0]) || 0
+      const minor = cnToInt(parts[1]) || 0
       return major * 1000 + minor
     }
-    return (parseInt(str, 10) || 0) * 1000
+    return cnToInt(s) * 1000
   }
 
   let start = normalizeWeight(rawStart)
@@ -1010,7 +1063,7 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   // 4. 叠加分部偏移 (每个分部偏移 1,000,000)
   // 如果是普通章节 (未含小数点)，按识别出的 partNumber 叠加偏移，彻底消除上部与下部交错错乱
   const partOffset = (partNumber - 1) * 1000000
-  if (!rawStart.includes('.')) {
+  if (!String(rawStart).includes('.')) {
     start += partOffset
     end += partOffset
   }
@@ -1044,26 +1097,26 @@ export function formatUnifiedChapterTitle(title, fallbackAuthor = '', partNumber
     partPrefix = `第${partNumber}部 `
   }
 
-  const rangeMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
-                     t.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)/) ||
-                     t.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
-
+  const info = parseBbsChapterInfo(t, fallbackAuthor)
   const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
   const authorName = authorMatch ? authorMatch[1].trim() : (fallbackAuthor && fallbackAuthor !== '未知' && fallbackAuthor !== '网络作家' ? fallbackAuthor : '')
   const authorSuffix = authorName ? ` 作者: ${authorName}` : ''
 
-  if (rangeMatch) {
-    const rawStart = rangeMatch[1]
-    const rawEnd = rangeMatch[2]
-    return `【${partPrefix}${rawStart}-${rawEnd}】${authorSuffix}`
-  }
-
-  const singleMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
-                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/) ||
-                      t.match(/^(\d+(?:\.\d+)?)$/)
-  if (singleMatch) {
-    const rawNum = singleMatch[1]
-    return `【${partPrefix}第${rawNum}章】${authorSuffix}`
+  if (info) {
+    const numPart = (val) => {
+      const pure = val >= 1000000 ? val % 1000000 : val
+      if (pure % 1000 === 0) return (pure / 1000).toString()
+      const major = Math.floor(pure / 1000)
+      const minor = pure % 1000
+      return `${major}.${minor}`
+    }
+    const sStr = numPart(info.start)
+    const eStr = numPart(info.end)
+    if (sStr !== eStr) {
+      return `【${partPrefix}${sStr}-${eStr}】${authorSuffix}`
+    } else {
+      return `【${partPrefix}第${sStr}章】${authorSuffix}`
+    }
   }
 
   return t
@@ -1173,13 +1226,11 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     if (prevItem && nextItem) {
       const prevSpan = prevItem.end - prevItem.start
       const nextSpan = nextItem.end - nextItem.start
-      const candSpan = cand.end - cand.start
-
-      const isPrevNextAdjacent = nextItem.start <= prevItem.end + 2000
+      // 必须前后两项都是合集分卷（跨度>0），且前后无缝相接，落入其中的次级重叠项才予以剔除
+      const isPrevNextSeamless = prevSpan > 0 && nextSpan > 0 && nextItem.start <= prevItem.end + 1000
       const isCandInsideUnion = cand.start >= prevItem.start && cand.end <= nextItem.end
-      const isBothLarger = prevSpan >= candSpan && nextSpan >= candSpan
 
-      if (isPrevNextAdjacent && isCandInsideUnion && isBothLarger) {
+      if (isPrevNextSeamless && isCandInsideUnion) {
         isCoveredByContinuousNeighbors = true
       }
     }
@@ -1189,9 +1240,22 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     }
   }
 
-  // 重新按 start 升序排序并编排连续 index
+  // 重新按 start 升序排序
   finalChapters.sort((a, b) => a.start - b.start)
-  return finalChapters.map((c, idx) => ({
+
+  // 5. 第三轮：绝对完全相同区间的冗余重复帖消除（如作者重发帖或补发帖）
+  const uniqueSpanChapters = []
+  for (const c of finalChapters) {
+    if (uniqueSpanChapters.length > 0) {
+      const last = uniqueSpanChapters[uniqueSpanChapters.length - 1]
+      if (last.start === c.start && last.end === c.end) {
+        continue
+      }
+    }
+    uniqueSpanChapters.push(c)
+  }
+
+  return uniqueSpanChapters.map((c, idx) => ({
     ...c,
     index: idx
   }))
@@ -1206,6 +1270,13 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
  */
 function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '', allowPureRange = false) {
   if (!candidateTitle || !baseMainName) return false
+
+  // 排除形如 "第104章【新婚】"、"第55章 新婚" 这种以章节号开头且未明确注明作者的非本书外帖
+  if (/^第\s*[一二三四五六七八九十百千\d]+\s*[章节卷]/.test(candidateTitle)) {
+    const authorMatch = candidateTitle.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    if (!authorMatch) return false
+  }
+
   const cleanBookName = (name) => {
     return (name || '').replace(/[【】\[\]（）\(\)\s《》“”"']/g, '')
       .replace(/(?:上部|下部|第一部|第二部|前传|外传|后传|全本|精校|连载|续|番外)/g, '')
@@ -2114,6 +2185,7 @@ export class RuleSource {
             }
 
             // 🛡️ 通道二（作者维度召回补偿）：若有清晰作者名，且目前召回分卷未包含第一卷或数量不足，使用作者名检索补充
+            // 🛡️ 通道二（作者维度召回补偿）：若有清晰作者名，且目前召回分卷未包含第一卷或数量不足，使用作者名深度检索补充
             let cleanAuthor = (author && author !== '未知' && author !== '网络作家') ? author : ''
             if (!cleanAuthor) {
               const m = (rawDetailTitle || title).match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
@@ -2122,8 +2194,36 @@ export class RuleSource {
             if (cleanAuthor && cleanAuthor.length >= 2) {
               try {
                 const authorPosts = await this.search(cleanAuthor)
-                if (Array.isArray(authorPosts) && authorPosts.length > 0) {
-                  for (const ap of authorPosts) {
+                const allAuthorPosts = Array.isArray(authorPosts) ? [...authorPosts] : []
+                // 若首页结果丰富且书源支持翻页，继续翻至第 2~4 页以深度召回历史老帖与总目录帖
+                if (allAuthorPosts.length >= 40 && this.rule.search?.url) {
+                  for (let page = 2; page <= 4; page++) {
+                    try {
+                      const nextUrl = this.rule.search.url
+                        .replace('%s', encodeURIComponent(cleanAuthor))
+                        .replace(/([?&]p=)\d+/, `$1${page}`)
+                      const html = await fetchWithRetry(nextUrl)
+                      const $p = cheerio.load(html)
+                      const pageItems = []
+                      $p('li.l-m1 a, td.gold_td a, .search-result a').each((_, a) => {
+                        const t = $p(a).text().trim()
+                        const h = $p(a).attr('href')
+                        if (h && !h.startsWith('javascript:')) {
+                          pageItems.push({
+                            title: t,
+                            url: h.startsWith('http') ? h : this._absUrl(h)
+                          })
+                        }
+                      })
+                      if (pageItems.length === 0) break
+                      allAuthorPosts.push(...pageItems)
+                      if (pageItems.length < 30) break
+                    } catch (_) { break }
+                  }
+                }
+
+                if (allAuthorPosts.length > 0) {
+                  for (const ap of allAuthorPosts) {
                     const apTitle = ap.rawTitle || ap.title
                     if (isMatchingBbsChapter(apTitle, bbsInfo.mainName, cleanAuthor)) {
                       if (!relatedPosts.some(rp => rp.url === ap.url)) {
@@ -2142,20 +2242,23 @@ export class RuleSource {
             for (const p of relatedPosts) {
               const candTitle = p.rawTitle || p.title
               if (isMatchingBbsChapter(candTitle, bbsInfo.mainName, author)) {
-                const pInfo = parseBbsChapterInfo(candTitle)
-                // 检查是否为跨度极大的历史汇总帖（浮点跨度>=2卷，或普通章节跨度>=20章）
-                const isHugeSpan = pInfo.rawStart && pInfo.rawStart.includes('.')
-                  ? (pInfo.end - pInfo.start >= 2000)
-                  : (pInfo.end - pInfo.start >= 20000)
-                if (isHugeSpan && !summaryPostToExpand) {
-                  summaryPostToExpand = p
+                const pInfo = parseBbsChapterInfo(candTitle, author)
+                if (pInfo) {
+                  // 检查是否为跨度极大的历史汇总帖（浮点跨卷/跨度>=200，或普通章节跨度>=20章）
+                  const isHugeSpan = pInfo.rawStart && String(pInfo.rawStart).includes('.')
+                    ? (pInfo.end - pInfo.start >= 200 || Math.floor(pInfo.end / 1000) > Math.floor(pInfo.start / 1000))
+                    : (pInfo.end - pInfo.start >= 20000)
+                  if (isHugeSpan && !summaryPostToExpand) {
+                    summaryPostToExpand = p
+                  }
+                  parsedList.push({
+                    title: candTitle,
+                    url: p.url,
+                    start: pInfo.start,
+                    end: pInfo.end,
+                    partNumber: pInfo.partNumber
+                  })
                 }
-                parsedList.push({
-                  title: candTitle,
-                  url: p.url,
-                  start: pInfo.start,
-                  end: pInfo.end
-                })
               }
             }
 
@@ -2164,28 +2267,64 @@ export class RuleSource {
               try {
                 const sumHtml = await fetchWithRetry(summaryPostToExpand.url)
                 const $sum = cheerio.load(sumHtml)
+                const contentHtml = $sum('.post-content, pre, #post-content').html() || ''
+                const part2MarkerIndex = contentHtml.search(/(?:第二部|下部|后部)/)
+
                 $sum('.post-content a, pre a, td.tal a').each((_, a) => {
-                  const t = toSimplified($sum(a).text().trim())
+                  const origText = $sum(a).text().trim()
+                  let t = toSimplified(origText)
                   const h = $sum(a).attr('href')
                   if (!h || h.startsWith('javascript:')) return
                   const absH = h.startsWith('http') ? h : this._absUrl(h)
+
+                  // 优先关联已检索到的真实分卷帖子标题（其通常带有准确的部数与章节信息）
+                  const realPost = relatedPosts.find(rp => rp.url === absH)
+                  const linkIndex = contentHtml.indexOf(origText)
+                  const isPart2 = part2MarkerIndex !== -1 && linkIndex !== -1 && linkIndex < part2MarkerIndex
+
+                  if (realPost) {
+                    t = realPost.rawTitle || realPost.title
+                    if (isPart2 && !t.includes('第二部') && !t.includes('下部')) {
+                      t = `第二部 ${t}`
+                    }
+                  } else if (isPart2 && !t.includes('部') && !t.includes('卷')) {
+                    t = `第二部 ${t}`
+                  }
+
                   if (isMatchingBbsChapter(t, bbsInfo.mainName, author, true)) {
-                    const sInfo = parseBbsChapterInfo(t)
-                    parsedList.push({
-                      title: t,
-                      url: absH,
-                      start: sInfo ? sInfo.start : 0,
-                      end: sInfo ? sInfo.end : 0
-                    })
+                    const sInfo = parseBbsChapterInfo(t, author)
+                    if (sInfo) {
+                      parsedList.push({
+                        title: t,
+                        url: absH,
+                        start: sInfo.start,
+                        end: sInfo.end,
+                        partNumber: sInfo.partNumber
+                      })
+                    }
                   }
                 })
-                // 汇总帖自身第一卷也加入
-                const sumSelfInfo = parseBbsChapterInfo(summaryPostToExpand.title)
+
+                // 汇总帖自身所承载的真实起始章节也加入
+                let sumSelfTitle = summaryPostToExpand.title
+                try {
+                  const sampleText = $sum('.post-content, pre, #post-content').text().slice(0, 1000)
+                  const firstLineMatch = sampleText.match(/[【\[]([^】\]]+)[】\]][\s\S]{0,30}?[（\(]([一二三四五六七八九十百千\d]+(?:\.\d+)?)(?:[－\-~～、至到]+([一二三四五六七八九十百千\d]+(?:\.\d+)?))?[^）\)]*[）\)]/)
+                  if (firstLineMatch) {
+                    const headInfo = parseBbsChapterInfo(firstLineMatch[0], author)
+                    if (headInfo && (headInfo.end - headInfo.start <= 10000) && headInfo.start <= 3000) {
+                      sumSelfTitle = firstLineMatch[0].trim()
+                    }
+                  }
+                } catch (_) {}
+
+                const sumSelfInfo = parseBbsChapterInfo(sumSelfTitle, author)
                 parsedList.push({
-                  title: summaryPostToExpand.title,
+                  title: sumSelfTitle,
                   url: summaryPostToExpand.url,
-                  start: sumSelfInfo ? sumSelfInfo.start : 1001,
-                  end: sumSelfInfo ? sumSelfInfo.end : 1013
+                  start: sumSelfInfo ? sumSelfInfo.start : 1000,
+                  end: sumSelfInfo ? sumSelfInfo.end : 3000,
+                  partNumber: sumSelfInfo ? sumSelfInfo.partNumber : 1
                 })
               } catch (_) {}
             }
@@ -2215,6 +2354,9 @@ export class RuleSource {
                   seenMap.set(p.url, p)
                 } else if ((existing.end - existing.start > 2000) && (p.end - p.start <= 2000)) {
                   seenMap.set(p.url, p)
+                } else if (/\d+\.\d+\s*[-－~～至到]+\s*\d+\.\d+/.test(existing.title) && !/\d+\.\d+\s*[-－~～至到]+\s*\d+\.\d+/.test(p.title)) {
+                  // 优先保留从帖内提炼的纯整数细分卷标题，替换掉大跨度浮点汇总标题
+                  seenMap.set(p.url, p)
                 } else if (!existingHasRange && pHasRange) {
                   // 若已有项标题模糊（无章节数字），而当前项带有清晰章节数字，优先替换为清晰标题
                   seenMap.set(p.url, p)
@@ -2239,16 +2381,18 @@ export class RuleSource {
             })
 
             // 🛡️ 首帖大跨度自愈修正 (Initial Post Span Self-Healing)
-            // 若首帖标为全本/大跨度范围（如 1-55、1-100），但紧随其后的第二项为细分卷（如 4-6、10-12），
+            // 若首帖标为全本/大跨度范围（如 1-55、1-100、1.1-2.59），但紧随其后的第二项为细分卷（如 4-5、10-12），
             // 说明首帖真实承载的是从第1章到第二项起始前一章的正文（作者连载后期修改了首帖标题），
             // 自动将其动态修正为衔接范围，例如 1-3，杜绝首帖正文被误杀或发生区间冲突
             if (aggChapters.length > 1) {
               const first = aggChapters[0]
               const second = aggChapters[1]
               const firstSpan = first.end - first.start
-              if (first.start <= 1000 && firstSpan >= 20000 && second.start > first.start) {
+              const isFirstHuge = firstSpan >= 20000 || /\d+\.\d+\s*[-－~～至到]+\s*\d+\.\d+/.test(first.title) || (firstSpan >= 1000 && String(first.start).includes('.'))
+              if (first.start <= 1001 && isFirstHuge && second.start > 1000) {
                 const realEndNum = Math.floor(second.start / 1000) - 1
                 if (realEndNum >= 1) {
+                  first.start = 1000
                   first.end = realEndNum * 1000
                   const authorSuffix = author && author !== '未知' && author !== '网络作家' ? ` 作者: ${author}` : ''
                   first.title = realEndNum > 1 ? `【1-${realEndNum}】${authorSuffix}` : `【第1章】${authorSuffix}`

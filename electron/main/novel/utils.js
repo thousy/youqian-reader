@@ -311,6 +311,21 @@ export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters 
     }
   }
 
+  // 1.1 论坛无显式前缀作者识别（例如 "新婚 东风瘦"，拆解为书名 "新婚" 与作者 "东风瘦"）
+  if (!author || author === '未知' || author === '网络作家') {
+    const spaceParts = title.split(/\s+/)
+    if (spaceParts.length === 2) {
+      const p1 = spaceParts[0].trim()
+      const p2 = spaceParts[1].trim()
+      if (p1.length >= 2 && p1.length <= 15 && p2.length >= 2 && p2.length <= 10) {
+        if (!/^(?:第?[一二三四五六七八九十\d]+[部卷季章节]|完结|全本|上部|下部|番外|精校|连载)$/.test(p2)) {
+          title = p1
+          author = p2
+        }
+      }
+    }
+  }
+
   // 2. 从标题中剥离作者信息声明
   title = title.replace(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+[^\s,，;；)）\]】]+/gi, '').trim()
   title = title.replace(/(?:文\s*\/)\s*[^\s,，;；)）\]】]+/gi, '').trim()
