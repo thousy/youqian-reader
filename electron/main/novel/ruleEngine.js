@@ -888,20 +888,38 @@ function extractContent($content, filterTag, paragraphTagClosed, paragraphTag) {
 }
 
 /**
- * 智能解析 BBS 论坛作品标题与章节范围（支持 1-4, 32-33, 1.1-1.13, 28.32--29.8, 上下部、第二部等复合分卷模式）
+ * 智能解析 BBS 论坛作品标题与章节范围（支持 【10-14】, 1-7, 32-33, 1.1-1.13, 28.32--29.8, 上下部、第二部等复合分卷模式）
  */
 export function parseBbsChapterInfo(rawTitle) {
   if (!rawTitle) return null
-  const clean = rawTitle.replace(/[【】\[\]]/g, ' ').trim()
-  
-  // 支持普通章节 (32-33) 以及浮点复合分卷 (1.1-1.13), (28.32--29.8), (29.9--29.21), (1.1-28.01), (第一部1-226)
-  const rangeMatch = clean.match(/[（\(][^0-9（\)]*?(\d+(?:\.\d+)?)(?:[－\-~～、]+(\d+(?:\.\d+)?))?[^）\)]*[）\)]/) ||
-                     clean.match(/\s+(\d+(?:\.\d+)?)(?:[－\-~～]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译)/)
+
+  // 1. 优先提取明确的章节区间或单章节
+  // 模式1: 括号包围的分卷 (【10-14】, [1-7], (46-55), （1.1-1.13）, 【第36章】)
+  let rangeMatch = rawTitle.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)?\s*[】\]）\)]/)
+
+  // 模式2: 明确的 "第X-Y章" 或 "第X章"
+  if (!rangeMatch) {
+    rangeMatch = rawTitle.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))?\s*(?:章|节|卷)/)
+  }
+
+  // 模式3: 开头或空白后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8)
+  if (!rangeMatch) {
+    rangeMatch = rawTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
+  }
+
+  // 模式4: 纯数字或独立章节标号
+  if (!rangeMatch) {
+    rangeMatch = rawTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)(\d+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
+  }
+
   if (!rangeMatch) return null
 
-  // 1. 识别分部/分卷特征 (上部/下部/第一部/第二部/续等)
+  const rawStart = rangeMatch[1]
+  const rawEnd = rangeMatch[2]
+
+  // 2. 识别分部/分卷特征 (上部/下部/第一部/第二部/续等)
   let partNumber = 1
-  const partMatch = clean.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  const partMatch = rawTitle.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
   if (partMatch) {
     const pStr = partMatch[0]
     if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续')) {
@@ -915,7 +933,7 @@ export function parseBbsChapterInfo(rawTitle) {
     }
   }
 
-  // 2. 权重换算：
+  // 3. 权重换算：
   // 若浮点如 1.1 则换算为 1 * 1000 + 1 = 1001；28.32 换算为 28 * 1000 + 32 = 28032
   // 若普通整数 32 则换算为 32 * 1000 = 32000
   const normalizeWeight = (str) => {
@@ -929,53 +947,60 @@ export function parseBbsChapterInfo(rawTitle) {
     return (parseInt(str, 10) || 0) * 1000
   }
 
-  let start = normalizeWeight(rangeMatch[1])
-  let end = rangeMatch[2] ? normalizeWeight(rangeMatch[2]) : start
+  let start = normalizeWeight(rawStart)
+  let end = rawEnd ? normalizeWeight(rawEnd) : start
   if (isNaN(start) || start <= 0) return null
 
-  // 3. 叠加分部偏移 (每个分部偏移 1,000,000)
+  // 4. 叠加分部偏移 (每个分部偏移 1,000,000)
   // 如果是普通章节 (未含小数点)，按识别出的 partNumber 叠加偏移，彻底消除上部与下部交错错乱
   const partOffset = (partNumber - 1) * 1000000
-  if (!rangeMatch[1].includes('.')) {
+  if (!rawStart.includes('.')) {
     start += partOffset
     end += partOffset
   }
 
-  // 4. 纯净主书名提取 (剥离分部、括号、副标题)
-  let mainName = clean.split(/[（\(]/)[0].trim()
+  // 5. 纯净主书名提取 (剥离分卷标记、分部、括号、副标题、作者等)
+  let mainName = rawTitle
+    .replace(rangeMatch[0], ' ')
+    .replace(/[【】\[\]（）\(\)]/g, ' ')
+    .replace(/[作|原][者|著][：:]\s*[^\s\[【<]+/g, ' ')
+    .replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
+    .trim()
+
   if (mainName.includes('——')) mainName = mainName.split('——')[0].trim()
   if (mainName.includes('—')) mainName = mainName.split('—')[0].trim()
   if (mainName.includes(' - ')) mainName = mainName.split(' - ')[0].trim()
-  mainName = mainName.replace(/(?:上部|下部|前部|后部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, '').trim()
   mainName = mainName.replace(/\s*\d+.*$/, '').trim()
 
-  return { mainName, start, end, partNumber, rawStart: rangeMatch[1], rawEnd: rangeMatch[2], rawTitle }
+  return { mainName, start, end, partNumber, rawStart, rawEnd: rawEnd || rawStart, rawTitle }
 }
 
 /**
  * 统一规范化论坛分卷标题，强制对齐为 【XXX-XXX】 风格，消除截断残缺
  */
-export function formatUnifiedChapterTitle(title) {
+export function formatUnifiedChapterTitle(title, fallbackAuthor = '') {
   if (!title) return ''
   const t = title.trim()
-  
-  const rangeMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
-                     t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
-  
+
+  const rangeMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+                     t.match(/(?:第\s*)(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)/) ||
+                     t.match(/(?:^|[\s【\[（\(])(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+(\d+(?:\.\d+)?))\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
+
+  const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+  const authorName = authorMatch ? authorMatch[1].trim() : (fallbackAuthor && fallbackAuthor !== '未知' && fallbackAuthor !== '网络作家' ? fallbackAuthor : '')
+  const authorSuffix = authorName ? ` 作者: ${authorName}` : ''
+
   if (rangeMatch) {
     const rawStart = rangeMatch[1]
     const rawEnd = rangeMatch[2]
-    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
-    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
     return `【${rawStart}-${rawEnd}】${authorSuffix}`
   }
 
-  const singleMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
-                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
+  const singleMatch = t.match(/[【\[（\(]\s*(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/) ||
+                      t.match(/^(\d+(?:\.\d+)?)$/)
   if (singleMatch) {
     const rawNum = singleMatch[1]
-    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
-    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
     return `【第${rawNum}章】${authorSuffix}`
   }
 
@@ -1005,17 +1030,14 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
   })
 
   // 2. 补齐并提取统一 start 和 end，并标准化标题
+  const fallbackAuthor = bbsInfo?.author || ''
   const items = validChapters.map(c => {
-    let start = c.start
-    let end = c.end
     const info = parseBbsChapterInfo(c.title)
-    if (start === undefined || end === undefined) {
-      start = info ? info.start : 0
-      end = info ? info.end : 0
-    }
+    let start = c.start !== undefined && c.start > 0 ? c.start : (info ? info.start : 0)
+    let end = c.end !== undefined && c.end > 0 ? c.end : (info ? info.end : start)
     return {
       ...c,
-      title: formatUnifiedChapterTitle(c.title),
+      title: formatUnifiedChapterTitle(c.title, fallbackAuthor),
       start,
       end
     }
@@ -1084,8 +1106,12 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
 
 /**
  * 严格校验候选分卷帖子是否真正属于当前小说 (防止短书名如"狩猎"导致"魔女狩猎"、"狩猎人妻"等不同作者/不同小说混入)
+ * @param {string} candidateTitle 候选分卷标题
+ * @param {string} baseMainName 当前小说主名
+ * @param {string} baseAuthor 当前小说作者
+ * @param {boolean} allowPureRange 是否允许帖内纯分卷标号 (如 1-12, 13-15, 【16-25】)
  */
-function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '') {
+function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '', allowPureRange = false) {
   if (!candidateTitle || !baseMainName) return false
   const cleanBookName = (name) => {
     return (name || '').replace(/[【】\[\]（）\(\)\s《》“”"']/g, '')
@@ -1099,7 +1125,19 @@ function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '') {
 
   const candNorm = cleanBookName(candInfo.mainName)
 
-  // 1. 书名精准核对: 规范化后必须完全一致（短书名<=4字符绝不允许包含混入）
+  // 1. 若允许帖内纯分卷，且提取到的书名为空字符串，只要具有有效起始章节编号且作者未冲突，即判定匹配
+  if (allowPureRange && candNorm === '' && candInfo.start > 0) {
+    if (baseAuthor && baseAuthor !== '未知' && baseAuthor !== '网络作家') {
+      const authorMatch = candidateTitle.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+      const candAuthor = authorMatch ? authorMatch[1].trim() : ''
+      if (candAuthor && !candAuthor.includes(baseAuthor) && !baseAuthor.includes(candAuthor)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  // 2. 书名精准核对: 规范化后必须完全一致（短书名<=4字符绝不允许包含混入）
   if (baseNorm.length <= 4) {
     if (candNorm !== baseNorm) return false
   } else {
@@ -1108,7 +1146,7 @@ function isMatchingBbsChapter(candidateTitle, baseMainName, baseAuthor = '') {
     }
   }
 
-  // 2. 作者严格对齐 (如果基准作者明确已知且非未知/网络作家)
+  // 3. 作者严格对齐 (如果基准作者明确已知且非未知/网络作家)
   if (baseAuthor && baseAuthor !== '未知' && baseAuthor !== '网络作家') {
     const authorMatch = candidateTitle.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
     const candAuthor = authorMatch ? authorMatch[1].trim() : ''
@@ -1853,13 +1891,13 @@ export class RuleSource {
           // 无论帖内包含多少个分卷超链接，只要匹配均全量作为真实分卷纳入
           const intraVolumeLinks = []
           for (const ch of chapters) {
-            if (isMatchingBbsChapter(ch.title, bbsInfo.mainName, author)) {
+            if (isMatchingBbsChapter(ch.title, bbsInfo.mainName, author, true)) {
               const cInfo = parseBbsChapterInfo(ch.title)
               intraVolumeLinks.push({
                 title: ch.title,
                 url: ch.url,
-                start: cInfo.start,
-                end: cInfo.end
+                start: cInfo ? cInfo.start : 0,
+                end: cInfo ? cInfo.end : 0
               })
             }
           }
@@ -2010,13 +2048,13 @@ export class RuleSource {
                   const h = $sum(a).attr('href')
                   if (!h || h.startsWith('javascript:')) return
                   const absH = h.startsWith('http') ? h : this._absUrl(h)
-                  if (isMatchingBbsChapter(t, bbsInfo.mainName, author)) {
+                  if (isMatchingBbsChapter(t, bbsInfo.mainName, author, true)) {
                     const sInfo = parseBbsChapterInfo(t)
                     parsedList.push({
                       title: t,
                       url: absH,
-                      start: sInfo.start,
-                      end: sInfo.end
+                      start: sInfo ? sInfo.start : 0,
+                      end: sInfo ? sInfo.end : 0
                     })
                   }
                 })
@@ -2044,8 +2082,8 @@ export class RuleSource {
                 seenMap.set(p.url, p)
               } else {
                 const existing = seenMap.get(p.url)
-                const existingHasRange = /[（\(][^0-9（\)]*?\d+/.test(existing.title)
-                const pHasRange = /[（\(][^0-9（\)]*?\d+/.test(p.title)
+                const existingHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(existing.title)
+                const pHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(p.title)
                 if ((existing.end - existing.start > 2000) && (p.end - p.start <= 2000)) {
                   seenMap.set(p.url, p)
                 } else if (!existingHasRange && pHasRange) {
@@ -2084,7 +2122,10 @@ export class RuleSource {
             }
 
             // 🛡️ 智能区间覆盖与冗余重叠分卷消除 (Interval Greedy Overlap Deduplication)
-            filteredChapters = filterOverlappingBbsChapters(filteredChapters, bbsInfo)
+            filteredChapters = filterOverlappingBbsChapters(filteredChapters, { ...bbsInfo, author })
+
+            // 重新按 start 升序排序
+            filteredChapters.sort((a, b) => a.start - b.start)
 
             // 重设连续 index
             aggChapters.length = 0
@@ -2092,6 +2133,16 @@ export class RuleSource {
               c.index = idx
               aggChapters.push(c)
             })
+
+            // 🛡️ 智能倒序守护：检测首尾章节是否有明显的倒序特征（例如首卷start大于末卷start）
+            if (aggChapters.length > 1) {
+              const firstStart = aggChapters[0].start
+              const lastStart = aggChapters[aggChapters.length - 1].start
+              if (firstStart > 0 && lastStart > 0 && firstStart > lastStart) {
+                aggChapters.reverse()
+                aggChapters.forEach((c, idx) => { c.index = idx })
+              }
+            }
 
             if (aggChapters.length > 1) {
               // 若首项标题为跨度极大的浮点汇总帖名称（如 1.1-28.01），且第二项为 1.14，微调首项为第一卷真实范围

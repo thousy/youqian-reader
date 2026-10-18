@@ -142,19 +142,34 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           }
         }
 
-        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余或标题未规范对齐
+        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余、乱序或标题未规范对齐
         if (cached.length > 1) {
           const dedupped = filterOverlappingBbsChapters(cached)
+          // 守护：若首尾 start 存在明显倒序特征，执行翻转
+          const firstStart = dedupped[0]?.start || 0
+          const lastStart = dedupped[dedupped.length - 1]?.start || 0
+          if (firstStart > 0 && lastStart > 0 && firstStart > lastStart) {
+            dedupped.reverse()
+            dedupped.forEach((c, idx) => { c.index = idx })
+          }
+
           const hasDifferentCount = dedupped.length !== cached.length
-          const hasTitleChange = dedupped.some((ch, idx) => ch.title !== cached[idx]?.title)
-          if (hasDifferentCount || hasTitleChange) {
-            // 发现本地缓存存在重复分卷或非规范标题，立即修复本地缓存并持久化
+          const hasChange = dedupped.some((ch, idx) => ch.url !== cached[idx]?.url || ch.title !== cached[idx]?.title)
+          if (hasDifferentCount || hasChange) {
+            // 发现本地缓存存在乱序、重复分卷或非规范标题，立即修复本地缓存并持久化
             try {
               writeFileSync(indexFile, JSON.stringify(dedupped, null, 2), 'utf-8')
               updateBook(bookId, {
                 totalChapters: dedupped.length,
                 latestChapter: dedupped[dedupped.length - 1]?.title || ''
               })
+              // 目录重排或修复时，清理所有旧的单章缓存，彻底杜绝 index 与正文错位串位
+              const oldFiles = readdirSync(cacheDir)
+              for (const f of oldFiles) {
+                if (f.startsWith('ch_') && f.endsWith('.json')) {
+                  try { rmSync(join(cacheDir, f)) } catch (_) {}
+                }
+              }
             } catch (_) {}
             return { success: true, chapters: dedupped, fromCache: true }
           }
@@ -191,7 +206,7 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           try {
             const chPath = join(cacheDir, f)
             const d = JSON.parse(readFileSync(chPath, 'utf-8'))
-            const hasRange = /[（\(][^0-9（\)]*?\d+/.test(d?.title || '')
+            const hasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(d?.title || '')
             if (!hasRange) {
               rmSync(chPath)
             }
@@ -231,19 +246,28 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
 
   const chapterMeta = chaptersRes.chapters[chapterIndex]
 
-  // 2. 检查本地缓存（严格校验标题与分卷范围，杜绝错位脏缓存）
+  // 2. 检查本地缓存（严格校验 URL 与分卷范围，杜绝错位脏缓存）
   if (!forceFetch && existsSync(chapterFile)) {
     try {
       const data = JSON.parse(readFileSync(chapterFile, 'utf-8'))
       if (data && data.content && data.content.length > 10) {
         let isCacheValid = true
-        // 校验标题一致性：若当前目录具有明确分卷号（如 1-8），而缓存无分卷号或标题错位，视为脏缓存
-        if (chapterMeta.title) {
-          const metaHasRange = /[（\(][^0-9（\)]*?\d+/.test(chapterMeta.title)
-          const cachedHasRange = /[（\(][^0-9（\)]*?\d+/.test(data.title || '')
+
+        // 强校验 1：URL 强一致性校验（核心防御）
+        // 若缓存中存在 url 且与当前目录该项的 url 不匹配，坚决判定为错位脏缓存
+        if (data.url && chapterMeta.url && data.url !== chapterMeta.url) {
+          isCacheValid = false
+        }
+        // 若旧缓存根本没有记录 url，且当前目录有 url，视为旧版本脏缓存重新拉取
+        if (!data.url && chapterMeta.url) {
+          isCacheValid = false
+        }
+
+        // 强校验 2：标题分卷范围一致性校验（全面支持各类括号）
+        if (isCacheValid && chapterMeta.title) {
+          const metaHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(chapterMeta.title)
+          const cachedHasRange = /[【\[（\(][^0-9【\[（\(]*?\d+/.test(data.title || '')
           if (metaHasRange && !cachedHasRange) {
-            isCacheValid = false
-          } else if (data.title && data.title !== chapterMeta.title && data.url && chapterMeta.url && data.url !== chapterMeta.url) {
             isCacheValid = false
           }
         }
