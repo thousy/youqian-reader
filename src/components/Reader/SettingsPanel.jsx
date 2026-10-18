@@ -419,6 +419,53 @@ export function SettingsPanel({ onClose, isModal = false, onOpenGlobalSettings }
         </div>
       </div>
 
+      {/* 页码与进度模式 */}
+      <div className="settings-group">
+        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>页码显示范围</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            {(settings.pageProgressMode || 'chapter') === 'chapter' ? '⚡ 零卡顿秒开' : '📚 全书测算'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {[
+            { key: 'chapter', label: '当前章节 (推荐)', tip: '零卡顿秒开，掌握本章节奏' },
+            { key: 'book', label: '全书所有页面', tip: '后台测算整本书的累加总页数' }
+          ].map(opt => {
+            const isActive = (settings.pageProgressMode || 'chapter') === opt.key
+            return (
+              <button
+                key={opt.key}
+                title={opt.tip}
+                style={{
+                  flex: 1,
+                  padding: '7px 10px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: isActive ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  background: isActive ? 'var(--accent-glow, rgba(99, 102, 241, 0.15))' : 'var(--bg-secondary)',
+                  border: isActive ? '1px solid var(--accent)' : '1px solid transparent',
+                  color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)'
+                }}
+                onClick={() => {
+                  updateSettings({ pageProgressMode: opt.key })
+                  if (opt.key === 'chapter') {
+                    showToast('已切换为当前章节页码 (极速省电)', 'success')
+                  } else {
+                    showToast('已切换为全书所有页面', 'info')
+                  }
+                }}
+                id={`page-mode-${opt.key}-btn`}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* 字体设置区域 */}
       <div className="settings-group">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>

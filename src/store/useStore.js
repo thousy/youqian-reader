@@ -39,7 +39,8 @@ export const useStore = create((set, get) => ({
     globalTheme: 'dark',
     layoutMode: 'horizontal', // 'horizontal' | 'vertical'
     annotationThickness: 2.5, // 默认 2.5px，可调 1.0px ~ 5.0px
-    chineseConversion: 'none' // 'none' (保持原文) | 't2s' (繁体转简体) | 's2t' (简体转繁体)
+    chineseConversion: 'none', // 'none' (保持原文) | 't2s' (繁体转简体) | 's2t' (简体转繁体)
+    pageProgressMode: 'chapter' // 'chapter' (只显示当前章节页码，极速省电) | 'book' (显示全书所有页面，后台测算)
   },
 
   // ===== Toast 通知 =====

@@ -141,7 +141,7 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
           
           {isReady ? (
             <span style={{ margin: '0 8px', display: 'inline-flex', alignItems: 'center', color: isWordTheme ? '#ffffff' : 'var(--text-primary)' }}>
-              第
+              {(settings?.pageProgressMode || 'chapter') === 'chapter' ? '本章 第' : '第'}
               <input
                 type="text"
                 value={inputPage}
@@ -205,7 +205,7 @@ export function StatusBar({ chapterName, currentPage, totalPages, percentage, on
       <span style={{ minWidth: '120px', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0 }}>
         {isReady && <span>{currentPage}/{totalPages}</span>}
         {isReady && <span style={{ margin: '0 10px', opacity: 0.4 }}>|</span>}
-        <span>{pctText}</span>
+        <span>{(settings?.pageProgressMode || 'chapter') === 'chapter' ? `全书 ${pctText}` : pctText}</span>
       </span>
     </div>
   )

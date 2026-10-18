@@ -39,7 +39,14 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: resolve(__dirname, 'index.html')
+        input: resolve(__dirname, 'index.html'),
+        output: {
+          manualChunks(id) {
+            if (id.includes('opencc-js')) {
+              return 'opencc'
+            }
+          }
+        }
       }
     },
     plugins: [react()],

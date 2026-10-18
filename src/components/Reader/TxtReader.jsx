@@ -528,6 +528,11 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
   // 静默后台测算所有章节的实际页数
   useEffect(() => {
+    if ((settings?.pageProgressMode || 'chapter') === 'chapter') {
+      setIsMeasuringAll(false)
+      return
+    }
+
     if (loading || chapters.length === 0 || !rect.width || !rect.height || !layoutWidth) return
 
     let active = true
@@ -644,7 +649,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return () => {
       active = false
     }
-  }, [chapters, paragraphs, rect.width, rect.height, layoutWidth, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, isCardStyle, totalPages, currentChapterIndex])
+  }, [chapters, paragraphs, rect.width, rect.height, layoutWidth, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings?.pageProgressMode, isCardStyle, totalPages, currentChapterIndex])
 
   // 非卡片模式下的滚动定位与排版校准
   useEffect(() => {
@@ -1034,10 +1039,10 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
   useEffect(() => {
     registerGetPosition(() => {
       const percentage = currentProgressPercentage
-      const hasGlobal = chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length
-      const label = hasGlobal
-        ? `第 ${globalCurrentPage} / ${globalTotalPages} 页`
-        : `第 ${pageIndex + 1} / ${totalPages} 页`
+      const isGlobal = (settings?.pageProgressMode !== 'chapter') && chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length
+      const label = isGlobal
+        ? `全书 第 ${globalCurrentPage} / ${globalTotalPages} 页`
+        : `本章 第 ${pageIndex + 1} / ${totalPages} 页`
       return { 
         label, 
         chapterIndex: currentChapterIndex, 
@@ -1045,7 +1050,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
         percentage 
       }
     })
-  }, [pageIndex, totalPages, currentChapterIndex, currentProgressPercentage, chapterPageCounts, chapters.length, globalCurrentPage, globalTotalPages])
+  }, [pageIndex, totalPages, currentChapterIndex, currentProgressPercentage, chapterPageCounts, chapters.length, globalCurrentPage, globalTotalPages, settings?.pageProgressMode])
 
   const nextPage = useCallback(() => {
     if (isCardStyle) {
@@ -1437,11 +1442,11 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
             {/* Status bar */}
             <StatusBar
               chapterName={convertChinese(currentChapterName, settings?.chineseConversion)}
-              currentPage={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalCurrentPage : pageIndex + 1}
-              totalPages={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalTotalPages : totalPages}
+              currentPage={((settings?.pageProgressMode !== 'chapter') && chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalCurrentPage : pageIndex + 1}
+              totalPages={((settings?.pageProgressMode !== 'chapter') && chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalTotalPages : totalPages}
               percentage={currentProgressPercentage}
               onPageChange={(page) => {
-                const isGlobal = chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length
+                const isGlobal = (settings?.pageProgressMode !== 'chapter') && chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length
                 const total = isGlobal ? globalTotalPages : totalPages
                 const current = isGlobal ? globalCurrentPage : pageIndex + 1
                 
