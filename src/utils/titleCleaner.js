@@ -16,3 +16,30 @@ export function cleanDisplayTitle(rawTitle) {
   t = t.replace(/^[《<]/, '').replace(/[》>]$/, '').trim()
   return t || rawTitle
 }
+
+/**
+ * 格式化作者展示（统一添加“作者：”前缀，并智能过滤误当作者的书名/分卷脏数据）
+ */
+export function formatDisplayAuthor(author, title = '') {
+  if (!author) return '作者：未知'
+  let raw = String(author).trim()
+
+  // 1. 如果 author 包含了分卷标记（如 【159-167】）或与当前书名高度相同，提取真实作者或置为未知
+  const cleanTitle = title ? title.replace(/[《》【】\[\]\s]/g, '') : ''
+  const cleanAuth = raw.replace(/[《》【】\[\]\s]/g, '')
+  if (cleanTitle && (cleanAuth === cleanTitle || cleanAuth.startsWith(cleanTitle) || raw.includes('【') || raw.includes('('))) {
+    const authorMatch = raw.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    if (authorMatch && authorMatch[1]) {
+      return `作者：${authorMatch[1].trim()}`
+    }
+    return '作者：未知'
+  }
+
+  // 2. 规范化“作者：”前缀
+  if (raw.startsWith('作者') || raw.startsWith('原著')) {
+    return raw.replace(/^[作|原][者|著][：:]\s*/, '作者：')
+  }
+
+  return `作者：${raw}`
+}
+

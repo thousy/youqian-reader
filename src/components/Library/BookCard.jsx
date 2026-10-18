@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useStore } from '../../store/useStore'
 import defaultBookCover from '../../logo.png'
 import { CategoryPopover } from './CategoryPopover'
-import { cleanDisplayTitle } from '../../utils/titleCleaner'
+import { cleanDisplayTitle, formatDisplayAuthor } from '../../utils/titleCleaner'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa'
@@ -138,7 +138,7 @@ export function BookCard({ book, onClick, onDelete, onShowInfo, isBatchMode = fa
           <div className="book-cover-placeholder">
             <span style={{ fontSize: '32px', marginBottom: '8px', display: 'block' }}>📚</span>
             <div className="book-cover-title">{cleanDisplayTitle(book.title)}</div>
-            <div className="book-cover-author">{book.author || '未知作者'}</div>
+            <div className="book-cover-author">{formatDisplayAuthor(book.author, book.title)}</div>
           </div>
         )}
         
@@ -202,7 +202,7 @@ export function BookCard({ book, onClick, onDelete, onShowInfo, isBatchMode = fa
       <div className="book-info">
         <div className="book-title" title={cleanDisplayTitle(book.title)}>{cleanDisplayTitle(book.title)}</div>
         <div className="book-author" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span>{book.author}</span>
+          <span>{formatDisplayAuthor(book.author, book.title)}</span>
           {book.latestChapter && (
             <span style={{ fontSize: '10px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85px' }} title={book.latestChapter}>
               {book.latestChapter}

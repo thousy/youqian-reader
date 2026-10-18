@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useStore } from '../../store/useStore'
 import defaultBookCover from '../../logo.png'
 import { CategoryPopover } from './CategoryPopover'
-import { cleanDisplayTitle } from '../../utils/titleCleaner'
+import { cleanDisplayTitle, formatDisplayAuthor } from '../../utils/titleCleaner'
 
 const FORMAT_COLORS = {
   EPUB: '#4ade80', PDF: '#f87171', AZW3: '#fb923c', MOBI: '#a78bfa', TXT: '#60a5fa', ONLINE: '#38bdf8'
@@ -119,7 +119,7 @@ export function BookListItem({ book, onClick, onDelete, isBatchMode = false, isS
 
       <div className="book-list-info">
         <div className="book-list-title" title={cleanDisplayTitle(book.title)}>{cleanDisplayTitle(book.title)}</div>
-        <div className="book-list-author">{book.author || '未知作者'}</div>
+        <div className="book-list-author">{formatDisplayAuthor(book.author, book.title)}</div>
         <div className="book-list-meta">
           <span className="book-list-badge" style={{ color: FORMAT_COLORS[book.format] || 'var(--text-muted)' }}>{book.format}</span>
           <span className="book-list-progress">{formatFileSize(book.fileSize)}</span>
