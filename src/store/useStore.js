@@ -38,7 +38,8 @@ export const useStore = create((set, get) => ({
     lineHeight: 1.8,
     globalTheme: 'dark',
     layoutMode: 'horizontal', // 'horizontal' | 'vertical'
-    annotationThickness: 2.5 // 默认 2.5px，可调 1.0px ~ 5.0px
+    annotationThickness: 2.5, // 默认 2.5px，可调 1.0px ~ 5.0px
+    chineseConversion: 'none' // 'none' (保持原文) | 't2s' (繁体转简体) | 's2t' (简体转繁体)
   },
 
   // ===== Toast 通知 =====

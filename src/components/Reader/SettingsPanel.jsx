@@ -8,7 +8,8 @@ const DEFAULT_SETTINGS = {
   theme: 'dark',
   lineHeight: 1.8,
   fontWeight: 400,
-  globalTheme: 'dark'
+  globalTheme: 'dark',
+  chineseConversion: 'none'
 }
 
 const PRESET_FONT_MAP = {
@@ -365,6 +366,56 @@ export function SettingsPanel({ onClose, isModal = false, onOpenGlobalSettings }
           >
             上下滚动
           </button>
+        </div>
+      </div>
+
+      {/* 繁简中文转换 */}
+      <div className="settings-group">
+        <div className="settings-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>繁简转换</span>
+          <span style={{ fontSize: '11px', color: 'var(--accent-light)' }}>
+            {settings.chineseConversion === 't2s' ? '已开启繁转简' : settings.chineseConversion === 's2t' ? '已开启简转繁' : '原文显示'}
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+          {[
+            { key: 'none', label: '保持原文' },
+            { key: 't2s', label: '繁体转简体' },
+            { key: 's2t', label: '简体转繁体' }
+          ].map(opt => {
+            const isActive = (settings.chineseConversion || 'none') === opt.key
+            return (
+              <button
+                key={opt.key}
+                className={`theme-btn ${isActive ? 'active' : ''}`}
+                style={{
+                  padding: '6px 2px',
+                  borderRadius: '6px',
+                  border: '1px solid transparent',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  textAlign: 'center',
+                  backgroundColor: 'var(--bg-layer3)',
+                  color: isActive ? 'var(--accent-light)' : 'var(--text-secondary)',
+                  borderColor: isActive ? 'var(--accent)' : 'transparent'
+                }}
+                onClick={() => {
+                  updateSettings({ chineseConversion: opt.key })
+                  if (opt.key === 't2s') {
+                    showToast('已切换为繁体转简体显示', 'success')
+                  } else if (opt.key === 's2t') {
+                    showToast('已切换为简体转繁体显示', 'info')
+                  } else {
+                    showToast('已恢复原文显示', 'info')
+                  }
+                }}
+                id={`chinese-conv-${opt.key}-btn`}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
+import { convertHtmlChinese, convertChinese } from '../../utils/chineseConverter'
 
 function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -40,15 +41,19 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
   const [measureTrigger, setMeasureTrigger] = useState(0)
 
   const displayHtml = useMemo(() => {
-    if (!content || !annotations || annotations.length === 0) return content
-    return injectAnnotationsToHtml(content, annotations)
-  }, [content, annotations])
+    let raw = content
+    if (settings?.chineseConversion && settings.chineseConversion !== 'none') {
+      raw = convertHtmlChinese(raw, settings.chineseConversion)
+    }
+    if (!raw || !annotations || annotations.length === 0) return raw
+    return injectAnnotationsToHtml(raw, annotations)
+  }, [content, annotations, settings?.chineseConversion])
 
   // 当排版参数变化时，重置测算状态并递增触发器以进入 Loading 重算
   useEffect(() => {
     setIsMeasured(false)
     setMeasureTrigger(prev => prev + 1)
-  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode])
+  }, [book.id, content, rect.width, rect.height, settings.fontSize, settings.fontFamily, settings.lineHeight, settings.fontWeight, settings.layoutMode, settings.chineseConversion])
 
 
   const [debugInfo, setDebugInfo] = useState({ scrollW: 0, maxLeft: 0, tradTotal: 0, lastEl: '' })
@@ -1847,7 +1852,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
               className={`toc-item level-${item.level} ${currentTocItem === item.href ? 'active' : ''}`}
               onClick={() => jumpToToc(item)}
             >
-              {item.label}
+              {convertChinese(item.label, settings?.chineseConversion)}
             </div>
           ))}
         </div>
@@ -2137,7 +2142,7 @@ export function MobiReader({ book, savedProgress, settings, onProgressChange, re
 
                 {/* Status bar */}
                 <StatusBar
-                  chapterName={currentChapterName}
+                  chapterName={convertChinese(currentChapterName, settings?.chineseConversion)}
                   currentPage={pageIndex + 1}
                   totalPages={totalPages}
                   onPageChange={(page) => {

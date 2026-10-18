@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
+import { convertChinese } from '../../utils/chineseConverter'
 
 function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick) {
   if (!para || !annotations || annotations.length === 0) return para
@@ -212,12 +213,15 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
     return candidates.length === 0 || candidates.some(candidate => Math.abs(index - candidate) <= 2)
   }
 
-  // 将 TXT 文本切分为段落 (智能容错将字面量 \n 还原为真实换行段落)
+  // 将 TXT 文本切分为段落 (智能容错将字面量 \n 还原为真实换行段落，支持繁简转换)
   const paragraphs = useMemo(() => {
     if (!content) return []
-    const normalized = content.includes('\\n') ? content.replace(/\\r?\\n/g, '\n') : content
+    let normalized = content.includes('\\n') ? content.replace(/\\r?\\n/g, '\n') : content
+    if (settings?.chineseConversion && settings.chineseConversion !== 'none') {
+      normalized = convertChinese(normalized, settings.chineseConversion)
+    }
     return normalized.split(/\r?\n/)
-  }, [content])
+  }, [content, settings?.chineseConversion])
 
   // 正则解析 TXT 目录章节（深度对标阅读 3.0，支持首部微量卷首与第一章无缝合并、伪前言智能自愈）
   const chapters = useMemo(() => {
@@ -1268,7 +1272,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
                 goToPage(0, i)
               }}
             >
-              {item.label}
+              {convertChinese(item.label, settings?.chineseConversion)}
             </div>
           ))}
         </div>
@@ -1432,7 +1436,7 @@ export function TxtReader({ book, savedProgress, settings, onProgressChange, reg
 
             {/* Status bar */}
             <StatusBar
-              chapterName={currentChapterName}
+              chapterName={convertChinese(currentChapterName, settings?.chineseConversion)}
               currentPage={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalCurrentPage : pageIndex + 1}
               totalPages={(chapterPageCounts.length > 0 && chapterPageCounts.length === chapters.length) ? globalTotalPages : totalPages}
               percentage={currentProgressPercentage}

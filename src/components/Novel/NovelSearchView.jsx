@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../../store/useStore'
+import { convertChinese } from '../../utils/chineseConverter'
 
 const SOURCE_LABELS = {
   biquge: '笔趣阁',
@@ -1678,7 +1679,10 @@ function ChapterModal({ novelInfo, chapters, sourceId, loading, onClose, onDownl
 
 // ─── 沉浸式在线章节阅读预览浮层 ────────────────────────────
 function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content = '', loading = false, onClose, onDownload, onChangeChapter, allResults = [], onSwitchBook, onAddToShelf }) {
+  const settings = useStore(s => s.settings)
   const currentChapter = (chapters && chapters[currentIdx]) || { title: '第一章' }
+  const displayChapterTitle = convertChinese(currentChapter.title, settings?.chineseConversion)
+  const displayBookTitle = convertChinese(novelInfo?.title || '', settings?.chineseConversion)
   const [fontSize, setFontSize] = useState(16)
 
   return (
@@ -1694,7 +1698,7 @@ function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content =
               📖 在线试读预览 · {getSourceName(novelInfo)}
             </span>
             <h3 style={{ margin: '2px 0 0 0', fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              《{novelInfo.title}》 - {currentChapter.title}
+              《{displayBookTitle}》 - {displayChapterTitle}
             </h3>
           </div>
 
@@ -1856,10 +1860,10 @@ function NovelPreviewModal({ novelInfo, chapters = [], currentIdx = 0, content =
           ) : (
             <div>
               <h2 style={{ fontSize: `${fontSize + 6}px`, fontWeight: 600, borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '24px' }}>
-                {currentChapter.title}
+                {displayChapterTitle}
               </h2>
               <div style={{ whiteSpace: 'pre-wrap' }}>
-                {content}
+                {convertChinese(content, settings?.chineseConversion)}
               </div>
             </div>
           )}

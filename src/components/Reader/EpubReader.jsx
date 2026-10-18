@@ -3,6 +3,7 @@ import ePub from 'epubjs'
 import { useStore } from '../../store/useStore'
 import { StatusBar } from './StatusBar'
 import { injectCustomFontsToIframe } from '../../utils/fontLoader'
+import { convertChinese } from '../../utils/chineseConverter'
 
 export function EpubReader({ book, savedProgress, settings, onProgressChange, registerGetPosition, registerSearchProvider, registerJumpTo, registerGetTtsBlocks, showToc, annotations = [], onAnnotationClick, onTextSelected }) {
   const viewerRef = useRef(null)
@@ -504,6 +505,19 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
           doc.addEventListener('keydown', handleKeyInsideIframe)
           doc.addEventListener('wheel', handleWheelInsideIframe, { passive: false })
 
+          // 繁简转换：遍历可见文本节点进行转换
+          if (doc && doc.body && settings?.chineseConversion && settings.chineseConversion !== 'none') {
+            try {
+              const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false)
+              let node
+              while ((node = walker.nextNode())) {
+                if (node.nodeValue && node.nodeValue.trim()) {
+                  node.nodeValue = convertChinese(node.nodeValue, settings.chineseConversion)
+                }
+              }
+            } catch (_) {}
+          }
+
           // 注册 iframe 内部原生划词选区与点击保护（双重保障：松手 0ms 即时响应，彻底杜绝误杀）
           const handleDocMouseUp = () => {
             setTimeout(() => {
@@ -707,9 +721,30 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // 更新设置（字体、主题等）
+  // 更新设置（字体、主题等及繁简转换）
   useEffect(() => {
-    if (renditionRef.current) applySettings(renditionRef.current, settings)
+    if (renditionRef.current) {
+      applySettings(renditionRef.current, settings)
+      if (settings?.chineseConversion) {
+        try {
+          const contents = renditionRef.current.getContents?.()
+          if (Array.isArray(contents)) {
+            contents.forEach(c => {
+              const doc = c.document
+              if (doc && doc.body) {
+                const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, null, false)
+                let node
+                while ((node = walker.nextNode())) {
+                  if (node.nodeValue && node.nodeValue.trim()) {
+                    node.nodeValue = convertChinese(node.nodeValue, settings.chineseConversion)
+                  }
+                }
+              }
+            })
+          }
+        } catch (_) {}
+      }
+    }
   }, [settings])
 
 
@@ -1259,7 +1294,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
               className={`toc-item level-${item.level} ${currentTocItem === item.href ? 'active' : ''}`}
               onClick={() => renditionRef.current?.display(item.href)}
             >
-              {item.label}
+              {convertChinese(item.label, settings?.chineseConversion)}
             </div>
           ))}
         </div>
@@ -1341,7 +1376,7 @@ export function EpubReader({ book, savedProgress, settings, onProgressChange, re
         {/* Status bar */}
         <StatusBar
           isReady={isLocationsReady}
-          chapterName={currentChapterName}
+          chapterName={convertChinese(currentChapterName, settings?.chineseConversion)}
           currentPage={globalCurrentPage}
           totalPages={globalTotalPages}
           percentage={currentPercentage}

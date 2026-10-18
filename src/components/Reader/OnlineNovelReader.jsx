@@ -5,6 +5,7 @@ import { OfflineCacheModal } from './OfflineCacheModal'
 import { ReplaceRuleModal } from './ReplaceRuleModal'
 import { NovelDownloadModal } from '../Novel/NovelDownloadModal'
 import { useStore } from '../../store/useStore'
+import { convertChinese } from '../../utils/chineseConverter'
 
 // 高亮渲染函数
 function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick) {
@@ -140,7 +141,10 @@ export function OnlineNovelReader({
   const pauseTimerRef = useRef(null)
 
   // 当前章节名称（置顶声明，防止TDZ暂时性死区异常）
-  const currentChapterTitle = chapters[currentChapterIndex]?.title || `第 ${currentChapterIndex + 1} 章`
+  const rawChapterTitle = chapters[currentChapterIndex]?.title || `第 ${currentChapterIndex + 1} 章`
+  const currentChapterTitle = React.useMemo(() => {
+    return convertChinese(rawChapterTitle, settings?.chineseConversion)
+  }, [rawChapterTitle, settings?.chineseConversion])
 
   const { showToast } = useStore()
   const [showSwitcher, setShowSwitcher] = useState(false)
@@ -654,6 +658,11 @@ export function OnlineNovelReader({
       .replace(/\r/g, '\n')
       .replace(/\\r?\\n/g, '\n')
 
+    // 繁简中文转换
+    if (settings?.chineseConversion && settings.chineseConversion !== 'none') {
+      text = convertChinese(text, settings.chineseConversion)
+    }
+
     // 1. 净化通用网站广告行与干扰内容（支持爱曲小说、笔趣阁等站点常见前缀）
     text = text
       .replace(/天才一秒记住.*?(\n|$)/gi, '')
@@ -685,7 +694,7 @@ export function OnlineNovelReader({
     }
 
     return cleanLines
-  }, [chapterContent])
+  }, [chapterContent, settings?.chineseConversion])
 
 
 
@@ -1208,7 +1217,7 @@ export function OnlineNovelReader({
                       title={ch.title}
                       style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
                     >
-                      {cleanDisplayChapterTitle(ch.title, book?.title)}
+                      {cleanDisplayChapterTitle(convertChinese(ch.title, settings?.chineseConversion), book?.title)}
                     </span>
                     {isPreAnchor && (
                       <span
