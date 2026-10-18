@@ -46,8 +46,9 @@ import {
   getCustomFonts, openAndImportFontFiles, deleteCustomFont, deleteCustomFonts, readCustomFontDataUrl, readCustomFontBuffer
 } from './fontManager.js'
 import {
-  getProxyConfig, saveProxyConfig, detectLocalProxies, testProxyConnection, applyToElectronSession
+  getProxyConfig, saveProxyConfig, detectLocalProxies, testProxyConnection, applyToElectronSession, updateRuleList
 } from './novel/proxyManager.js'
+import { getGfwlistStatus } from './novel/gfwlistParser.js'
 import { randomUUID } from 'crypto'
 
 export function setupIpcHandlers() {
@@ -861,5 +862,7 @@ export function setupIpcHandlers() {
   })
   ipcMain.handle('detect-local-proxies', () => detectLocalProxies())
   ipcMain.handle('test-proxy-connection', (_, targetUrl, customProxyUrl) => testProxyConnection(targetUrl, customProxyUrl))
+  ipcMain.handle('update-rule-list', (_, url) => updateRuleList(url))
+  ipcMain.handle('get-rule-list-status', () => getGfwlistStatus())
 }
 
