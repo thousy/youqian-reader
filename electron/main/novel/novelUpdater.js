@@ -142,11 +142,13 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           }
         }
 
-        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余
+        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余或标题未规范对齐
         if (cached.length > 1) {
           const dedupped = filterOverlappingBbsChapters(cached)
-          if (dedupped.length < cached.length) {
-            // 发现本地缓存存在重复分卷，立即修复本地缓存并持久化
+          const hasDifferentCount = dedupped.length !== cached.length
+          const hasTitleChange = dedupped.some((ch, idx) => ch.title !== cached[idx]?.title)
+          if (hasDifferentCount || hasTitleChange) {
+            // 发现本地缓存存在重复分卷或非规范标题，立即修复本地缓存并持久化
             try {
               writeFileSync(indexFile, JSON.stringify(dedupped, null, 2), 'utf-8')
               updateBook(bookId, {

@@ -953,25 +953,69 @@ export function parseBbsChapterInfo(rawTitle) {
 }
 
 /**
+ * 统一规范化论坛分卷标题，强制对齐为 【XXX-XXX】 风格，消除截断残缺
+ */
+export function formatUnifiedChapterTitle(title) {
+  if (!title) return ''
+  const t = title.trim()
+  
+  const rangeMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
+                     t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
+  
+  if (rangeMatch) {
+    const rawStart = rangeMatch[1]
+    const rawEnd = rangeMatch[2]
+    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
+    return `【${rawStart}-${rawEnd}】${authorSuffix}`
+  }
+
+  const singleMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
+  if (singleMatch) {
+    const rawNum = singleMatch[1]
+    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
+    return `【第${rawNum}章】${authorSuffix}`
+  }
+
+  return t
+}
+
+/**
  * 论坛连载分卷区间智能去重与主链优选 (Interval Greedy Overlap Deduplication)
- * 1. 单项真子集剔除 (Strict Subset Elimination)：当项 B 的章节范围完全被项 A 包含且 A 的跨度更大，剔除 B
- * 2. 连续无缝合集主链识别与横跨重叠剔除 (Union Overlap Suppression)：
+ * 1. 过滤完全没有分卷章节编号的幽灵主书名项
+ * 2. 单项真子集剔除 (Strict Subset Elimination)：当项 B 的章节范围完全被项 A 包含且 A 的跨度更大，剔除 B
+ * 3. 连续无缝合集主链识别与横跨重叠剔除 (Union Overlap Suppression)：
  *    若合集构成无缝相接的连续链（如 [10, 25] 与 [26, 39]），任何横跨并完全落在该联合体内部的散帖（如 21-30）予以剔除
+ * 4. 统一对齐格式为 【XXX-XXX】
  */
 export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
   if (!Array.isArray(chapters) || chapters.length <= 1) return chapters
 
-  // 1. 补齐并提取统一 start 和 end
-  const items = chapters.map(c => {
+  // 1. 检查是否存在带有具体章节数字的正式分卷
+  const hasValidNumberedChapters = chapters.some(c => parseBbsChapterInfo(c.title) !== null)
+
+  // 过滤掉完全没有章节数字的纯主书名冗余项（幽灵首项）
+  const validChapters = chapters.filter(c => {
+    if (hasValidNumberedChapters && !parseBbsChapterInfo(c.title)) {
+      return false
+    }
+    return true
+  })
+
+  // 2. 补齐并提取统一 start 和 end，并标准化标题
+  const items = validChapters.map(c => {
     let start = c.start
     let end = c.end
+    const info = parseBbsChapterInfo(c.title)
     if (start === undefined || end === undefined) {
-      const info = parseBbsChapterInfo(c.title)
       start = info ? info.start : 0
       end = info ? info.end : 0
     }
     return {
       ...c,
+      title: formatUnifiedChapterTitle(c.title),
       start,
       end
     }
@@ -983,7 +1027,7 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     return (b.end - b.start) - (a.end - a.start)
   })
 
-  // 2. 第一轮：单项真子集剔除 (Strict Subset Elimination)
+  // 3. 第一轮：单项真子集剔除 (Strict Subset Elimination)
   const nonSubset = []
   for (let i = 0; i < items.length; i++) {
     const cur = items[i]
@@ -1003,7 +1047,7 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
     }
   }
 
-  // 3. 第二轮：跨界冗余与多卷连续联合覆盖剔除 (Union Overlap Suppression)
+  // 4. 第二轮：跨界冗余与多卷连续联合覆盖剔除 (Union Overlap Suppression)
   const finalChapters = []
   for (let i = 0; i < nonSubset.length; i++) {
     const cand = nonSubset[i]

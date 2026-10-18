@@ -69,24 +69,39 @@ function renderParagraphWithHighlights(para, annotations = [], onAnnotationClick
   })
 }
 
-// 净化侧边栏目录中的章节标题（去除与书名冗余重复的前缀，保留卷号与作者）
+// 净化并统一侧边栏目录中的章节标题，规范为 【XXX-XXX】 风格，消除截断残缺
 function cleanDisplayChapterTitle(title, bookTitle) {
   if (!title) return ''
-  let cleaned = title.trim()
+  const t = title.trim()
+
+  // 1. 优先匹配明确的分卷范围（如 001-009、053-062、121-128 等）
+  const rangeMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
+                     t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
+  if (rangeMatch) {
+    const rawStart = rangeMatch[1]
+    const rawEnd = rangeMatch[2]
+    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
+    return `【${rawStart}-${rawEnd}】${authorSuffix}`
+  }
+
+  // 2. 匹配单卷/单章，如 (8)、第8章
+  const singleMatch = t.match(/[【\[（\(]\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
+  if (singleMatch) {
+    const rawNum = singleMatch[1]
+    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1]}` : ''
+    return `【第${rawNum}章】${authorSuffix}`
+  }
+
+  // 3. 通用前缀剥离兜底（严格禁止跨越括号匹配）
+  let cleaned = t
   if (bookTitle) {
     const rawCleanBook = bookTitle.replace(/[《》【】\[\]\s]/g, '').trim()
     if (rawCleanBook && rawCleanBook.length >= 2) {
-      // 移除开头的 【书名】 或 书名
       const escaped = rawCleanBook.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
-      const pattern1 = new RegExp(`^【?\\s*${escaped}\\s*】?\\s*`, 'i')
-      cleaned = cleaned.replace(pattern1, '').trim()
-      // 也可能书名带有部分副标题，比如书名是《我的超绝校花美娇妻展颜》，章节名为《我的超绝校花美娇妻》
-      const prefixCandidate = rawCleanBook.slice(0, Math.min(rawCleanBook.length, 8))
-      if (prefixCandidate.length >= 4) {
-        const escPrefix = prefixCandidate.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
-        const pattern2 = new RegExp(`^【?\\s*${escPrefix}[^】\\]]{0,6}】?\\s*`, 'i')
-        cleaned = cleaned.replace(pattern2, '').trim()
-      }
+      cleaned = cleaned.replace(new RegExp(`^【?\\s*${escaped}\\s*】?\\s*`, 'i'), '')
     }
   }
   return cleaned || title
