@@ -917,6 +917,12 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
     }
   }
 
+  // 1.1 若标题包含无括号包围的明确单章标记（例如 "女神代行者 第194章 姐妹情深"），截断章节号及之后的所有小标题
+  const chapterCutMatch = title.match(/^(.*?)(?:\s+第\s*[一二三四五六七八九十百千万\d]+\s*[章节卷]|\s*【第\s*[一二三四五六七八九十百千万\d]+\s*[章节卷]】)/)
+  if (chapterCutMatch && chapterCutMatch[1].trim().length >= 2) {
+    title = chapterCutMatch[1].trim()
+  }
+
   // 2. 剥离所有圆括号内容（通常为分卷号、逆ntr、未删节、高H等副标题或标签）
   let clean = title.replace(/[（\(][^）\)]*[）\)]/g, ' ')
 
@@ -1058,7 +1064,12 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
 
   let start = normalizeWeight(rawStart)
   let end = rawEnd ? normalizeWeight(rawEnd) : start
-  if (isNaN(start) || start <= 0) return null
+  if (isNaN(start) || isNaN(end)) return null
+  // 兼容前导零区间，如 00-10、0-10，将 0 修正为 1 (1000)
+  if (start <= 0 && end > 0) {
+    start = 1000
+  }
+  if (start <= 0 && end <= 0) return null
 
   // 4. 叠加分部偏移 (每个分部偏移 1,000,000)
   // 如果是普通章节 (未含小数点)，按识别出的 partNumber 叠加偏移，彻底消除上部与下部交错错乱
@@ -1172,13 +1183,13 @@ export function filterOverlappingBbsChapters(chapters, bbsInfo = null) {
   for (let j = 0; j < items.length; j++) {
     const parent = items[j]
     const parentSpan = parent.end - parent.start
-    if (parentSpan >= 20000) {
+    if (parentSpan >= 4000) {
       const children = items.filter((it, idx) => idx !== j && it.start >= parent.start && it.end <= parent.end)
       if (children.length >= 3) {
         // 检查子分卷的最小起始点
         const minChildStart = Math.min(...children.map(c => c.start))
-        if (minChildStart > parent.start + 1000) {
-          // 该汇总帖自身实际承载了子分卷未覆盖的头部章节（如 1-3 或 1-12）
+        if (minChildStart > parent.start) {
+          // 该汇总帖自身实际承载了子分卷未覆盖的头部章节（如 1-3、1-12 或第 1 章）
           // 将其智能裁剪为头部章节，赋予对应标题，绝不剔除！
           const rawHeadStart = Math.floor(parent.start / 1000) || 1
           const rawHeadEnd = Math.floor(minChildStart / 1000) - 1
@@ -2157,8 +2168,8 @@ export class RuleSource {
 
             if (Array.isArray(firstPage)) {
               relatedPosts.push(...firstPage)
-              if (firstPage.length >= 50 && this.rule.search?.url) {
-                for (let page = 2; page <= 6; page++) {
+              if (firstPage.length >= 25 && this.rule.search?.url) {
+                for (let page = 2; page <= 8; page++) {
                   try {
                     const nextUrl = this.rule.search.url
                       .replace('%s', encodeURIComponent(activeQuery))

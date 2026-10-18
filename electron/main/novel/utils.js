@@ -299,7 +299,15 @@ export function sleep(ms) {
  *   titleWithRange: "我这系统不正经（第1-217章）"
  */
 export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters = []) {
-  let title = (rawTitle || '').trim()
+  // 0. 全角转半角预处理（防止全角数字、全角括号与破折号击穿正则）
+  const toDbc = (str) => {
+    if (!str) return ''
+    return String(str)
+      .replace(/[\uff01-\uff5e]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+      .replace(/\u3000/g, ' ')
+  }
+
+  let title = toDbc(rawTitle || '').trim()
   let author = (rawAuthor || '').trim()
 
   // 1. 尝试从标题中提取真实作者 (支持: 作者：xxx, 作者:xxx, 原著:xxx, 文/xxx, by xxx 等)
@@ -330,10 +338,13 @@ export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters 
   title = title.replace(/(?:作\s*者|原\s*著|文\s*[:：]|by)[:：\s]+[^\s,，;；)）\]】]+/gi, '').trim()
   title = title.replace(/(?:文\s*\/)\s*[^\s,，;；)）\]】]+/gi, '').trim()
 
-  // 3. 剥离标题中旧的局部章节分卷范围（如 (29.22--29.30)、(1-30)、（第1-20章）、[1-50章]、(32-33) 等）
+  // 3. 剥离标题中旧的局部章节分卷范围（如 (29.22--29.30)、(1-30)、（第1-20章）、[1-50章]、(32-33)、(00-10) 等）
   title = title.replace(/[（\(]\s*\d+(?:\.\d+)?\s*(?:[－\-~～、—/]+|\s+至\s+|\s+到\s+)\s*\d+(?:\.\d+)?\s*(?:章|节|卷)?(?:\s*完)?\s*[）\)]/g, '')
   title = title.replace(/[\[【]\s*\d+(?:\.\d+)?\s*(?:[－\-~～、—/]+|\s+至\s+|\s+到\s+)\s*\d+(?:\.\d+)?\s*(?:章|节|卷)?(?:\s*完)?\s*[\]】]/g, '')
   title = title.replace(/[（\(]\s*(?:第\s*\d+\s*[-~至到]\s*\d+\s*[章节卷]|最新\s*\d+\s*章)\s*[）\)]/g, '')
+
+  // 3.1 剥离无括号包围的独立单章小标题后缀（例如 "女神代行者 第194章 姐妹情深" 提炼为 "女神代行者"）
+  title = title.replace(/\s+(?:第\s*)?[0-9一二三四五六七八九十百千万\d]+(?:\.\d+)?\s*[章节卷].*$/, '').trim()
 
   // 4. 剥离常见的标签修饰符，如 [精校]、[校对全本]、[完结]、[全本]、[连载]、[都市]、[原创] 等
   title = title.replace(/[\[【](?:精校|精校全本|全本校对|完结|全本|全集|连载|最新|热门|TXT|txt|ZIP|原创|转帖|都市|玄幻|仙侠|奇幻|科幻|武侠|历史|同人)[】\]]/gi, '')
