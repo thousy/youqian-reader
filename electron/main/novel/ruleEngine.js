@@ -911,7 +911,7 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
     const isOnlyChapter = /^(?:第\s*)?[一二三四五六七八九十百千万\d]+(?:\.\d+)?(?:[－\-~～、至到]+[一二三四五六七八九十百千万\d]+(?:\.\d+)?)?(?:\s*章)?$/.test(candidate)
     if (!isOnlyChapter && candidate.length >= 2) {
       // 剥离分部等标签
-      let bName = candidate.replace(/(?:上部|下部|第一部|第二部|前传|外传|后传|全本|精校|连载|续|番外)/g, '').trim()
+      let bName = candidate.replace(/(?:上部|下部|第一部|第二部|前传|外传|后传|全本|精校|连载|续|番外|\/同人续|\/同人|\/转帖|\/原创)/g, '').trim()
       bName = bName.replace(/\s*\d+.*$/, '').trim()
       if (bName.length >= 2) return bName
     }
@@ -936,7 +936,7 @@ export function extractCleanBookName(rawTitle, fallbackAuthor = '') {
   }
 
   // 5. 剥离分部、章节字眼与中文/阿拉伯数字
-  clean = clean.replace(/(?:上部|下部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|续)/g, ' ')
+  clean = clean.replace(/(?:上部|下部|第一部|第二部|第三部|续集|续篇|前传|后传|番外|第[一二三四五六七八九十\d]+[部卷季]|\/同人续|\/同人|\/转帖|\/原创|续)/g, ' ')
   clean = clean.replace(/(?:第\s*)?[一二三四五六七八九十百千万\d]+(?:\.\d+)?(?:[－\-~～、至到]+[一二三四五六七八九十百千万\d]+(?:\.\d+)?)?\s*(?:章|节|卷)?/g, ' ')
 
   // 6. 剥离副标题连接符
@@ -1018,14 +1018,14 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
                  normTitle.match(/(?:第\s*)([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)/)
   }
 
-  // 模式3: 开头或空白后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8, 第十三章-第十六章)
+  // 模式3: 开头、空白或括号边界后的区间 (10-14, 1-7, 1.1-1.13, 28.32--29.8, 第十三章-第十六章, 【书名】1-1452完)
   if (!rangeMatch) {
-    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(\)\]】》])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*译|\s*】|\s*\]|\s*）|\s*\)|\s+)/)
   }
 
   // 模式4: 纯数字或独立章节标号
   if (!rangeMatch) {
-    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
+    rangeMatch = normTitle.match(/(?:^|[\s【\[（\(\)\]】》])(?:第\s*)?([一二三四五六七八九十百千\d]+(?:\.\d+)?)\s*(?:章|节|卷)?(?:\s*完)?(?:\s*\[|\s*$|\s*作|\s*】|\s*\]|\s*）|\s*\))/)
   }
 
   if (!rangeMatch) return null
@@ -1033,9 +1033,9 @@ export function parseBbsChapterInfo(rawTitle, fallbackAuthor = '') {
   const rawStart = rangeMatch[1]
   const rawEnd = rangeMatch[2]
 
-  // 2. 识别分部/分卷特征 (上部/下部/第一部/第二部/续等)
+  // 2. 识别分部/分卷特征 (上部/下部/第一部/第二部/独立续等)
   let partNumber = 1
-  const partMatch = normTitle.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+  const partMatch = normTitle.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|[【\[（\(]续[】\]）\)])/)
   if (partMatch) {
     const pStr = partMatch[0]
     if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {

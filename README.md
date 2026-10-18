@@ -1,10 +1,17 @@
-# YouQian书籍阅读器 📚 (V2.2.19)
+# YouQian书籍阅读器 📚 (V2.2.20)
 
-[![Version](https://img.shields.io/badge/version-2.2.19-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.20-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.20 开篇总帖首序自愈与紧密标号分卷模式支持 (Release Notes)
+* **首帖前序正文自愈挽回（解决《超级房东》缺失第 1-5 章）**：支持将承载开篇目录及前序正文的开篇首帖精准自愈为【1-5】独立开篇卷，与接续分卷【6-10】无缝拼合，实现从第 1 章到第 1452 章全本完结无一遗漏；
+* **右闭合符号紧贴标号模式解析**：扩展分卷解析边界，全面支持紧跟在右闭合括号（如 `【书名/同人续】1-1452完`）后的分卷标号识别；
+* **题材标签清洗强化**：自动剥离 `/同人`、`/同人续`、`/转帖` 等复合修饰后缀，彻底杜绝同人续中的“续”字被误判为第二部。
 
 ---
 
