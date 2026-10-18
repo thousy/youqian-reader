@@ -8,7 +8,8 @@ const FORMAT_COLORS = {
 export function Sidebar() {
   const {
     books, currentView, openBook, setBooks, showToast, showConfirm,
-    categories, selectedCategoryId, setSelectedCategoryId, setCategories, setCurrentView
+    categories, selectedCategoryId, setSelectedCategoryId, setCategories, setCurrentView,
+    setNovelSearchKeyword
   } = useStore()
 
   // 最近阅读的书
@@ -254,6 +255,10 @@ export function Sidebar() {
           className={`nav-item ${currentView === 'novelSearch' ? 'active novel-search-nav' : 'novel-search-nav'}`}
           id="sidebar-novel-search-btn"
           onClick={() => {
+            const sq = useStore.getState().searchQuery?.trim()
+            if (sq) {
+              setNovelSearchKeyword(sq)
+            }
             useStore.getState().closeBook()
             setCurrentView('novelSearch')
           }}

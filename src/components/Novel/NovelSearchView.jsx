@@ -119,7 +119,16 @@ function rankSearchResults(list, kw) {
 }
 
 export function NovelSearchView() {
-  const { showToast, setBooks, setFilterFormat, openBook } = useStore()
+  const {
+    showToast,
+    setBooks,
+    setFilterFormat,
+    openBook,
+    novelSearchKeyword,
+    setNovelSearchKeyword,
+    novelSelectedSourceIds,
+    setNovelSelectedSourceIds
+  } = useStore()
 
   const [keyword, setKeyword] = useState('')
   const [sourceId, setSourceId] = useState('all')
@@ -265,19 +274,22 @@ export function NovelSearchView() {
     }
   }, [])
 
-  // 书源多选勾选状态 (null 表示默认全选所有书源，数组表示自定义勾选 ID 列表)
-  const [selectedSourceIds, setSelectedSourceIds] = useState(null)
+  // 书源多选勾选状态 (存入全局 store 实现会话级记忆：切换页面保留勾选，重启软件恢复默认全选 null)
+  const selectedSourceIds = novelSelectedSourceIds
+  const setSelectedSourceIds = setNovelSelectedSourceIds
   const [showSourcePicker, setShowSourcePicker] = useState(false)
   const [sourcePickerQuery, setSourcePickerQuery] = useState('')
 
   // 计算当前有效选中的书源集合与全选状态
   const allSourceIds = sources.map(s => s.id)
-  const currentSelectedIds = selectedSourceIds === null ? allSourceIds : selectedSourceIds
-  const isAllSelected = sources.length > 0 && currentSelectedIds.length === sources.length
+  const isCustomSelection = selectedSourceIds !== null
+  const currentSelectedIds = isCustomSelection ? selectedSourceIds : allSourceIds
+  const isAllSelected = !isCustomSelection || (sources.length > 0 && currentSelectedIds.length === sources.length)
 
-  const handleSearch = async () => {
-    if (!keyword.trim()) return
-    if (currentSelectedIds.length === 0) {
+  const handleSearch = async (overrideKeyword) => {
+    const targetKw = typeof overrideKeyword === 'string' ? overrideKeyword.trim() : keyword.trim()
+    if (!targetKw) return
+    if (isCustomSelection && currentSelectedIds.length === 0) {
       showToast('请至少勾选一个书源后再进行搜索', 'warning')
       return
     }
@@ -287,10 +299,10 @@ export function NovelSearchView() {
     try {
       // 如果处于全选状态传入 null 聚合搜索所有，否则传入具体选中的书源 ID 数组
       const targetSources = isAllSelected ? null : currentSelectedIds
-      const res = await window.api.novelSearch(keyword.trim(), targetSources)
+      const res = await window.api.novelSearch(targetKw, targetSources)
       if (res && res.success) {
         if (res.results && res.results.length > 0) {
-          setResults(rankSearchResults(res.results, keyword.trim()))
+          setResults(rankSearchResults(res.results, targetKw))
         } else {
           setResults(prev => {
             if (prev.length === 0) setSearchError('未找到相关小说，请尝试其他关键词')
@@ -312,6 +324,16 @@ export function NovelSearchView() {
       setSearching(false)
     }
   }
+
+  // 消费从外部（如书架搜索框）传递过来的关键词并自动触发搜索
+  useEffect(() => {
+    if (novelSearchKeyword && novelSearchKeyword.trim()) {
+      const kw = novelSearchKeyword.trim()
+      setKeyword(kw)
+      setNovelSearchKeyword('')
+      handleSearch(kw)
+    }
+  }, [novelSearchKeyword])
 
   const handleStopSearch = async () => {
     try {
@@ -558,8 +580,8 @@ export function NovelSearchView() {
                         // 当前已全选，再按一次全选 => 取消全选（清空勾选）
                         setSelectedSourceIds([])
                       } else {
-                        // 当前非全选 => 全选所有
-                        setSelectedSourceIds(allSourceIds)
+                        // 当前非全选 => 全选所有（恢复默认全量聚合）
+                        setSelectedSourceIds(null)
                       }
                     }}
                     style={{

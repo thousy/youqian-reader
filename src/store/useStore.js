@@ -14,6 +14,8 @@ export const useStore = create((set, get) => ({
   // ===== 当前阅读 =====
   currentBook: null,
   currentView: 'library', // 'library' | 'reader' | 'novelSearch'
+  novelSearchKeyword: '', // 跨视图传递的在线找书关键词
+  novelSelectedSourceIds: null, // 在线找书会话级书源勾选（null 表示默认全选，重启软件重置）
   readingProgress: null,
   bookmarks: [],
   annotations: [],
@@ -111,6 +113,10 @@ export const useStore = create((set, get) => ({
     set({ currentBook: book, currentView: 'reader', showToc: false, showBookmarks: false, showSettings: false })
     window.api?.setLastOpenedBook(book.id)
   },
+
+  // ===== 在线找书状态动作 =====
+  setNovelSearchKeyword: (novelSearchKeyword) => set({ novelSearchKeyword }),
+  setNovelSelectedSourceIds: (novelSelectedSourceIds) => set({ novelSelectedSourceIds }),
 
   // ===== 文件关联：通过文件路径直接打开（临时阅读，无 bookId）=====
   openBookByPath: (filePath) => {

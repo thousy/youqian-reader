@@ -13,7 +13,8 @@ export function LibraryView({ onImport }) {
     filteredBooks, books, viewMode, searchQuery, filterFormat,
     setSearchQuery, setFilterFormat, setViewMode, isLoading, openBook,
     removeBook: removeFromStore, setBooks, showToast, showConfirm,
-    setCategories, selectedCategoryId, categories, setCurrentView
+    setCategories, selectedCategoryId, categories, setCurrentView,
+    setNovelSearchKeyword
   } = useStore()
 
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
@@ -517,7 +518,12 @@ export function LibraryView({ onImport }) {
               <p>您可以前往「在线找书」聚合全网书源搜索小说，一键加入书架流式追更</p>
               <button
                 className="empty-add-btn"
-                onClick={() => setCurrentView('novelSearch')}
+                onClick={() => {
+                  if (searchQuery && searchQuery.trim()) {
+                    setNovelSearchKeyword(searchQuery.trim())
+                  }
+                  setCurrentView('novelSearch')
+                }}
                 style={{
                   background: 'linear-gradient(135deg, #10b981, #059669)',
                   border: 'none',
