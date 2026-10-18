@@ -191,7 +191,9 @@ const api = {
   detectLocalProxies: () => ipcRenderer.invoke('detect-local-proxies'),
   testProxyConnection: (targetUrl, customProxyUrl) => ipcRenderer.invoke('test-proxy-connection', targetUrl, customProxyUrl),
   updateRuleList: (url) => ipcRenderer.invoke('update-rule-list', url),
-  getRuleListStatus: () => ipcRenderer.invoke('get-rule-list-status')
+  getRuleListStatus: () => ipcRenderer.invoke('get-rule-list-status'),
+  getRuleListRawContent: () => ipcRenderer.invoke('get-rule-list-raw-content'),
+  saveRuleListRawContent: (text) => ipcRenderer.invoke('save-rule-list-raw-content', text)
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -21,6 +21,7 @@ export function NetworkProxySettings({ showToast }) {
   const [ruleListUrl, setRuleListUrl] = useState('https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt')
   const [ruleListLastUpdated, setRuleListLastUpdated] = useState(null)
   const [ruleListCount, setRuleListCount] = useState(0)
+  const [ruleListRawContent, setRuleListRawContent] = useState('')
   const [updatingRuleList, setUpdatingRuleList] = useState(false)
 
   const [loading, setLoading] = useState(true)
@@ -67,6 +68,13 @@ export function NetworkProxySettings({ showToast }) {
             setRuleListLastUpdated(cfg.ruleList.lastUpdated || null)
             setRuleListCount(cfg.ruleList.ruleCount || 0)
           }
+        }
+      }
+
+      if (window.api?.getRuleListRawContent) {
+        const raw = await window.api.getRuleListRawContent()
+        if (raw) {
+          setRuleListRawContent(raw)
         }
       }
     } catch (e) {
@@ -175,6 +183,9 @@ export function NetworkProxySettings({ showToast }) {
       if (res?.success) {
         setRuleListLastUpdated(res.lastUpdated)
         setRuleListCount(res.ruleCount)
+        if (res.rawContent) {
+          setRuleListRawContent(res.rawContent)
+        }
         showToast?.(`规则列表更新成功！已加载 ${res.ruleCount} 条规则`, 'success')
       } else {
         showToast?.(res?.error || '更新规则列表失败，请确认网络或代理正常', 'error')
@@ -642,13 +653,38 @@ export function NetworkProxySettings({ showToast }) {
           <div style={{
             background: 'rgba(16, 185, 129, 0.15)', border: '1px solid #10b98160',
             borderRadius: '6px', padding: '12px 16px', color: '#047857',
-            fontSize: '13px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px'
+            fontSize: '13px', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px',
+            marginBottom: '10px'
           }}>
             <span>🌱</span>
             <span>
               规则列表下载时间 {formatTime(ruleListLastUpdated)}（已加载 {ruleListCount.toLocaleString()} 条规则）
             </span>
           </div>
+
+          {/* 规则列表明文多行展示区 (完全对标 Zero Omega 原生界面) */}
+          <textarea
+            value={ruleListRawContent}
+            onChange={(e) => setRuleListRawContent(e.target.value)}
+            onBlur={async () => {
+              if (ruleListRawContent) {
+                try {
+                  const res = await window.api?.saveRuleListRawContent?.(ruleListRawContent)
+                  if (res?.success) {
+                    setRuleListCount(res.ruleCount)
+                  }
+                } catch (_) {}
+              }
+            }}
+            placeholder="此处显示或编辑规则列表正文 (例如 ||cool18.com 或 @@||baidu.com)..."
+            style={{
+              width: '100%', height: '220px', padding: '10px 14px', borderRadius: '6px',
+              border: '1px solid var(--border)', background: 'var(--bg-layer2)',
+              color: 'var(--text-primary)', fontSize: '12px', fontFamily: 'Consolas, Monaco, monospace',
+              lineHeight: 1.5, resize: 'vertical', outline: 'none', whiteSpace: 'pre',
+              boxSizing: 'border-box'
+            }}
+          />
         </div>
       </div>
 

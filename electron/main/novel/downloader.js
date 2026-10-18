@@ -13,7 +13,7 @@ import { getPortableDataDir, getPortableDownloadsDir } from '../portablePath.js'
 import { getSourceById } from './sourceManager.js'
 import { buildEpub } from './epubBuilder.js'
 import { buildPdf } from './pdfBuilder.js'
-import { sleep, toSimplified, stripDuplicateTitle, cleanBookTitleAndAuthor } from './utils.js'
+import { sleep, toSimplified, stripDuplicateTitle, cleanBookTitleAndAuthor, detectRealChapterRange } from './utils.js'
 import { addBook, saveBookmarks } from '../database.js'
 
 // 下载任务 Map: taskId -> { status, progress, total, cancel, novelInfo, sourceId }
@@ -96,39 +96,15 @@ function cnToNumber(str) {
 }
 
 /**
- * 解析计算章节范围字符串，输出统一精简的阿拉伯数字格式，如：（第1-25章）或（第1-500章）
+ * 解析计算章节范围字符串，输出统一精简的阿拉伯数字格式，如：（第1-25章）或（第1-1452章）
  */
 function getChapterRangeStr(chapters) {
   if (!chapters || chapters.length === 0) return ''
-
-  const firstCh = chapters[0]
-  const lastCh = chapters[chapters.length - 1]
-
-  // 1. 优先使用用户选章时传递的全书目录物理序号 originalIndex (从 0 开始)
-  if (firstCh?.originalIndex !== undefined && lastCh?.originalIndex !== undefined) {
-    const startNum = firstCh.originalIndex + 1
-    const endNum = lastCh.originalIndex + 1
-    if (startNum === endNum) {
-      return `（第${startNum}章）`
-    }
-    return `（第${startNum}-${endNum}章）`
+  const { start: startNum, end: endNum } = detectRealChapterRange(chapters)
+  if (startNum === endNum) {
+    return `（第${startNum}章）`
   }
-
-  // 2. 其次使用下载批次 index
-  if (firstCh?.index !== undefined && lastCh?.index !== undefined) {
-    const startNum = firstCh.index + 1
-    const endNum = lastCh.index + 1
-    if (startNum === endNum) {
-      return `（第${startNum}章）`
-    }
-    return `（第${startNum}-${endNum}章）`
-  }
-
-  // 3. 兜底使用章节数组长度
-  if (chapters.length === 1) {
-    return `（第1章）`
-  }
-  return `（第1-${chapters.length}章）`
+  return `（第${startNum}-${endNum}章）`
 }
 
 /**

@@ -302,6 +302,74 @@ export function sleep(ms) {
 }
 
 /**
+ * 智能探测多章分卷/普通小说的真实章节起止跨度
+ * 解决 BBS 论坛每帖发多章导致把帖子分卷数（如 133 卷）误当成第 1-133 章的问题
+ * 例如首卷标题【1-5】，末卷标题【1441-1452】，精准解析为 start: 1, end: 1452
+ */
+export function detectRealChapterRange(chapters) {
+  if (!chapters || chapters.length === 0) return { start: 1, end: 1 }
+
+  let startNum = 1
+  let endNum = chapters.length
+
+  const firstCh = chapters[0]
+  const lastCh = chapters[chapters.length - 1]
+
+  const firstTitle = (firstCh?.title || '').trim()
+  const lastTitle = (lastCh?.title || '').trim()
+
+  // 1. 从末章标题中智能提取结束章节号
+  // 支持格式:
+  // - "【1441-1452】 作者: 俗人" 或 "[1441-1452]" -> 提取 1452
+  // - "1441-1452" -> 提取 1452
+  // - "第1452章 ..." -> 提取 1452
+  let extractedEnd = null
+  const rangeMatch = lastTitle.match(/[【\[\(（]?\s*\d+\s*[-~～至到—_]+\s*(\d+)\s*[】\]\)）]?/i)
+  if (rangeMatch && rangeMatch[1]) {
+    const n = parseInt(rangeMatch[1], 10)
+    if (!isNaN(n) && n > 0) extractedEnd = n
+  }
+
+  if (!extractedEnd) {
+    const chapterNumMatch = lastTitle.match(/(?:第\s*|\b)(\d+)\s*(?:章|节|卷|回)/i) || lastTitle.match(/^(\d{1,6})\b/)
+    if (chapterNumMatch && chapterNumMatch[1]) {
+      const n = parseInt(chapterNumMatch[1], 10)
+      if (!isNaN(n) && n > 0) extractedEnd = n
+    }
+  }
+
+  // 2. 从首章标题中智能提取起始章节号
+  let extractedStart = null
+  const firstRangeMatch = firstTitle.match(/[【\[\(（]?\s*(\d+)\s*[-~～至到—_]+\s*\d+\s*[】\]\)）]?/i)
+  if (firstRangeMatch && firstRangeMatch[1]) {
+    const n = parseInt(firstRangeMatch[1], 10)
+    if (!isNaN(n) && n > 0) extractedStart = n
+  }
+
+  if (!extractedStart) {
+    const firstNumMatch = firstTitle.match(/(?:第\s*|\b)(\d+)\s*(?:章|节|卷|回)/i) || firstTitle.match(/^(\d{1,6})\b/)
+    if (firstNumMatch && firstNumMatch[1]) {
+      const n = parseInt(firstNumMatch[1], 10)
+      if (!isNaN(n) && n > 0) extractedStart = n
+    }
+  }
+
+  // 3. 若提取到了真实跨度（如 1452 >= 133）
+  if (extractedEnd && extractedEnd >= chapters.length) {
+    endNum = extractedEnd
+    startNum = extractedStart || 1
+  } else if (firstCh?.originalIndex !== undefined && lastCh?.originalIndex !== undefined) {
+    startNum = firstCh.originalIndex + 1
+    endNum = lastCh.originalIndex + 1
+  } else if (firstCh?.index !== undefined && lastCh?.index !== undefined) {
+    startNum = firstCh.index + 1
+    endNum = lastCh.index + 1
+  }
+
+  return { start: startNum, end: endNum }
+}
+
+/**
  * 智能清洗提纯小说书名与真实作者，并结合章节列表生成规范完整范围标题
  * 例如:
  *   rawTitle: "【我这系统不正经】 (29.22--29.30) 作者：棺材里的笑声"
@@ -382,22 +450,10 @@ export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters 
     title = (rawTitle || '未知书籍').replace(/^《|》$/g, '').trim()
   }
 
-  // 7. 计算本次下载的完整章节范围
+  // 7. 计算本次下载的完整章节范围 (支持智能探测多章分卷真实起止，如【1-5】至【1441-1452】输出第1-1452章)
   let rangeStr = ''
   if (chapters && chapters.length > 0) {
-    const firstCh = chapters[0]
-    const lastCh = chapters[chapters.length - 1]
-    let startNum = 1
-    let endNum = chapters.length
-
-    if (firstCh?.originalIndex !== undefined && lastCh?.originalIndex !== undefined) {
-      startNum = firstCh.originalIndex + 1
-      endNum = lastCh.originalIndex + 1
-    } else if (firstCh?.index !== undefined && lastCh?.index !== undefined) {
-      startNum = firstCh.index + 1
-      endNum = lastCh.index + 1
-    }
-
+    const { start: startNum, end: endNum } = detectRealChapterRange(chapters)
     if (startNum === endNum) {
       rangeStr = `（第${startNum}章）`
     } else {

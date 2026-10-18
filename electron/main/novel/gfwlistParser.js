@@ -8,6 +8,7 @@ import { fetchWithRetry } from './utils.js'
 
 let cachedRules = null
 let cachedMeta = null
+let cachedRawContent = null
 
 /**
  * 获取本地缓存文件路径
@@ -106,7 +107,8 @@ export function parseAutoProxyText(rawText) {
   return {
     whitelist: Array.from(new Set(whitelist)),
     domainRules: Array.from(new Set(domainRules)),
-    regexRules
+    regexRules,
+    content
   }
 }
 
@@ -131,6 +133,9 @@ export function loadLocalGfwlist() {
         lastUpdated: data.lastUpdated || null,
         ruleCount: (data.domainRules?.length || 0) + (data.whitelist?.length || 0)
       }
+      if (data.rawContent) {
+        cachedRawContent = data.rawContent
+      }
       console.log(`[GFWList] 已从本地缓存载入规则库: ${cachedMeta.ruleCount} 条`)
       return cachedRules
     } catch (e) {
@@ -148,7 +153,76 @@ export function loadLocalGfwlist() {
     lastUpdated: null,
     ruleCount: BUILTIN_RULES.length
   }
+  cachedRawContent = BUILTIN_RULES.map(d => `||${d}`).join('\n')
   return cachedRules
+}
+
+/**
+ * 获取规则列表的原始文本正文
+ */
+export function getGfwlistRawContent() {
+  loadLocalGfwlist()
+  if (cachedRawContent) return cachedRawContent
+
+  const filePath = getCacheFilePath()
+  if (existsSync(filePath)) {
+    try {
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+      if (data.rawContent) {
+        cachedRawContent = data.rawContent
+        return cachedRawContent
+      }
+    } catch (_) {}
+  }
+
+  const rules = loadLocalGfwlist()
+  return (rules.domainRules || []).map(d => `||${d}`).join('\n')
+}
+
+/**
+ * 手动保存并解析规则列表正文
+ */
+export function saveGfwlistRawContent(text) {
+  if (!text || typeof text !== 'string') {
+    return { success: false, error: '内容不能为空' }
+  }
+
+  try {
+    const parsed = parseAutoProxyText(text)
+    const ruleCount = parsed.domainRules.length + parsed.whitelist.length + parsed.regexRules.length
+    const now = new Date().toISOString()
+    const payloadToSave = {
+      lastUpdated: now,
+      ruleCount,
+      whitelist: parsed.whitelist,
+      domainRules: parsed.domainRules,
+      regexRules: parsed.regexRules.map(r => r.source),
+      rawContent: parsed.content || text
+    }
+
+    const filePath = getCacheFilePath()
+    writeFileSync(filePath, JSON.stringify(payloadToSave, null, 2), 'utf-8')
+
+    cachedRules = {
+      whitelist: new Set(parsed.whitelist),
+      domainRules: parsed.domainRules,
+      regexRules: parsed.regexRules
+    }
+    cachedMeta = {
+      lastUpdated: now,
+      ruleCount
+    }
+    cachedRawContent = parsed.content || text
+
+    return {
+      success: true,
+      lastUpdated: now,
+      ruleCount,
+      rawContent: cachedRawContent
+    }
+  } catch (err) {
+    return { success: false, error: err.message }
+  }
 }
 
 /**
@@ -257,12 +331,14 @@ export async function updateGfwlistOnline(url = 'https://raw.githubusercontent.c
     }
 
     const now = new Date().toISOString()
+    const contentText = parsed.content || rawData
     const payloadToSave = {
       lastUpdated: now,
       ruleCount,
       whitelist: parsed.whitelist,
       domainRules: parsed.domainRules,
-      regexRules: parsed.regexRules.map(r => r.source)
+      regexRules: parsed.regexRules.map(r => r.source),
+      rawContent: contentText
     }
 
     const filePath = getCacheFilePath()
@@ -278,12 +354,14 @@ export async function updateGfwlistOnline(url = 'https://raw.githubusercontent.c
       lastUpdated: now,
       ruleCount
     }
+    cachedRawContent = contentText
 
     console.log(`[GFWList] 规则列表更新完成！成功解析 ${ruleCount} 条规则`)
     return {
       success: true,
       lastUpdated: now,
       ruleCount,
+      rawContent: contentText,
       message: `成功更新并加载 ${ruleCount} 条规则`
     }
   } catch (err) {

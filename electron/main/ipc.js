@@ -48,7 +48,7 @@ import {
 import {
   getProxyConfig, saveProxyConfig, detectLocalProxies, testProxyConnection, applyToElectronSession, updateRuleList
 } from './novel/proxyManager.js'
-import { getGfwlistStatus } from './novel/gfwlistParser.js'
+import { getGfwlistStatus, getGfwlistRawContent, saveGfwlistRawContent } from './novel/gfwlistParser.js'
 import { randomUUID } from 'crypto'
 
 export function setupIpcHandlers() {
@@ -864,5 +864,7 @@ export function setupIpcHandlers() {
   ipcMain.handle('test-proxy-connection', (_, targetUrl, customProxyUrl) => testProxyConnection(targetUrl, customProxyUrl))
   ipcMain.handle('update-rule-list', (_, url) => updateRuleList(url))
   ipcMain.handle('get-rule-list-status', () => getGfwlistStatus())
+  ipcMain.handle('get-rule-list-raw-content', () => getGfwlistRawContent())
+  ipcMain.handle('save-rule-list-raw-content', (_, text) => saveGfwlistRawContent(text))
 }
 
