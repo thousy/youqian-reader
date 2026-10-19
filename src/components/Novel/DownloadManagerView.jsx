@@ -17,6 +17,41 @@ const STATUS_LABEL = {
   cancelled: '已取消'
 }
 
+/**
+ * 规范化解析任务展示标题与章节范围：统一生成《书名》 作者:作者 (第X-Y章)
+ */
+export function parseTaskTitleAndRange(task) {
+  if (!task) return { title: '网络小说', author: '未知', range: '' }
+  let title = (task.novelTitle || '网络小说').replace(/^《|》$/g, '').trim()
+  let range = task.chapterRange || ''
+
+  // 智能兼容：若 title 内嵌有章节范围（如 超级房东（第1-1452章） 或 超级房东 (第1-1452章)），提取并提纯
+  const rangeMatch = title.match(/[（\(]\s*(?:第\s*\d+\s*[-~至到]\s*\d+\s*[章节卷]|\d+(?:\.\d+)?\s*(?:[－\-~～、—/]+|\s+至\s+|\s+到\s+)\s*\d+(?:\.\d+)?\s*(?:章|节|卷)?|第\s*\d+\s*[章节卷])\s*[）\)]/)
+  if (rangeMatch) {
+    if (!range) {
+      const inner = rangeMatch[0].replace(/^[（\(]\s*|\s*[）\)]$/g, '')
+      const numMatch = inner.match(/(\d+)\s*[-~至到－—/]+\s*(\d+)/)
+      if (numMatch) {
+        range = `(第${numMatch[1]}-${numMatch[2]}章)`
+      } else {
+        const singleMatch = inner.match(/(\d+)/)
+        if (singleMatch) {
+          range = `(第${singleMatch[1]}章)`
+        }
+      }
+    }
+    title = title.replace(rangeMatch[0], '').trim()
+  }
+
+  // 规范化作者（去除已存在的“作者：”或“作者:”前缀）
+  let author = (task.novelAuthor || '').replace(/^[作|原][者|著][：:\s]*/, '').trim()
+  if (!author || author === '未知' || author === 'None') {
+    author = '未知'
+  }
+
+  return { title, author, range }
+}
+
 export function DownloadManagerView() {
   const { showToast, showConfirm, setBooks, openBook } = useStore()
 
@@ -326,16 +361,19 @@ export function DownloadManagerView() {
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                          <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)' }}>
-                            《{(task.novelTitle || '网络小说').replace(/^《|》$/g, '')}》
-                          </span>
-                          {task.novelAuthor && task.novelAuthor !== '未知' && (
-                            <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                              作者：{task.novelAuthor}
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const { title, author, range } = parseTaskTitleAndRange(task)
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              <span style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                《{title}》
+                              </span>
+                              <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                作者:{author}{range ? ` ${range}` : ''}
+                              </span>
+                            </div>
+                          )
+                        })()}
                         <span style={{
                           fontSize: '12px', padding: '2px 8px', borderRadius: '10px',
                           background: `${STATUS_COLOR[task.status] || '#9ca3af'}20`,

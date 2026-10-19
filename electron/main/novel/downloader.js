@@ -96,19 +96,19 @@ function cnToNumber(str) {
 }
 
 /**
- * 解析计算章节范围字符串，输出统一精简的阿拉伯数字格式，如：（第1-25章）或（第1-1452章）
+ * 解析计算章节范围字符串，输出统一精简的阿拉伯数字格式，如：(第1-25章) 或 (第1-1452章)
  */
 function getChapterRangeStr(chapters) {
   if (!chapters || chapters.length === 0) return ''
   const { start: startNum, end: endNum } = detectRealChapterRange(chapters)
   if (startNum === endNum) {
-    return `（第${startNum}章）`
+    return `(第${startNum}章)`
   }
-  return `（第${startNum}-${endNum}章）`
+  return `(第${startNum}-${endNum}章)`
 }
 
 /**
- * 格式化下载书籍文件名: 《书籍名称（多少章到多少章）》作者：作者名称_来源：书源名称_书源网址_日期时间.ext
+ * 格式化下载书籍文件名: 《书籍名称》 作者:作者名称 (第X-Y章)_来源：书源名称_书源网址_日期时间.ext
  */
 function generateDownloadFileName(novelInfo, source, format, chapters = []) {
   const safeStr = (str) => (str || '未知').replace(/[\\/:*?"<>|\r\n\t]/g, '_').trim()
@@ -118,7 +118,7 @@ function generateDownloadFileName(novelInfo, source, format, chapters = []) {
   const title = safeStr(cleanTitle)
   const author = safeStr(cleanAuthor)
   const sourceName = safeStr(source?.name || novelInfo.sourceName || '未知书源')
-  const safeRangeStr = safeStr(rangeStr)
+  const safeRangeStr = rangeStr ? ` ${safeStr(rangeStr)}` : ''
 
   let rawUrl = source?.baseUrl || source?.rule?.url || novelInfo.url || ''
   try {
@@ -137,7 +137,7 @@ function generateDownloadFileName(novelInfo, source, format, chapters = []) {
   const ss = String(now.getSeconds()).padStart(2, '0')
   const timeStr = `${YYYY}${MM}${DD}_${hh}${mm}${ss}`
 
-  return `《${title}${safeRangeStr}》作者：${author}_来源：${sourceName}_${sourceUrl}_${timeStr}.${format.toLowerCase()}`
+  return `《${title}》 作者:${author}${safeRangeStr}_来源：${sourceName}_${sourceUrl}_${timeStr}.${format.toLowerCase()}`
 }
 
 function getConfigFilePath() {
@@ -195,15 +195,16 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
   const CONCURRENCY = Math.max(1, Math.min(32, rawConcurrency))
   const BATCH_INTERVAL = Math.max(100, Math.min(5000, cfg.batchInterval || 500))
   const MAX_RETRIES = Math.max(0, Math.min(5, cfg.maxRetries || 3))
-  const targetFormat = (formatOverride || cfg.outputFormat || 'EPUB').toUpperCase()
-
-  // 智能清洗提取真实作者与纯净书名，并自动结合本次下载的章节生成完整范围（如《我这系统不正经（第1-217章）》）
-  const { cleanTitle, author: cleanAuthor, rangeStr, titleWithRange } = cleanBookTitleAndAuthor(novelInfo.title, novelInfo.author, chapters)
+  // 智能清洗提取真实作者与纯净书名，并自动结合本次下载的章节生成完整范围（如《超级房东》 作者:俗人 (第1-1452章)）
+  const { cleanTitle, author: cleanAuthor, rangeStr, displayTitle, titleWithRange } = cleanBookTitleAndAuthor(novelInfo.title, novelInfo.author, chapters)
   const normalizedNovelInfo = {
     ...novelInfo,
-    title: titleWithRange,
+    title: cleanTitle,
     rawCleanTitle: cleanTitle,
-    author: cleanAuthor
+    author: cleanAuthor,
+    rangeStr,
+    displayTitle,
+    titleWithRange
   }
 
   let cancelled = false
@@ -211,8 +212,10 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     status: 'running',
     progress: 0,
     total: chapters.length,
-    novelTitle: normalizedNovelInfo.title,
-    novelAuthor: normalizedNovelInfo.author,
+    novelTitle: cleanTitle,
+    novelAuthor: cleanAuthor,
+    chapterRange: rangeStr,
+    displayTitle: displayTitle,
     format: targetFormat,
     cancel: () => { cancelled = true }
   })
@@ -221,8 +224,10 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     status: 'running',
     progress: 0,
     total: chapters.length,
-    novelTitle: normalizedNovelInfo.title,
-    novelAuthor: normalizedNovelInfo.author,
+    novelTitle: cleanTitle,
+    novelAuthor: cleanAuthor,
+    chapterRange: rangeStr,
+    displayTitle: displayTitle,
     format: targetFormat
   })
 

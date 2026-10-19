@@ -450,25 +450,27 @@ export function cleanBookTitleAndAuthor(rawTitle = '', rawAuthor = '', chapters 
     title = (rawTitle || '未知书籍').replace(/^《|》$/g, '').trim()
   }
 
-  // 7. 计算本次下载的完整章节范围 (支持智能探测多章分卷真实起止，如【1-5】至【1441-1452】输出第1-1452章)
+  // 7. 计算本次下载的完整章节范围 (支持智能探测多章分卷真实起止，如【1-5】至【1441-1452】输出 (第1-1452章))
   let rangeStr = ''
   if (chapters && chapters.length > 0) {
     const { start: startNum, end: endNum } = detectRealChapterRange(chapters)
     if (startNum === endNum) {
-      rangeStr = `（第${startNum}章）`
+      rangeStr = `(第${startNum}章)`
     } else {
-      rangeStr = `（第${startNum}-${endNum}章）`
+      rangeStr = `(第${startNum}-${endNum}章)`
     }
   }
 
   const cleanTitle = title
   const finalAuthor = author || '未知'
-  const titleWithRange = rangeStr ? `${cleanTitle}${rangeStr}` : cleanTitle
+  const displayTitle = `《${cleanTitle}》 作者:${finalAuthor}${rangeStr ? ` ${rangeStr}` : ''}`
+  const titleWithRange = rangeStr ? `${cleanTitle} ${rangeStr}` : cleanTitle
 
   return {
     cleanTitle,
     author: finalAuthor,
     rangeStr,
+    displayTitle,
     titleWithRange
   }
 }

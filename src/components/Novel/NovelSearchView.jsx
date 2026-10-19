@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../../store/useStore'
 import { convertChinese } from '../../utils/chineseConverter'
+import { parseTaskTitleAndRange } from './DownloadManagerView'
 
 const SOURCE_LABELS = {
   biquge: '笔趣阁',
@@ -786,7 +787,17 @@ export function NovelSearchView() {
             {taskList.map(([taskId, task]) => (
               <div key={taskId} className={`novel-task-item task-${task.status}`}>
                 <div className="novel-task-info">
-                  <span className="novel-task-title">《{task.novelTitle}》 <span style={{ fontSize: '11px', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-layer2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}>{task.format || 'EPUB'}</span></span>
+                  <span className="novel-task-title">
+                    {(() => {
+                      const { title, author, range } = parseTaskTitleAndRange(task)
+                      return (
+                        <>
+                          《{title}》{author && author !== '未知' ? ` 作者:${author}` : ''}{range ? ` ${range}` : ''}{' '}
+                          <span style={{ fontSize: '11px', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-layer2)', color: 'var(--accent-light)', border: '1px solid var(--border)' }}>{task.format || 'EPUB'}</span>
+                        </>
+                      )
+                    })()}
+                  </span>
                   <span className="novel-task-status" style={{ color: STATUS_COLOR[task.status] || '#9ca3af' }}>
                     {STATUS_LABEL[task.status] || task.status}
                   </span>
