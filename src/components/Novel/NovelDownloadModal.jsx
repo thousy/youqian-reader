@@ -105,37 +105,75 @@ export function NovelDownloadModal({
   const currentBookAuthor = displayAuthor.replace(/^[作|原][者|著][：:\s]*/, '') || '未知'
   const currentSourceText = getSourceName(novelInfo)
 
-  // 动态探测当前已选章节的起始与结束范围
-  const selectedRangeStr = useMemo(() => {
-    if (!selectedChapters || selectedChapters.length === 0) return ''
-    const firstCh = selectedChapters[0]
-    const lastCh = selectedChapters[selectedChapters.length - 1]
-
-    const parseChNum = (title, fallbackIdx) => {
-      if (!title) return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
-      const m = title.match(/[（\(【\[]?\s*(?:第\s*)?(\d+)(?:\s*[-~至到－—/]+\s*(\d+))?\s*[章节卷]?\s*[）\)】\]]?/)
-      if (m) {
-        const s = parseInt(m[1], 10)
-        const e = m[2] ? parseInt(m[2], 10) : s
-        return { start: s, end: e }
-      }
-      return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
+  // 提取章节标题中的起止章数辅助函数
+  const parseChNum = (title, fallbackIdx) => {
+    if (!title) return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
+    const m = title.match(/[（\(【\[]?\s*(?:第\s*)?(\d+)(?:\s*[-~至到－—/]+\s*(\d+))?\s*[章节卷]?\s*[）\)】\]]?/)
+    if (m) {
+      const s = parseInt(m[1], 10)
+      const e = m[2] ? parseInt(m[2], 10) : s
+      return { start: s, end: e }
     }
+    return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
+  }
 
-    const r1 = parseChNum(firstCh?.title, firstCh?.originalIndex ?? 0)
-    const r2 = parseChNum(lastCh?.title, lastCh?.originalIndex ?? (selectedChapters.length - 1))
+  // 全书所有章节的范围特征分析
+  const totalBookInfo = useMemo(() => {
+    if (!safeChapters || safeChapters.length === 0) {
+      return { totalCount: 0, rangeStr: '', isVolumeSplit: false, displayLabel: '共 0 章' }
+    }
+    const totalCount = safeChapters.length
+    const firstCh = safeChapters[0]
+    const lastCh = safeChapters[totalCount - 1]
+
+    const r1 = parseChNum(firstCh?.title, 0)
+    const r2 = parseChNum(lastCh?.title, totalCount - 1)
     const startNum = r1.start
     const endNum = r2.end || r2.start
 
-    if (startNum === endNum) {
-      return `(第${startNum}章)`
+    const isVolumeSplit = endNum > totalCount * 1.5 || (r1.end > r1.start)
+    const rangeStr = startNum === endNum ? `第${startNum}章` : `第${startNum}-${endNum}章`
+    const displayLabel = isVolumeSplit
+      ? `${rangeStr} · 共 ${totalCount} 卷`
+      : `共 ${totalCount} 章`
+
+    return { totalCount, startNum, endNum, isVolumeSplit, rangeStr, displayLabel }
+  }, [safeChapters])
+
+  // 动态探测当前已选章节的起始与结束范围
+  const selectedInfo = useMemo(() => {
+    if (!selectedChapters || selectedChapters.length === 0) {
+      return { count: 0, rangeStr: '', plainRange: '', displayLabel: '0 章', buttonLabel: '0章' }
     }
-    return `(第${startNum}-${endNum}章)`
-  }, [selectedChapters])
+    const count = selectedChapters.length
+    const firstCh = selectedChapters[0]
+    const lastCh = selectedChapters[count - 1]
+
+    const r1 = parseChNum(firstCh?.title, firstCh?.originalIndex ?? 0)
+    const r2 = parseChNum(lastCh?.title, lastCh?.originalIndex ?? (count - 1))
+    const startNum = r1.start
+    const endNum = r2.end || r2.start
+
+    const isVolumeSplit = totalBookInfo.isVolumeSplit || endNum > count * 1.5 || (r1.end > r1.start)
+    const rangeStr = startNum === endNum ? `(第${startNum}章)` : `(第${startNum}-${endNum}章)`
+    const plainRange = startNum === endNum ? `第${startNum}章` : `第${startNum}-${endNum}章`
+
+    const displayLabel = isVolumeSplit
+      ? `${plainRange} (共 ${count} 卷)`
+      : `共 ${count} 章`
+
+    const buttonLabel = isVolumeSplit
+      ? `${plainRange}`
+      : `${count}章`
+
+    return { count, startNum, endNum, isVolumeSplit, rangeStr, plainRange, displayLabel, buttonLabel }
+  }, [selectedChapters, totalBookInfo])
+
+  const selectedRangeStr = selectedInfo.rangeStr
 
   return (
     <div className="novel-modal-overlay" onClick={e => e.target === e.currentTarget && onClose?.()}>
-      <div className="novel-modal" style={{ maxWidth: '640px' }}>
+      <div className="novel-modal" style={{ maxWidth: '680px', width: '92vw' }}>
         <div className="novel-modal-header">
           <div className="novel-modal-book-info">
             {novelInfo?.cover ? (
@@ -186,7 +224,7 @@ export function NovelDownloadModal({
               {/* 1. 选择下载范围 */}
               <div style={{ marginBottom: '14px' }}>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                  📥 1. 选择下载范围 (共 {safeChapters.length} 章)：
+                  📥 1. 选择下载范围 ({totalBookInfo.displayLabel})：
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                   <button
@@ -200,7 +238,11 @@ export function NovelDownloadModal({
                     }}
                   >
                     🌟 下载全本
-                    <div style={{ fontSize: '11px', opacity: 0.8, marginTop: '2px' }}>全量 {safeChapters.length} 章</div>
+                    <div style={{ fontSize: '11px', opacity: 0.85, marginTop: '2px' }}>
+                      {totalBookInfo.isVolumeSplit
+                        ? `全量 ${totalBookInfo.rangeStr} (${totalBookInfo.totalCount}卷)`
+                        : `全量 ${totalBookInfo.totalCount} 章`}
+                    </div>
                   </button>
 
                   <button
@@ -448,13 +490,16 @@ export function NovelDownloadModal({
 
         {!loading && safeChapters.length > 0 && (
           <div className="novel-modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-              <span className="novel-modal-tip" style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0, flex: 1 }}>
+              <div
+                style={{ fontSize: '11.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                title={`《${currentBookTitle}》 作者:${currentBookAuthor}${selectedRangeStr ? ` ${selectedRangeStr}` : ''}.${downloadFormat.toLowerCase()}`}
+              >
                 导出文件：<strong style={{ color: 'var(--text-primary)' }}>《{currentBookTitle}》 作者:{currentBookAuthor}{selectedRangeStr ? ` ${selectedRangeStr}` : ''}.{downloadFormat.toLowerCase()}</strong>
-              </span>
-              <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                当前已选：<strong style={{ color: 'var(--accent-light)' }}>{selectedChapters.length}</strong> 章 ({downloadConcurrency} 线程并发)
-              </span>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                当前已选：<strong style={{ color: 'var(--accent-light)' }}>{selectedInfo.displayLabel}</strong> · {downloadConcurrency} 线程并发
+              </div>
             </div>
             <div className="novel-modal-btns" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
               <button className="novel-modal-cancel-btn" onClick={onClose}>取消</button>
@@ -473,10 +518,10 @@ export function NovelDownloadModal({
                   boxShadow: '0 2px 8px rgba(0,0,0,0.2)', transition: 'all 0.2s ease',
                   opacity: selectedChapters.length === 0 ? 0.6 : 1
                 }}
-                title={`按当前选择下载 ${selectedChapters.length} 章为 ${downloadFormat} 格式 (${downloadConcurrency} 线程)`}
+                title={`按当前选择下载为 ${downloadFormat} 格式 (${downloadConcurrency} 线程)`}
               >
                 <span>{downloadFormat === 'EPUB' ? '📚' : downloadFormat === 'PDF' ? '📕' : '📄'}</span>
-                <span>立即下载 {downloadFormat} ({selectedChapters.length}章 · {downloadConcurrency}线程)</span>
+                <span>立即下载 {downloadFormat} ({selectedInfo.buttonLabel} · {downloadConcurrency}线程)</span>
               </button>
             </div>
           </div>
