@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 
 const SOURCE_LABELS = {
   biquge: '笔趣阁',
@@ -102,8 +102,36 @@ export function NovelDownloadModal({
   }
 
   const currentBookTitle = displayTitle
-  const currentBookAuthor = displayAuthor
+  const currentBookAuthor = displayAuthor.replace(/^[作|原][者|著][：:\s]*/, '') || '未知'
   const currentSourceText = getSourceName(novelInfo)
+
+  // 动态探测当前已选章节的起始与结束范围
+  const selectedRangeStr = useMemo(() => {
+    if (!selectedChapters || selectedChapters.length === 0) return ''
+    const firstCh = selectedChapters[0]
+    const lastCh = selectedChapters[selectedChapters.length - 1]
+
+    const parseChNum = (title, fallbackIdx) => {
+      if (!title) return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
+      const m = title.match(/[（\(【\[]?\s*(?:第\s*)?(\d+)(?:\s*[-~至到－—/]+\s*(\d+))?\s*[章节卷]?\s*[）\)】\]]?/)
+      if (m) {
+        const s = parseInt(m[1], 10)
+        const e = m[2] ? parseInt(m[2], 10) : s
+        return { start: s, end: e }
+      }
+      return { start: fallbackIdx + 1, end: fallbackIdx + 1 }
+    }
+
+    const r1 = parseChNum(firstCh?.title, firstCh?.originalIndex ?? 0)
+    const r2 = parseChNum(lastCh?.title, lastCh?.originalIndex ?? (selectedChapters.length - 1))
+    const startNum = r1.start
+    const endNum = r2.end || r2.start
+
+    if (startNum === endNum) {
+      return `(第${startNum}章)`
+    }
+    return `(第${startNum}-${endNum}章)`
+  }, [selectedChapters])
 
   return (
     <div className="novel-modal-overlay" onClick={e => e.target === e.currentTarget && onClose?.()}>
@@ -116,8 +144,17 @@ export function NovelDownloadModal({
               <div className="novel-modal-cover-ph">{currentBookTitle.slice(0, 2)}</div>
             )}
             <div>
-              <div className="novel-modal-title">{currentBookTitle}</div>
-              <div className="novel-modal-author">作者：{currentBookAuthor}</div>
+              <div className="novel-modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span>《{currentBookTitle}》</span>
+              </div>
+              <div className="novel-modal-author" style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', marginTop: '2px' }}>
+                <span>作者:{currentBookAuthor}</span>
+                {selectedRangeStr && (
+                  <span style={{ color: 'var(--accent-light)', fontWeight: 500 }}>
+                    {selectedRangeStr}
+                  </span>
+                )}
+              </div>
               <div className="novel-modal-source-info">
                 <span>来源书源：<strong>{currentSourceText}</strong></span>
                 {novelInfo?.url && getDomain(novelInfo.url) && <span> ({getDomain(novelInfo.url)})</span>}
@@ -381,19 +418,26 @@ export function NovelDownloadModal({
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>目录预览（点击任意章节可立即在线试读）：</span>
               </div>
               <div className="novel-chapter-preview" style={{ maxHeight: '160px' }}>
-                {selectedChapters.slice(0, 10).map((ch, i) => (
-                  <div
-                    key={i}
-                    className="novel-chapter-item"
-                    onClick={() => onOpenPreview?.(safeChapters.indexOf(ch))}
-                    style={{ cursor: onOpenPreview ? 'pointer' : 'default' }}
-                    title={onOpenPreview ? '点击在线试读此章节' : ''}
-                  >
-                    <span className="novel-chapter-num">{safeChapters.indexOf(ch) + 1}</span>
-                    <span className="novel-chapter-name" style={{ color: 'var(--accent-light)' }}>{ch.title}</span>
-                    {onOpenPreview && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>📖 试读</span>}
-                  </div>
-                ))}
+                {selectedChapters.slice(0, 10).map((ch, i) => {
+                  const realIdx = ch.originalIndex !== undefined ? ch.originalIndex : i
+                  // 智能提纯章节标题，剥离末尾的 作者: xxx 等发帖人标记
+                  const cleanChTitle = (ch.title || `第 ${realIdx + 1} 章`)
+                    .replace(/\s*作[者著][：:][^\s]+.*$/, '')
+                    .trim()
+                  return (
+                    <div
+                      key={realIdx}
+                      className="novel-chapter-item"
+                      onClick={() => onOpenPreview?.(realIdx)}
+                      style={{ cursor: onOpenPreview ? 'pointer' : 'default' }}
+                      title={onOpenPreview ? '点击在线试读此章节' : ''}
+                    >
+                      <span className="novel-chapter-num">{realIdx + 1}</span>
+                      <span className="novel-chapter-name" style={{ color: 'var(--accent-light)' }}>{cleanChTitle}</span>
+                      {onOpenPreview && <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>📖 试读</span>}
+                    </div>
+                  )
+                })}
                 {selectedChapters.length > 10 && (
                   <div className="novel-chapter-more">...已选 {selectedChapters.length} 章节</div>
                 )}
@@ -406,10 +450,10 @@ export function NovelDownloadModal({
           <div className="novel-modal-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
               <span className="novel-modal-tip" style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                下载完成后自动加入书库并生成 <strong>{downloadFormat}</strong> 文件 ({downloadConcurrency} 线程)
+                导出文件：<strong style={{ color: 'var(--text-primary)' }}>《{currentBookTitle}》 作者:{currentBookAuthor}{selectedRangeStr ? ` ${selectedRangeStr}` : ''}.{downloadFormat.toLowerCase()}</strong>
               </span>
               <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                当前已选：<strong style={{ color: 'var(--accent-light)' }}>{selectedChapters.length}</strong> 章
+                当前已选：<strong style={{ color: 'var(--accent-light)' }}>{selectedChapters.length}</strong> 章 ({downloadConcurrency} 线程并发)
               </span>
             </div>
             <div className="novel-modal-btns" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
