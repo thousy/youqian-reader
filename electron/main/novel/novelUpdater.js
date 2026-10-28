@@ -20,15 +20,28 @@ export function getNovelCacheDir(bookId) {
 }
 
 /**
+ * 判断书籍或书源信息是否属于 BBS 论坛类书源（如 cool18 / 禁忌书屋等）
+ */
+function isBbsBookSource(book) {
+  if (!book) return false
+  const sid = String(book.novelSourceId || book.sourceId || '').toLowerCase()
+  const url = String(book.novelUrl || '').toLowerCase()
+  const sname = String(book.sourceName || '').toLowerCase()
+  return sid.includes('cool18') || url.includes('cool18') || url.includes('bbs') || sname.includes('论坛') || sname.includes('禁忌') || sname.includes('留园')
+}
+
+/**
  * 一键将在线连载小说加入书架追更 (免等待全本下载)
  */
 export function addSerialBookToShelf(novelInfo) {
   try {
-    // 纯净化论坛连载小说书名（去除【】与后面的分卷章节后缀如 （30-43），恢复为纯净主书名）
+    // 仅针对论坛连载小说纯净化书名（去除【】与后面的分卷章节后缀如 （30-43），恢复为纯净主书名）
     let cleanBookTitle = novelInfo.title || ''
-    const bbsParsed = parseBbsChapterInfo(cleanBookTitle)
-    if (bbsParsed && bbsParsed.mainName) {
-      cleanBookTitle = bbsParsed.mainName
+    if (isBbsBookSource(novelInfo)) {
+      const bbsParsed = parseBbsChapterInfo(cleanBookTitle)
+      if (bbsParsed && bbsParsed.mainName) {
+        cleanBookTitle = bbsParsed.mainName
+      }
     }
 
     // 纯净化作者名
@@ -122,65 +135,78 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
           const t = ch?.title || ''
           return t.includes('用户前期主贴') || t.includes('返回禁忌书屋首页') || t.includes('我们联系') || t === '返回主帖'
         })
-        // 自动自愈：若本地缓存仅有 1 章且为论坛连载书籍或标题含分卷标记，极可能是先前单帖未聚合成功的残留
-        const isBbsSource = (book.novelSourceId?.includes('cool18') || book.novelUrl?.includes('cool18') || book.novelUrl?.includes('bbs') || book.sourceName?.includes('论坛'))
-        const hasBbsTitleFeature = /[（\(][^0-9（\)]*?\d+/.test(book.title || '') || (book.latestChapter && /[（\(][^0-9（\)]*?\d+/.test(book.latestChapter))
+        const isBbsSource = isBbsBookSource(book)
+        const hasBbsTitleFeature = isBbsSource && (/[（\(][^0-9（\)]*?\d+/.test(book.title || '') || (book.latestChapter && /[（\(][^0-9（\)]*?\d+/.test(book.latestChapter)))
         const isSuspiciousSingleChapter = cached.length <= 1 && (isBbsSource || hasBbsTitleFeature)
 
         // 自动自愈2：若论坛书籍首章起始序号明显大于第1卷（例如从4、10或13章开始），说明严重缺失前置卷，强制在线重拉
-        const firstChInfo = cached[0] ? parseBbsChapterInfo(cached[0].title) : null
+        const firstChInfo = (isBbsSource && cached[0]) ? parseBbsChapterInfo(cached[0].title) : null
         const firstChStart = cached[0]?.start !== undefined && cached[0].start > 0 ? cached[0].start : (firstChInfo?.start || 0)
         const isMissingFirstChapters = isBbsSource && firstChStart > 3000
 
-        // 自动自愈：检测是否出现上部与下部交错穿插错乱（如出现下部章节后，后续又出现上部章节）
-        let seenLowerPart = false
+        // 自动自愈：仅针对论坛书源检测上下部交错与分卷区间去重
         let hasPartInterleaving = false
-        for (const ch of cached) {
-          const t = ch?.title || ''
-          const isLower = t.includes('下部') || t.includes('第二部') || t.includes('后传') || t.includes('续')
-          const isUpper = t.includes('上部') || t.includes('第一部') || (!isLower && /[（\(][^0-9（\)]*?\d+/.test(t))
-          if (isLower) {
-            seenLowerPart = true
-          } else if (seenLowerPart && isUpper) {
-            hasPartInterleaving = true
-            break
-          }
-        }
-
-        // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余、乱序或标题未规范对齐
-        if (cached.length > 1) {
-          const dedupped = filterOverlappingBbsChapters(cached)
-          // 守护：若首尾 start 存在明显倒序特征，执行翻转
-          const firstStart = dedupped[0]?.start || 0
-          const lastStart = dedupped[dedupped.length - 1]?.start || 0
-          if (firstStart > 0 && lastStart > 0 && firstStart > lastStart) {
-            dedupped.reverse()
-            dedupped.forEach((c, idx) => { c.index = idx })
+        if (isBbsSource) {
+          let seenLowerPart = false
+          for (const ch of cached) {
+            const t = ch?.title || ''
+            const isLower = t.includes('下部') || t.includes('第二部') || t.includes('后传') || t.includes('续')
+            const isUpper = t.includes('上部') || t.includes('第一部') || (!isLower && /[（\(][^0-9（\)]*?\d+/.test(t))
+            if (isLower) {
+              seenLowerPart = true
+            } else if (seenLowerPart && isUpper) {
+              hasPartInterleaving = true
+              break
+            }
           }
 
-          const hasDifferentCount = dedupped.length !== cached.length
-          const hasChange = dedupped.some((ch, idx) => ch.url !== cached[idx]?.url || ch.title !== cached[idx]?.title)
-          if (hasDifferentCount || hasChange) {
-            // 发现本地缓存存在乱序、重复分卷或非规范标题，立即修复本地缓存并持久化
-            try {
-              writeFileSync(indexFile, JSON.stringify(dedupped, null, 2), 'utf-8')
-              updateBook(bookId, {
-                totalChapters: dedupped.length,
-                latestChapter: dedupped[dedupped.length - 1]?.title || ''
-              })
-              // 目录重排或修复时，清理所有旧的单章缓存，彻底杜绝 index 与正文错位串位
-              const oldFiles = readdirSync(cacheDir)
-              for (const f of oldFiles) {
-                if (f.startsWith('ch_') && f.endsWith('.json')) {
-                  try { rmSync(join(cacheDir, f)) } catch (_) {}
+          // 自动自愈：检测是否出现分卷区间重叠/合集与散帖混排冗余、乱序或标题未规范对齐
+          if (cached.length > 1) {
+            const dedupped = filterOverlappingBbsChapters(cached)
+            // 守护：若首尾 start 存在明显倒序特征，执行翻转
+            const firstStart = dedupped[0]?.start || 0
+            const lastStart = dedupped[dedupped.length - 1]?.start || 0
+            if (firstStart > 0 && lastStart > 0 && firstStart > lastStart) {
+              dedupped.reverse()
+              dedupped.forEach((c, idx) => { c.index = idx })
+            }
+
+            const hasDifferentCount = dedupped.length !== cached.length
+            const hasChange = dedupped.some((ch, idx) => ch.url !== cached[idx]?.url || ch.title !== cached[idx]?.title)
+            if (hasDifferentCount || hasChange) {
+              // 发现本地缓存存在乱序、重复分卷或非规范标题，立即修复本地缓存并持久化
+              try {
+                writeFileSync(indexFile, JSON.stringify(dedupped, null, 2), 'utf-8')
+                updateBook(bookId, {
+                  totalChapters: dedupped.length,
+                  latestChapter: dedupped[dedupped.length - 1]?.title || ''
+                })
+                // 目录重排或修复时，清理所有旧的单章缓存，彻底杜绝 index 与正文错位串位
+                const oldFiles = readdirSync(cacheDir)
+                for (const f of oldFiles) {
+                  if (f.startsWith('ch_') && f.endsWith('.json')) {
+                    try { rmSync(join(cacheDir, f)) } catch (_) {}
+                  }
                 }
-              }
-            } catch (_) {}
-            return { success: true, chapters: dedupped, fromCache: true }
+              } catch (_) {}
+              return { success: true, chapters: dedupped, fromCache: true }
+            }
           }
         }
 
-        if (hasDirtyJunk || isSuspiciousSingleChapter || hasPartInterleaving || isMissingFirstChapters) {
+        // 自动自愈3：若常规非论坛书源的本地缓存曾被 BBS 去重逻辑、Legado #注释 URL 或顶部倒序最新章节预览污染，强制在线重拉恢复
+        const hasCorruptedHashUrl = cached.some(ch => ch?.url && /#[^/]*\//.test(ch.url))
+        const firstChNum = cached.length > 20 ? extractChapterNumber(cached[0]?.title) : null
+        const tenthChNum = cached.length > 20 ? extractChapterNumber(cached[10]?.title) : null
+        const hasTopLatestPreviewOffset = !isBbsSource && firstChNum !== null && tenthChNum !== null && firstChNum > tenthChNum + 50
+        const isCorruptedByBbsFilter = !isBbsSource && (
+          hasCorruptedHashUrl ||
+          hasTopLatestPreviewOffset ||
+          cached.some(ch => ch && ch.partNumber !== undefined) ||
+          (book.remoteTotalChapters && book.remoteTotalChapters > cached.length && cached.every(ch => /^【.*第?\d+.*】$/.test(ch?.title || '')))
+        )
+
+        if (hasDirtyJunk || isSuspiciousSingleChapter || hasPartInterleaving || isMissingFirstChapters || isCorruptedByBbsFilter) {
           // 清理所有旧的正文缓存，避免重新拉取后新目录索引与旧正文错位
           try {
             const oldFiles = readdirSync(cacheDir)
@@ -197,63 +223,119 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
     } catch (_) {}
   }
 
-  // 在线从书源拉取目录
+  // 在线从书源拉取目录（若原书源死链/超时且本地缓存缺失或损坏，自动检索健康替代源完成无缝自愈）
+  let chapters = []
+  let activeSourceId = book.novelSourceId
+  let activeSourceName = book.sourceName
+  let activeNovelUrl = book.novelUrl
+  let activeAuthor = book.author
+  let fetchErr = null
+
   try {
     const rawRes = await getNovelChapters(book.novelUrl, book.novelSourceId)
-    const chapters = normalizeChapterList(rawRes)
-    if (!chapters || chapters.length === 0) {
-      return { success: false, error: '获取远端章节列表失败或章节为空' }
-    }
+    chapters = normalizeChapterList(rawRes)
+  } catch (e) {
+    fetchErr = e
+  }
 
-    // 格式化并持久化至本地索引
-    const formattedChapters = chapters.map((ch, idx) => ({
-      index: idx,
-      title: ch.title,
-      url: ch.url
-    }))
-
+  if (!chapters || chapters.length === 0) {
     try {
-      writeFileSync(indexFile, JSON.stringify(formattedChapters, null, 2), 'utf-8')
-      // 彻底清理旧单章缓存，杜绝新目录索引与旧单章正文错位串位
-      const oldFiles = readdirSync(cacheDir)
-      for (const f of oldFiles) {
-        if (f.startsWith('ch_') && f.endsWith('.json')) {
-          try {
-            rmSync(join(cacheDir, f))
-          } catch (_) {}
+      const altRes = await searchAlternativeSources(book.title, book.author, null, null, book.blockedSources || [])
+      if (altRes?.success && Array.isArray(altRes.sources) && altRes.sources.length > 0) {
+        const expectedMin = book.remoteTotalChapters || book.totalChapters || 1
+        const bestAlt = altRes.sources.find(s => s.chapterCount >= expectedMin) || altRes.sources[0]
+        if (bestAlt && bestAlt.novelUrl && bestAlt.sourceId) {
+          const altRaw = await getNovelChapters(bestAlt.novelUrl, bestAlt.sourceId)
+          const altNorm = normalizeChapterList(altRaw)
+          if (altNorm && altNorm.length > 0) {
+            chapters = altNorm
+            activeSourceId = bestAlt.sourceId
+            activeSourceName = bestAlt.sourceName || bestAlt.sourceId
+            activeNovelUrl = bestAlt.novelUrl
+            if ((!activeAuthor || activeAuthor === '未知') && bestAlt.author && bestAlt.author !== '未知') {
+              activeAuthor = bestAlt.author
+            }
+            fetchErr = null
+          }
         }
       }
     } catch (_) {}
-
-    // 更新书籍的章节总数和最新章节
-    const latestTitle = formattedChapters[formattedChapters.length - 1]?.title || ''
-    updateBook(bookId, {
-      totalChapters: formattedChapters.length,
-      latestChapter: latestTitle
-    })
-
-    return { success: true, chapters: formattedChapters, fromCache: false }
-  } catch (e) {
-    return { success: false, error: '加载章节列表异常: ' + e.message }
   }
+
+  if (!chapters || chapters.length === 0) {
+    return {
+      success: false,
+      error: fetchErr ? ('加载章节列表异常: ' + fetchErr.message) : '获取远端章节列表失败或章节为空'
+    }
+  }
+
+  // 格式化并持久化至本地索引
+  const formattedChapters = chapters.map((ch, idx) => ({
+    index: idx,
+    title: ch.title,
+    url: ch.url
+  }))
+
+  try {
+    writeFileSync(indexFile, JSON.stringify(formattedChapters, null, 2), 'utf-8')
+    // 彻底清理旧单章缓存，杜绝新目录索引与旧单章正文错位串位
+    const oldFiles = readdirSync(cacheDir)
+    for (const f of oldFiles) {
+      if (f.startsWith('ch_') && f.endsWith('.json')) {
+        try {
+          rmSync(join(cacheDir, f))
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  // 更新书籍的章节总数、最新章节及自愈后的有效书源信息
+  const latestTitle = formattedChapters[formattedChapters.length - 1]?.title || ''
+  updateBook(bookId, {
+    novelSourceId: activeSourceId,
+    sourceName: activeSourceName,
+    novelUrl: activeNovelUrl,
+    author: activeAuthor,
+    totalChapters: formattedChapters.length,
+    remoteTotalChapters: formattedChapters.length,
+    unreadCount: 0,
+    hasUpdate: false,
+    latestChapter: latestTitle
+  })
+
+  return { success: true, chapters: formattedChapters, fromCache: false }
 }
 
 /**
  * 获取单章正文（优先本地缓存，若无则在线请求并存盘）
  */
 export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch = false) {
-  const book = getBookById(bookId)
+  let book = getBookById(bookId)
   if (!book) return { success: false, error: '未找到书籍' }
 
   const cacheDir = getNovelCacheDir(bookId)
   const chapterFile = join(cacheDir, `ch_${chapterIndex}.json`)
 
   // 1. 获取当前章节列表中该索引对应的元数据 (chapterMeta)
-  const chaptersRes = await getOrFetchBookChapters(bookId, false)
-  if (!chaptersRes.success || !chaptersRes.chapters[chapterIndex]) {
-    return { success: false, error: '未找到该章节的信息' }
+  let chaptersRes = await getOrFetchBookChapters(bookId, false)
+  if (!chaptersRes.success) {
+    return { success: false, error: chaptersRes.error || '加载章节目录失败' }
+  }
+  if (!chaptersRes.chapters[chapterIndex]) {
+    // 若请求的章节索引超出当前本地缓存目录长度，尝试强制在线刷新一次目录自愈
+    const refreshRes = await getOrFetchBookChapters(bookId, true)
+    if (refreshRes.success && refreshRes.chapters?.[chapterIndex]) {
+      chaptersRes = refreshRes
+    } else {
+      return {
+        success: false,
+        error: `未找到第 ${chapterIndex + 1} 章的信息（当前书源共 ${chaptersRes.chapters?.length || 0} 章，建议点击顶部「换源」切换其他书源）`
+      }
+    }
   }
 
+  // 重新读取可能已被目录自愈更新过书源的 book 对象
+  book = getBookById(bookId) || book
   const chapterMeta = chaptersRes.chapters[chapterIndex]
 
   // 2. 检查本地缓存（严格校验 URL 与分卷范围，杜绝错位脏缓存）

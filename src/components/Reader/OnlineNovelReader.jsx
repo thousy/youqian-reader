@@ -87,43 +87,67 @@ function toDBC(str) {
   return res
 }
 
-// 净化并统一侧边栏目录中的章节标题，规范为 【XXX-XXX】 风格，保留分部（第二部等）标记
-function cleanDisplayChapterTitle(title, bookTitle) {
+// 判断当前书籍是否属于论坛型书源（如 cool18 / 禁忌书屋 / 留园等）
+function isBbsBookSource(book) {
+  if (!book) return false
+  const srcId = String(book.novelSourceId || '').toLowerCase()
+  const srcName = String(book.sourceName || '').toLowerCase()
+  const url = String(book.novelUrl || '').toLowerCase()
+  return (
+    srcId.includes('cool18') ||
+    srcId.includes('bbs') ||
+    srcId.includes('论坛') ||
+    srcId.includes('禁忌') ||
+    srcId.includes('留园') ||
+    srcName.includes('cool18') ||
+    srcName.includes('bbs') ||
+    srcName.includes('论坛') ||
+    srcName.includes('禁忌') ||
+    srcName.includes('留园') ||
+    url.includes('cool18') ||
+    url.includes('/bbs')
+  )
+}
+
+// 净化并统一侧边栏目录中的章节标题（论坛源规范为 【XXX-XXX】 风格，常规网文保留原始章节副标题）
+function cleanDisplayChapterTitle(title, bookTitle, isBbs = false) {
   if (!title) return ''
   const t = toDBC(title).trim()
 
-  // 1. 识别并保留分部特征 (如 第二部、下部、续、番外等)
-  let partPrefix = ''
-  const partMatch = t.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
-  if (partMatch) {
-    const pStr = partMatch[0]
-    if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {
-      partPrefix = '第二部 '
-    } else if (pStr.includes('上') || pStr.includes('前') || pStr.includes('一')) {
-      partPrefix = ''
-    } else {
-      partPrefix = `${pStr} `
+  if (isBbs) {
+    // 1. 识别并保留分部特征 (如 第二部、下部、续、番外等)
+    let partPrefix = ''
+    const partMatch = t.match(/(?:第([一二三四五六七八九十\d]+)[部|卷|季])|(上部|下部|前部|后部|续集|续篇|前传|后传|番外|续)/)
+    if (partMatch) {
+      const pStr = partMatch[0]
+      if (pStr.includes('下') || pStr.includes('后') || pStr.includes('续') || pStr.includes('二')) {
+        partPrefix = '第二部 '
+      } else if (pStr.includes('上') || pStr.includes('前') || pStr.includes('一')) {
+        partPrefix = ''
+      } else {
+        partPrefix = `${pStr} `
+      }
     }
-  }
 
-  const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
-  const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1].trim()}` : ''
+    const authorMatch = t.match(/[作|原][者|著][：:]\s*([^\s\[【<]+)/)
+    const authorSuffix = authorMatch ? ` 作者: ${authorMatch[1].trim()}` : ''
 
-  // 2. 匹配明确的分卷范围（如 001-009、1-7、10-14、1.1-2.59 等）
-  const rangeMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
-                     t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
-  if (rangeMatch) {
-    const rawStart = rangeMatch[1]
-    const rawEnd = rangeMatch[2]
-    return `【${partPrefix}${rawStart}-${rawEnd}】${authorSuffix}`
-  }
+    // 2. 匹配明确的分卷范围（如 001-009、1-7、10-14、1.1-2.59 等）
+    const rangeMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*[】\]）\)]/) ||
+                       t.match(/(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:[－\-~～、至到]+)\s*(\d+(?:\.\d+)?)\s*(?:章|节|卷)?/)
+    if (rangeMatch) {
+      const rawStart = rangeMatch[1]
+      const rawEnd = rangeMatch[2]
+      return `【${partPrefix}${rawStart}-${rawEnd}】${authorSuffix}`
+    }
 
-  // 3. 匹配单卷/单章，如 (8)、第8章
-  const singleMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
-                      t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
-  if (singleMatch) {
-    const rawNum = singleMatch[1]
-    return `【${partPrefix}第${rawNum}章】${authorSuffix}`
+    // 3. 匹配单卷/单章，如 (8)、第8章
+    const singleMatch = t.match(/[【\[（\(]\s*(?:[^】\]）\)]*?\s+)?(?:第\s*)?(\d+(?:\.\d+)?)\s*(?:章|节|卷)?\s*[】\]）\)]/) ||
+                        t.match(/(?:第\s*)(\d+(?:\.\d+)?)(?:\s*章)/)
+    if (singleMatch) {
+      const rawNum = singleMatch[1]
+      return `【${partPrefix}第${rawNum}章】${authorSuffix}`
+    }
   }
 
   // 4. 通用前缀剥离兜底（严格禁止跨越括号匹配）
@@ -1247,7 +1271,7 @@ export function OnlineNovelReader({
                       title={ch.title}
                       style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}
                     >
-                      {cleanDisplayChapterTitle(convertChinese(ch.title, settings?.chineseConversion), book?.title)}
+                      {cleanDisplayChapterTitle(convertChinese(ch.title, settings?.chineseConversion), book?.title, isBbsBookSource(book))}
                     </span>
                     {isPreAnchor && (
                       <span

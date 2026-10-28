@@ -1352,7 +1352,7 @@ export class RuleSource {
     const rawId = rule.id || `${namePart}_${urlPart}`.replace(/__+/g, '_').replace(/^_|_$/g, '')
     this.id = rawId || `source_${Math.random().toString(36).slice(2, 8)}`
     this.name = rule.name || this.id
-    this.baseUrl = (rule.url || rule.baseUrl || '').replace(/\/$/, '')
+    this.baseUrl = (rule.url || rule.baseUrl || '').replace(/#.*$/, '').replace(/\/+$/, '')
     this.enabled = !rule.disabled
     this.needProxy = rule.needProxy || false
     this.source = this.id
@@ -1360,14 +1360,25 @@ export class RuleSource {
   }
 
   /**
-   * 构建完整 URL
+   * 构建完整 URL（支持基于当前所在页面 pageUrl 解析相对路径，并剥离 Legado 书源 URL 尾部的 #注释 标签）
    */
-  _absUrl(href) {
+  _absUrl(href, pageUrl = '') {
     if (!href) return ''
-    if (href.startsWith('http')) return href
-    if (href.startsWith('//')) return 'https:' + href
-    if (href.startsWith('/')) return this.baseUrl + href
-    return this.baseUrl + '/' + href
+    const cleanHref = String(href).trim()
+    if (cleanHref.startsWith('http://') || cleanHref.startsWith('https://')) {
+      return cleanHref.replace(/#[^/]*\//, '/')
+    }
+    if (cleanHref.startsWith('//')) return 'https:' + cleanHref
+    const base = (pageUrl && pageUrl.startsWith('http'))
+      ? pageUrl.replace(/#.*$/, '')
+      : this.baseUrl
+    if (base && base.startsWith('http')) {
+      try {
+        return new URL(cleanHref, base.endsWith('/') ? base : base + '/').href
+      } catch (_) {}
+    }
+    if (cleanHref.startsWith('/')) return this.baseUrl + cleanHref
+    return this.baseUrl + '/' + cleanHref
   }
 
   /**
@@ -1941,7 +1952,7 @@ export class RuleSource {
         if (tocSel) {
           const extractedToc = resolveSelector(tocSel, $detail, $detail.root())
           if (extractedToc) {
-            tocUrl = this._absUrl(extractedToc)
+            tocUrl = this._absUrl(extractedToc, novelUrl)
           }
         }
       }
@@ -1953,7 +1964,7 @@ export class RuleSource {
       const chapters = []
       const seen = new Set()
 
-      const extractChapters = ($page) => {
+      const extractChapters = ($page, currentPageUrl = tocUrl || novelUrl) => {
         const baseUri = toc.baseUri || ''
         const itemSel = toc.item || this.rule.ruleToc?.chapterList || ''
         let elements = []
@@ -1993,7 +2004,7 @@ export class RuleSource {
           const junkTexts = ['用户前期主贴', '返回禁忌书屋首页', '我们联系', 'contact us', '点“赞”', '无内容']
           if (junkTexts.some(j => text.includes(j))) return
 
-          const absHref = href.startsWith('http') ? href : (baseUri ? baseUri.replace('%s', '') + href : this._absUrl(href))
+          const absHref = href.startsWith('http') ? href : (baseUri ? baseUri.replace('%s', '') + href : this._absUrl(href, currentPageUrl))
           let finalTitle = toSimplified(text)
           if (finalTitle === '返回主帖' || finalTitle === '返回主贴') {
             finalTitle = title || '正文'
@@ -2001,11 +2012,19 @@ export class RuleSource {
           if (!seen.has(absHref)) {
             seen.add(absHref)
             chapters.push({ title: finalTitle, url: absHref })
+          } else if (chapters.length > 20) {
+            // 笔趣阁等站点常在 <dl> 顶部放置 6~12 章“最新章节”倒序预览，底部正文中再次出现真实章节
+            // 若该 URL 此前出现在目录头部前 20 项内，移除头部的预览重复项，保留正文末尾的真实顺序位置
+            const prevIdx = chapters.findIndex(c => c.url === absHref)
+            if (prevIdx !== -1 && prevIdx < 20) {
+              chapters.splice(prevIdx, 1)
+              chapters.push({ title: finalTitle, url: absHref })
+            }
           }
         })
       }
 
-      extractChapters($toc)
+      extractChapters($toc, tocUrl || novelUrl)
 
       // 如果当前页面依然解析不出章节，尝试在页面寻找“全部章节 / 目录”直达链接二次探测
       if (chapters.length === 0) {
@@ -2016,13 +2035,13 @@ export class RuleSource {
           const linkHref = $toc(aEl).attr('href')
           if (!linkHref || linkHref.startsWith('javascript:') || linkHref === '#') return
           if (linkText.includes('全部章节') || linkText.includes('查看目录') || linkText.includes('完整目录') || linkText.includes('章节列表')) {
-            secondaryTocUrl = this._absUrl(linkHref)
+            secondaryTocUrl = this._absUrl(linkHref, tocUrl || novelUrl)
           }
         })
         if (secondaryTocUrl && secondaryTocUrl !== tocUrl && secondaryTocUrl !== novelUrl) {
           try {
             const secHtml = await fetchWithRetry(secondaryTocUrl)
-            extractChapters(cheerio.load(secHtml))
+            extractChapters(cheerio.load(secHtml), secondaryTocUrl)
           } catch (_) {}
         }
       }
@@ -2043,33 +2062,41 @@ export class RuleSource {
           for (let i = 1; i < Math.min($opts.length, 30); i++) {
             const optVal = $toc($opts[i]).attr('value') || $toc($opts[i]).text().trim()
             if (!optVal) continue
-            const nextUrl = optVal.startsWith('http') ? optVal : this._absUrl(optVal)
+            const nextUrl = optVal.startsWith('http') ? optVal : this._absUrl(optVal, tocUrl || novelUrl)
             try {
               const nextHtml = await fetchWithRetry(nextUrl)
-              extractChapters(cheerio.load(nextHtml))
+              extractChapters(cheerio.load(nextHtml), nextUrl)
             } catch (_) { break }
           }
         }
       }
 
       // 🛡️ BBS 论坛多帖连载小说全本自动聚合 (Novel Multi-Thread Aggregation)
-      const cleanMainName = extractCleanBookName(rawDetailTitle, author) || extractCleanBookName(title, author) || cleanedMeta?.cleanTitle || ''
-      let bbsInfo = parseBbsChapterInfo(rawDetailTitle, author) || parseBbsChapterInfo(title, author)
+      const isBbsSource = Boolean(
+        this.name?.includes('cool18') ||
+        this.baseUrl?.includes('bbs') ||
+        this.baseUrl?.includes('cool18') ||
+        (this.rule.comment && this.rule.comment.includes('论坛')) ||
+        this.name?.includes('禁忌') ||
+        this.name?.includes('留园') ||
+        this.name?.includes('论坛') ||
+        novelUrl?.includes('cool18') ||
+        novelUrl?.includes('bbs')
+      )
+      const cleanMainName = isBbsSource ? (extractCleanBookName(rawDetailTitle, author) || extractCleanBookName(title, author) || cleanedMeta?.cleanTitle || '') : ''
+      let bbsInfo = isBbsSource ? (parseBbsChapterInfo(rawDetailTitle, author) || parseBbsChapterInfo(title, author)) : null
       if (bbsInfo && cleanMainName && cleanMainName.length >= 2) {
         bbsInfo.mainName = cleanMainName
       }
-      if (!bbsInfo && cleanMainName && cleanMainName.length >= 2) {
+      if (!bbsInfo && isBbsSource && cleanMainName && cleanMainName.length >= 2) {
         // 如果是论坛书源（如 cool18 / bbs / 论坛板块等），即便单帖标题未带分卷数字，也以纯净主书名尝试聚合召回
-        const isBbsSource = this.name?.includes('cool18') || this.baseUrl?.includes('bbs') || this.baseUrl?.includes('cool18') || (this.rule.comment && this.rule.comment.includes('论坛'))
-        if (isBbsSource) {
-          bbsInfo = {
-            mainName: cleanMainName,
-            start: 1000,
-            end: 1000,
-            rawStart: '1',
-            rawEnd: '1',
-            rawTitle: rawDetailTitle || title
-          }
+        bbsInfo = {
+          mainName: cleanMainName,
+          start: 1000,
+          end: 1000,
+          rawStart: '1',
+          rawEnd: '1',
+          rawTitle: rawDetailTitle || title
         }
       }
       if (bbsInfo && bbsInfo.mainName) {
@@ -2514,6 +2541,7 @@ export class RuleSource {
   // ─── 获取章节正文 ────────────────────────────────────
   async getContent(chapterUrl) {
     const ch = this.rule.chapter || {}
+    chapterUrl = String(chapterUrl || '').replace(/#[^/]*\//, '/')
     try {
       // 0. 优先检测是否为 SPA / API 章节 URL（如包含 /#/book/123/456.html 或 /book/123/456.html）
       const spaChapterMatch = chapterUrl.match(/book\/(\d+)\/(\d+)/)
