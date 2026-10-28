@@ -315,6 +315,18 @@ async function main() {
     }
   }
 
+  // 尝试从本地 Git 凭据管理器自动提取 Token
+  if (!githubToken) {
+    try {
+      const cred = execSync('git credential fill', { input: 'protocol=https\nhost=github.com\n\n', encoding: 'utf8' });
+      const m = cred.match(/password=(.*)/);
+      if (m && m[1]) {
+        githubToken = m[1].trim();
+        log('已从本地 Git 凭据管理器自动提取 GitHub Token。', colors.green);
+      }
+    } catch (_) {}
+  }
+
   if (!githubToken) {
     log('未检测到环境变量 GITHUB_TOKEN 或根目录 .env 文件中的配置。', colors.yellow);
     githubToken = await askToken();
