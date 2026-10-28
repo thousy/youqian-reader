@@ -1437,10 +1437,13 @@ export class RuleSource {
         : Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ')
     }
 
-    // 优先尝试编码列表：规则指定优先，否则先 UTF-8 再 GBK
+    // 优先尝试编码列表：若规则已显式指定编码则只请求一次；否则仅在含中文搜索词时备选 GBK
     const explicitEnc = (urlOrConfig.charset || this.rule.encoding || this.rule.charset || '').toLowerCase()
-    const isExplicitGbk = explicitEnc === 'gbk'
-    const encodings = isExplicitGbk ? ['gbk', 'utf-8'] : ['utf-8', 'gbk']
+    const isExplicitGbk = explicitEnc.includes('gb')
+    const hasNonAsciiKw = Boolean(keyword && /[^\x00-\x7F]/.test(keyword))
+    const encodings = explicitEnc
+      ? [isExplicitGbk ? 'gbk' : 'utf-8']
+      : (hasNonAsciiKw ? ['utf-8', 'gbk'] : ['utf-8'])
 
     let lastError = null
 
@@ -1519,13 +1522,18 @@ export class RuleSource {
           method,
           headers,
           body: bodyData
-        }, 1, 6000)
+        }, 1, 4500)
 
         if (html && html.length > 30) {
           return html
         }
       } catch (err) {
         lastError = err
+        // 若首轮请求因网络超时、DNS/连接失败或 HTTP 403/404/5xx 报错，换编码重试毫无意义，立即中止以释放并发槽
+        const msg = String(err?.message || '')
+        if (/超时|timeout|abort|ECONN|ENOTFOUND|HTTP\s*(403|404|405|451|5\d\d)/i.test(msg)) {
+          break
+        }
       }
     }
 
@@ -1551,15 +1559,20 @@ export class RuleSource {
 
       let reqConfig = { ...s }
 
-      // 解析 Legado 3.0 的复杂 searchUrl 格式：url,{"method":"POST","body":"...","charset":"gbk"}
-      if (targetUrl.includes(',') && targetUrl.includes('{')) {
-        const lastCommaIdx = targetUrl.lastIndexOf(',{')
-        if (lastCommaIdx !== -1) {
-          const urlPart = targetUrl.slice(0, lastCommaIdx).trim()
-          const optPart = targetUrl.slice(lastCommaIdx + 1).trim()
+      // 解析 Legado 3.0 的复杂 searchUrl 格式：url,{"method":"POST","body":"...","charset":"gbk"} 或 url,<"charset":"utf-8">
+      if (targetUrl.includes(',')) {
+        const lastBraceIdx = targetUrl.lastIndexOf(',{')
+        const lastAngleIdx = targetUrl.lastIndexOf(',<')
+        const splitIdx = Math.max(lastBraceIdx, lastAngleIdx)
+        if (splitIdx !== -1) {
+          const urlPart = targetUrl.slice(0, splitIdx).trim()
+          let optPart = targetUrl.slice(splitIdx + 1).trim()
+          if (optPart.startsWith('<') && optPart.endsWith('>')) {
+            optPart = '{' + optPart.slice(1, -1) + '}'
+          }
+          targetUrl = urlPart
           try {
             const parsedOpt = JSON.parse(optPart)
-            targetUrl = urlPart
             if (parsedOpt.method) reqConfig.method = parsedOpt.method
             if (parsedOpt.body) reqConfig.body = parsedOpt.body
             if (parsedOpt.charset) reqConfig.charset = parsedOpt.charset
@@ -1869,8 +1882,10 @@ export class RuleSource {
     const toc = this.rule.toc || {}
 
     try {
-      // 0. 优先检测是否为 SPA / API 单页应用书籍 URL（如包含 /#/book/123 或 /book/123）
-      const spaBookMatch = novelUrl.match(/book\/(\d+)/) || novelUrl.match(/\/(\d+)\/?$/)
+      // 0. 仅当 URL 明确为 SPA Hash 路由（如 /#/book/123）或规则未定义 HTML 目录选择器时，才探测 SPA API（避免普通 HTML 站点在 /api/book 上白白超时 8 秒）
+      const hasHtmlTocRule = Boolean(toc.item || this.rule.ruleToc?.chapterList)
+      const isSpaUrl = novelUrl.includes('/#/book/') || (!hasHtmlTocRule && (novelUrl.includes('/book/') || /\/(\d+)\/?$/.test(novelUrl)))
+      const spaBookMatch = isSpaUrl ? (novelUrl.match(/book\/(\d+)/) || novelUrl.match(/\/(\d+)\/?$/)) : null
       if (spaBookMatch) {
         const bookId = spaBookMatch[1]
         const host = this.baseUrl || (novelUrl.match(/^(https?:\/\/[^/]+)/) ? novelUrl.match(/^(https?:\/\/[^/]+)/)[1] : '')

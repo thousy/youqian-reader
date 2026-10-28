@@ -648,10 +648,39 @@ export function cancelOfflineBatchCache(bookId) {
   return { success: false, message: '未找到正在进行的离线缓存任务' }
 }
 
-/**
+// 已探活验证的书源目录内存缓存（key: `${sourceId}_${novelUrl}` -> { chapters, timestamp }），点击“切换”时零网络耗时秒切
+const verifiedChaptersCache = new Map()
+const VERIFIED_TOC_TTL_MS = 15 * 60 * 1000
+
+// 书源运行期健康度与响应延迟缓存（key: sourceId -> { okCount, failCount, avgLatencyMs, lastUpdatedAt }）
+const sourceHealthMap = new Map()
+
+function recordSourceHealth(sourceId, isSuccess, latencyMs = 2000) {
+  if (!sourceId) return
+  const prev = sourceHealthMap.get(sourceId) || { okCount: 0, failCount: 0, avgLatencyMs: 2500, lastUpdatedAt: 0 }
+  if (isSuccess) {
+    const nextOk = prev.okCount + 1
+    const nextAvg = prev.okCount === 0
+      ? latencyMs
+      : Math.round(prev.avgLatencyMs * 0.6 + latencyMs * 0.4)
+    sourceHealthMap.set(sourceId, {
+      okCount: nextOk,
+      failCount: 0,
+      avgLatencyMs: nextAvg,
+      lastUpdatedAt: Date.now()
+    })
+  } else {
+    sourceHealthMap.set(sourceId, {
+      ...prev,
+      failCount: prev.failCount + 1,
+      lastUpdatedAt: Date.now()
+    })
+  }
+}
+
 /**
  * 快速搜索可用替代书源（专用于换源弹窗）
- * 具备：严格书名匹配（杜绝假源）、核心源优先、30并发池防拥堵、实时目录探活预检、流式推送真实可用源
+ * 具备：严格书名匹配（杜绝假源）、核心源与健康快源优先、36并发池防拥堵、实时目录探活预检、流式推送真实可用源
  */
 export async function searchAlternativeSources(title, author, currentChapterTitle = null, currentChapterIndex = null, blockedSources = [], onSourceFound = null) {
   // 向下兼容参数顺序
@@ -781,20 +810,55 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
       return false
     }
 
-    // 优先将核心原生源排在前面，确保秒级召回高质量源
+    // 优先将核心原生源与高健康度/低延迟书源排在前面，确保秒级召回高质量源
     const prioritySourceIds = new Set(['fast_search', 'fastSearch', 'super_source', 'superSource', 'biquge', 'dingdian'])
-    const sortedSources = [...sources].sort((a, b) => {
-      const aP = prioritySourceIds.has(a.id) ? 1 : 0
-      const bP = prioritySourceIds.has(b.id) ? 1 : 0
-      return bP - aP
-    })
+    const getSourcePriorityScore = (src) => {
+      let score = 0
+      const id = src?.id || ''
+      const name = src?.name || ''
+      if (prioritySourceIds.has(id)) score += 5000
+
+      // 运行期健康度与响应延迟动态加权
+      const health = sourceHealthMap.get(id)
+      if (health) {
+        if (health.okCount > 0) {
+          score += 2500 + Math.max(0, 3500 - (health.avgLatencyMs || 2000))
+        }
+        if (health.failCount > 0 && health.okCount === 0) {
+          score -= Math.min(4000, health.failCount * 1500)
+        }
+      }
+
+      // 优质通用小说源关键词提权，失效/小众慢站降权
+      if (/笔趣|顶点|看书|书包|飘天|书荒|全本|阅读|中文|小说|言情|起点|纵横/i.test(name)) {
+        score += 800
+      }
+      if (/PO18|海棠|115|13小说|2K|漫画|有声|听书/i.test(name)) {
+        score -= 900
+      }
+
+      // 参考书源规则自带的测速耗时指标 respondTime
+      const rt = Number(src?.rule?.rawLegadoRule?.respondTime || src?.rule?.respondTime || 0)
+      if (rt > 0 && rt < 4000) {
+        score += Math.round((4000 - rt) / 4)
+      } else if (rt > 15000) {
+        score -= 800
+      }
+
+      return score
+    }
+
+    const sortedSources = [...sources].sort((a, b) => getSourcePriorityScore(b) - getSourcePriorityScore(a))
+    // 同一详情页 URL 探活请求去重共享（避免多个同站镜像书源对同一 novelUrl 重复发起网络请求）
+    const inFlightTocByUrl = new Map()
 
     // 单源快速搜索 + 实时目录探活预检
     const searchOne = async (src) => {
+      const startTs = Date.now()
       try {
         const searchKw = searchBaseName || title
         const promise = src.search(searchKw)
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5500))
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4200))
         const res = await Promise.race([promise, timeout])
         if (Array.isArray(res) && res.length > 0) {
           for (const item of res) {
@@ -817,13 +881,29 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
 
             // 关键：实时探活预检，验证真实目录是否可用以及最新章节信息
             try {
-              const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 8000))
-              const rawChapters = await Promise.race([
-                getNovelChapters(novelUrl, item.source || src.id),
-                verifyTimeout
-              ])
-              const norm = normalizeChapterList(rawChapters)
+              const normUrlKey = novelUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
+              let tocPromise = inFlightTocByUrl.get(normUrlKey)
+              if (!tocPromise) {
+                const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 5000))
+                tocPromise = Promise.race([
+                  getNovelChapters(novelUrl, item.source || src.id),
+                  verifyTimeout
+                ]).then(raw => normalizeChapterList(raw))
+                inFlightTocByUrl.set(normUrlKey, tocPromise)
+              }
+              const norm = await tocPromise
               if (norm && norm.length > 0) {
+                // 缓存已探活验证的目录列表（有效期 15 分钟），供点击“切换”时零网络延迟秒切
+                if (verifiedChaptersCache.size >= 80) {
+                  const oldestKey = verifiedChaptersCache.keys().next().value
+                  if (oldestKey) verifiedChaptersCache.delete(oldestKey)
+                }
+                verifiedChaptersCache.set(key, {
+                  chapters: norm,
+                  timestamp: Date.now()
+                })
+                recordSourceHealth(src.id, true, Date.now() - startTs)
+
                 // 校验条件 3：章节名一致（核心指标，若目录不包含当前章节则坚决过滤）
                 if (currentChapterTitle && !hasMatchingChapter(norm, currentChapterTitle)) {
                   continue
@@ -848,26 +928,30 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
                 if (typeof onSourceFound === 'function') {
                   try { onSourceFound(sourceItem) } catch (_) {}
                 }
+              } else {
+                recordSourceHealth(src.id, false)
               }
             } catch (_) {
               // 探活失败说明是死链、假源或无法解析章节的无效源，坚决不向前端展示
+              recordSourceHealth(src.id, false)
             }
           }
         }
       } catch (_) {
-        // 静默跳过失败源
+        // 静默跳过失败源并记录失败计数以降低后续调度优先级
+        recordSourceHealth(src.id, false)
       }
     }
 
-    // 3. 采用并发池（25 并发控制），大幅提升检索速度
-    const poolLimit = 25
+    // 3. 采用高吞吐并发池（36 并发控制），大幅提升检索速度
+    const poolLimit = 36
     const running = []
     let isStopped = false
 
     const maxWaitPromise = new Promise(resolve => setTimeout(() => {
       isStopped = true
       resolve()
-    }, 25000))
+    }, 18000))
 
     const processPool = async () => {
       for (const src of sortedSources) {
@@ -962,9 +1046,22 @@ export async function switchBookSource(bookId, newSourceId, newNovelUrl, current
   if (!book) return { success: false, error: '未找到书籍' }
 
   try {
-    // 1. 拉取新源的完整目录
-    const rawNewChapters = await getNovelChapters(newNovelUrl, newSourceId)
-    const newChapters = normalizeChapterList(rawNewChapters)
+    // 1. 优先命中换源预检阶段已缓存的目录（零网络延迟毫秒级秒切），未命中或过期时再从网络拉取
+    const cacheKey = `${newSourceId}_${newNovelUrl}`
+    const cachedEntry = verifiedChaptersCache.get(cacheKey)
+    let newChapters = null
+    if (
+      cachedEntry &&
+      Array.isArray(cachedEntry.chapters) &&
+      cachedEntry.chapters.length > 0 &&
+      (Date.now() - cachedEntry.timestamp) < VERIFIED_TOC_TTL_MS
+    ) {
+      newChapters = cachedEntry.chapters
+    } else {
+      const rawNewChapters = await getNovelChapters(newNovelUrl, newSourceId)
+      newChapters = normalizeChapterList(rawNewChapters)
+    }
+
     if (!newChapters || newChapters.length === 0) {
       return { success: false, error: '新书源无法解析出章节目录' }
     }

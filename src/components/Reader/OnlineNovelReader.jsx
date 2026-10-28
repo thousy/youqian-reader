@@ -1794,7 +1794,8 @@ export function OnlineNovelReader({
           preSwitchStateRef.current = newAnchor
 
           const alignedIdx = (res && res.alignedIndex !== undefined) ? res.alignedIndex : newAnchor.chapterIndex
-          initChapters(alignedIdx, true, true)
+          // switchBookSource 已在后端更新并写入最新目录至 chapters_index.json，此处无需再次强制远程拉取目录
+          initChapters(alignedIdx, true, false)
         }}
       />
 

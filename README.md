@@ -1,10 +1,19 @@
-# YouQian书籍阅读器 📚 (V2.2.20)
+# YouQian书籍阅读器 📚 (V2.2.29)
 
-[![Version](https://img.shields.io/badge/version-2.2.20-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.29-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.29 小说换源极速搜索与零网络秒切体验优化 (Release Notes)
+* **换源零延迟秒切（消除重复拉取目录瓶颈）**：新增已校验目录内存缓存机制（TTL 15分钟），点击切换书源直接复用搜索探活已下载的完整目录，实现毫秒级瞬时切换；
+* **清除目录抓取误判 SPA 接口白等 8 秒**：修复 HTML 书源误触发 `/api/book` 接口探活的正则缺陷，普通 HTML 站点目录加载耗时大幅缩减 8 秒；
+* **失效死站快速熔断**：单次搜索超时收紧至 4.5 秒，首轮请求发生 403/404/5xx 或连接超时直接熔断退出，杜绝无效编码重试占用并发槽；
+* **书源动态优先级与健康度加权**：基于书源真实响应耗时、健康度和规则响应指标动态调度，并发池扩充至 36，热门可用源秒级流式召回；
+* **修复规则多模式参数解析**：增强对 Legado 3.0 复杂参数格式解析，提升书源抓取与检索兼容性。
 
 ---
 
