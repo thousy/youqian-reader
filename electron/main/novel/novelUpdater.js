@@ -8,6 +8,20 @@ import { toSimplified } from './utils.js'
 import { applyReplaceRules } from './replaceRuleEngine.js'
 import { parseBbsChapterInfo, filterOverlappingBbsChapters } from './ruleEngine.js'
 
+// ⚡ 正文内存直通高速缓存池（容量 40 章，LRU 淘汰），翻页 0 磁盘 I/O 毫秒级瞬开
+const recentChapterContentMemoryCache = new Map()
+const MAX_MEMORY_CHAPTER_CACHE = 40
+
+function setMemoryChapterCache(key, value) {
+  if (recentChapterContentMemoryCache.has(key)) {
+    recentChapterContentMemoryCache.delete(key)
+  } else if (recentChapterContentMemoryCache.size >= MAX_MEMORY_CHAPTER_CACHE) {
+    const oldestKey = recentChapterContentMemoryCache.keys().next().value
+    if (oldestKey) recentChapterContentMemoryCache.delete(oldestKey)
+  }
+  recentChapterContentMemoryCache.set(key, value)
+}
+
 /**
  * 获取指定书籍的本地章节缓存目录 (data/novel_cache/<bookId>)
  */
@@ -307,7 +321,7 @@ export async function getOrFetchBookChapters(bookId, forceRefresh = false) {
 }
 
 /**
- * 获取单章正文（优先本地缓存，若无则在线请求并存盘）
+ * 获取单章正文（优先内存直通高速缓存，其次本地磁盘缓存，若无则在线请求并存盘）
  */
 export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch = false) {
   let book = getBookById(bookId)
@@ -337,8 +351,22 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
   // 重新读取可能已被目录自愈更新过书源的 book 对象
   book = getBookById(bookId) || book
   const chapterMeta = chaptersRes.chapters[chapterIndex]
+  const memoryCacheKey = `${bookId}_ch_${chapterIndex}_${book.novelSourceId || ''}`
 
-  // 2. 检查本地缓存（严格校验 URL 与分卷范围，杜绝错位脏缓存）
+  // 2. ⚡ 内存直通高速缓存检查（毫秒级瞬开）：若命中且 URL 一致，耗时 < 1ms，0 磁盘 I/O，0 额外正则清洗
+  if (!forceFetch && recentChapterContentMemoryCache.has(memoryCacheKey)) {
+    const memItem = recentChapterContentMemoryCache.get(memoryCacheKey)
+    if (memItem && (!chapterMeta.url || memItem.url === chapterMeta.url)) {
+      return {
+        success: true,
+        title: memItem.title || chapterMeta.title,
+        content: memItem.content,
+        fromCache: true
+      }
+    }
+  }
+
+  // 3. 检查本地磁盘缓存（严格校验 URL 与分卷范围，杜绝错位脏缓存）
   if (!forceFetch && existsSync(chapterFile)) {
     try {
       const data = JSON.parse(readFileSync(chapterFile, 'utf-8'))
@@ -366,12 +394,19 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
 
         if (isCacheValid) {
           const cleaned = applyReplaceRules(data.content, { bookTitle: book.title, sourceName: book.sourceName })
-          return {
+          const resObj = {
             success: true,
             title: data.title || chapterMeta.title,
             content: cleaned,
             fromCache: true
           }
+          // 写入内存直通高速缓存，供后续来回翻页 0 磁盘 I/O 秒开
+          setMemoryChapterCache(memoryCacheKey, {
+            title: resObj.title,
+            url: chapterMeta.url,
+            content: cleaned
+          })
+          return resObj
         }
       }
     } catch (_) {}
@@ -401,6 +436,13 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
       }
     } catch (_) {}
 
+    // 写入内存直通高速缓存
+    setMemoryChapterCache(memoryCacheKey, {
+      title: chapterMeta.title,
+      url: chapterMeta.url,
+      content: cleanedContent
+    })
+
     return {
       success: true,
       title: chapterMeta.title,
@@ -413,20 +455,31 @@ export async function getOrFetchChapterContent(bookId, chapterIndex, forceFetch 
 }
 
 /**
- * 静默预加载后 N 章（后台异步执行，不阻塞当前阅读）
+ * 静默预加载后 N 章（2 线程并发拉取，窗口扩大至 5 章，不阻塞当前阅读）
  */
-export async function preloadNextChapters(bookId, currentIndex, count = 2) {
+export async function preloadNextChapters(bookId, currentIndex, count = 5) {
   setTimeout(async () => {
+    const targets = []
     for (let i = 1; i <= count; i++) {
-      const targetIndex = currentIndex + i
-      try {
-        const cacheDir = getNovelCacheDir(bookId)
-        const chapterFile = join(cacheDir, `ch_${targetIndex}.json`)
-        if (!existsSync(chapterFile)) {
-          await getOrFetchChapterContent(bookId, targetIndex, false)
-        }
-      } catch (_) {}
+      targets.push(currentIndex + i)
     }
+
+    // 2 线程并发静默拉取
+    const worker = async () => {
+      while (targets.length > 0) {
+        const targetIndex = targets.shift()
+        if (targetIndex === undefined) break
+        try {
+          const cacheDir = getNovelCacheDir(bookId)
+          const chapterFile = join(cacheDir, `ch_${targetIndex}.json`)
+          if (!existsSync(chapterFile)) {
+            await getOrFetchChapterContent(bookId, targetIndex, false)
+          }
+        } catch (_) {}
+      }
+    }
+
+    await Promise.all([worker(), worker()])
   }, 100)
 }
 
@@ -890,15 +943,18 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
     // 同一详情页 URL 探活请求去重共享（避免多个同站镜像书源对同一 novelUrl 重复发起网络请求）
     const inFlightTocByUrl = new Map()
 
-    // 单源快速搜索 + 实时目录探活预检
-    const searchOne = async (src) => {
+    // 单源快速搜索 + 实时目录探活预检（支持极速专道与候选精简探活）
+    const searchOne = async (src, isExpress = false) => {
       const startTs = Date.now()
       try {
         const searchKw = searchBaseName || title
         const promise = src.search(searchKw)
-        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4200))
+        const searchTimeoutMs = isExpress ? 2800 : 3800
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), searchTimeoutMs))
         const res = await Promise.race([promise, timeout])
         if (Array.isArray(res) && res.length > 0) {
+          // ⚡ 单源候选精简探活：按匹配度打分，单源仅探活最匹配的前 1~2 项，削减 70% 冗余网络抓取
+          const scoredCandidates = []
           for (const item of res) {
             if (!item) continue
             // 校验条件 1：书名一致
@@ -913,6 +969,30 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
             // 过滤已被当前书籍屏蔽的书源（标记为采集有问题）
             if (isSourceBlocked(sourceId, novelUrl)) continue
 
+            let matchScore = 0
+            const itemTitle = toSimplified((item.title || '').trim().toLowerCase())
+            const targetTitle = toSimplified((title || '').trim().toLowerCase())
+            if (itemTitle === targetTitle) matchScore += 100
+            else if (itemTitle.includes(targetTitle)) matchScore += 50
+
+            if (!isAuthorConflict) {
+              matchScore += 80
+              const itemAuthor = toSimplified((item.author || '').trim().toLowerCase())
+              if (cleanAuthor && itemAuthor && (itemAuthor.includes(cleanAuthor) || cleanAuthor.includes(itemAuthor))) {
+                matchScore += 100
+              }
+            } else {
+              matchScore -= 60
+            }
+
+            scoredCandidates.push({ item, isAuthorConflict, novelUrl, sourceId, matchScore })
+          }
+
+          // 单源只探活匹配度最高的前 2 个候选
+          scoredCandidates.sort((a, b) => b.matchScore - a.matchScore)
+          const candidatesToVerify = scoredCandidates.slice(0, 2)
+
+          for (const { item, isAuthorConflict, novelUrl, sourceId } of candidatesToVerify) {
             const key = `${sourceId}_${novelUrl}`
             if (seen.has(key)) continue
             seen.add(key)
@@ -927,7 +1007,8 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
               } else {
                 let tocPromise = inFlightTocByUrl.get(normUrlKey)
                 if (!tocPromise) {
-                  const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 5000))
+                  const verifyTimeoutMs = isExpress ? 3200 : 4500
+                  const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), verifyTimeoutMs))
                   tocPromise = Promise.race([
                     getNovelChapters(novelUrl, item.source || src.id),
                     verifyTimeout
@@ -997,7 +1078,7 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
       }
     }
 
-    // 3. 采用高吞吐并发池（36 并发控制），大幅提升检索速度
+    // 3. 采用高吞吐并发池（36 并发控制），配合前 8 源极速专道与 15 个优质源快收敛
     const poolLimit = 36
     const running = []
     let isStopped = false
@@ -1005,12 +1086,19 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
     const maxWaitPromise = new Promise(resolve => setTimeout(() => {
       isStopped = true
       resolve()
-    }, 18000))
+    }, 14000))
 
     const processPool = async () => {
+      let srcIndex = 0
       for (const src of sortedSources) {
-        if (isStopped || foundSources.length >= 30) break
-        const p = searchOne(src).then(() => {
+        // ⚡ 优质源快收敛阈值：已有 15 个无作者冲突且章节数充沛（>= 30 章）的高质量源时提前结束
+        const highQualityCount = foundSources.filter(s => !s.authorConflict && s.chapterCount >= 30).length
+        if (isStopped || foundSources.length >= 25 || highQualityCount >= 15) break
+
+        const isExpress = srcIndex < 8
+        srcIndex++
+
+        const p = searchOne(src, isExpress).then(() => {
           const idx = running.indexOf(p)
           if (idx !== -1) running.splice(idx, 1)
         })

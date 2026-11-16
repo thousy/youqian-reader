@@ -470,7 +470,59 @@ export async function testSingleSource(sourceId, optionsOrKeyword = '我的') {
 }
 
 /**
- * 聚合多源并发搜索
+ * 读取本地持久化的书源健康度与测速记录
+ */
+function getLocalSourceHealthMap() {
+  try {
+    const healthFile = join(getPortableDataDir(), 'source_health.json')
+    if (existsSync(healthFile)) {
+      const parsed = JSON.parse(readFileSync(healthFile, 'utf-8'))
+      if (parsed && typeof parsed === 'object') {
+        return new Map(Object.entries(parsed))
+      }
+    }
+  } catch (_) {}
+  return new Map()
+}
+
+const SEARCH_PRIORITY_SOURCE_IDS = new Set(['fast_search', 'fastSearch', 'super_source', 'superSource', 'biquge', 'dingdian', 'qimao'])
+
+function getSourceSearchPriorityScore(src, healthMap) {
+  let score = 0
+  const id = src?.id || ''
+  const name = src?.name || ''
+  if (SEARCH_PRIORITY_SOURCE_IDS.has(id)) score += 5000
+
+  const health = healthMap.get(id)
+  if (health) {
+    if (health.okCount > 0) {
+      score += 2500 + Math.max(0, 3500 - (health.avgLatencyMs || 2000))
+    }
+    if (health.failCount > 0 && health.okCount === 0) {
+      score -= Math.min(4000, health.failCount * 1500)
+    }
+  }
+
+  // 优质通用小说源关键词提权，失效/小众慢站降权
+  if (/笔趣|顶点|看书|书包|飘天|书荒|全本|阅读|中文|小说|言情|起点|纵横/i.test(name)) {
+    score += 800
+  }
+  if (/PO18|海棠|115|13小说|2K|漫画|有声|听书/i.test(name)) {
+    score -= 900
+  }
+
+  const rt = Number(src?.rule?.rawLegadoRule?.respondTime || src?.rule?.respondTime || 0)
+  if (rt > 0 && rt < 4000) {
+    score += Math.round((4000 - rt) / 4)
+  } else if (rt > 15000) {
+    score -= 800
+  }
+
+  return score
+}
+
+/**
+ * 聚合多源并发搜索（优质源排头 + 32滑动窗口并发池 + 3.5s快超时保护 + 局部流式上屏）
  */
 export async function searchNovels(keyword, sourceId = null, onPartialResult = null) {
   const isDirectSingleSearch = typeof sourceId === 'string' && sourceId.trim().length > 0
@@ -490,14 +542,33 @@ export async function searchNovels(keyword, sourceId = null, onPartialResult = n
 
   if (sources.length === 0) return []
 
+  // 1. 优质源排头加权排序，确保头批 Worker 处理最快最稳的头部书源
+  const healthMap = getLocalSourceHealthMap()
+  const sortedSources = isDirectSingleSearch
+    ? sources
+    : [...sources].sort((a, b) => getSourceSearchPriorityScore(b, healthMap) - getSourceSearchPriorityScore(a, healthMap))
+
   const merged = []
   const seen = new Set()
 
-  await Promise.allSettled(
-    sources.map(async src => {
-      if (!isDirectSingleSearch && activeSearchToken !== currentToken) return
+  // 2. 采用 32 线程滑动窗口并发池，彻底消除 400+ 并发雪崩击穿系统 socket 和 DNS 引起的超时与卡死
+  const CONCURRENCY = Math.min(32, sortedSources.length)
+  let nextIndex = 0
+
+  const worker = async () => {
+    while (nextIndex < sortedSources.length) {
+      if (!isDirectSingleSearch && activeSearchToken !== currentToken) break
+      const src = sortedSources[nextIndex++]
+      if (!src) break
+
       try {
-        const res = await src.search(keyword)
+        // 单源快超时控制：3.5 秒超时保护，快速释放并发槽给后续有效书源
+        const searchPromise = src.search(keyword)
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('search timeout')), 3500)
+        )
+        const res = await Promise.race([searchPromise, timeoutPromise])
+
         if (isDirectSingleSearch || activeSearchToken === currentToken) {
           if (Array.isArray(res) && res.length > 0) {
             const fresh = []
@@ -515,10 +586,16 @@ export async function searchNovels(keyword, sourceId = null, onPartialResult = n
           }
         }
       } catch (err) {
-        console.warn(`[书源 ${src.name}] 搜索超时或失败:`, err.message)
+        // 静默处理单源网络波动或超时，不影响整体流式体验
       }
-    })
-  )
+    }
+  }
+
+  const workers = []
+  for (let i = 0; i < CONCURRENCY; i++) {
+    workers.push(worker())
+  }
+  await Promise.all(workers)
 
   return merged
 }

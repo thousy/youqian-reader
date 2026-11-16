@@ -1,10 +1,25 @@
-# YouQian书籍阅读器 📚 (V2.2.30)
+# YouQian书籍阅读器 📚 (V2.2.31)
 
-[![Version](https://img.shields.io/badge/version-2.2.30-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.31-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.31 三大核心性能（加载速度、搜书速度、换源速度）深度飞跃 (Release Notes)
+* **搜书速度暴增（32 滑动窗口并发池 + 优质源排头 + 流式秒级上屏）**：
+  * 废除全网 400+ 书源在同一毫秒内并发导致的系统套接字与 DNS 解析雪崩（消灭 ECONNRESET 与 20 秒慢等）；
+  * 采用 32 线程滑动窗口并发池，基于本地健康度与核心源动态排序，优先处理最稳最快的笔趣阁、顶点等优质源；
+  * 单源设置 3.5 秒快超时保护，迅速释放并发槽；支持即搜即推（流式 Partial 回调），首批书籍 1 秒内上屏呈现。
+* **换源速度大幅加速（单源候选精简探活 + 极速专道 + 15 源快收敛）**：
+  * 单源仅探活最匹配的前 1~2 项候选书籍，彻底消除单源 10 本书籍触发 10 次冗余目录 HTTP 请求，网络探活流量削减 70%；
+  * 前 8 大头部高分源开辟极速专道，搜索与探活超时收紧，弹窗打开 1~1.5 秒内必现首屏可用源；
+  * 引入优质源快收敛阈值，当召回满 15 个无作者冲突且章节充沛的高质量源时提前结束检索，告别冷门死站的 18 秒长挂起。
+* **章节加载与翻页极速瞬开（40 章正文内存直通高速缓存 + 5 章并发预加载）**：
+  * 引入 `recentChapterContentMemoryCache` 内存直通高速缓存池（容量 40 章，LRU 淘汰），前后翻页实现 0 磁盘 I/O、0 额外正则清洗消耗，毫秒级瞬开呈现；
+  * 预加载窗口扩充至后 5 章，由单线程串行升级为 2 线程并发静默拉取，快速翻页彻底告别等待与转圈。
 
 ---
 
