@@ -22,6 +22,30 @@ export function SourceSwitcherModal({ isOpen, onClose, book, currentChapterTitle
     })
   }
 
+  // 统一书源排序比较逻辑（确保流式发现过程始终平滑有序，杜绝突变抖动）
+  const cleanAuthor = (book?.author || '').replace(/[《》\s【】()（）[\]]/g, '').trim().toLowerCase()
+  const compareSources = (a, b) => {
+    // 0. 当前在用源永远排在第 1 位
+    if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1
+
+    // 1. 无作者冲突的源优先
+    const aConflict = a.authorConflict ? 1 : 0
+    const bConflict = b.authorConflict ? 1 : 0
+    if (aConflict !== bConflict) return aConflict - bConflict
+
+    // 2. 作者完全吻合的源优先
+    if (cleanAuthor) {
+      const aAuthor = (a.author || '').toLowerCase()
+      const bAuthor = (b.author || '').toLowerCase()
+      const aMatch = aAuthor && (aAuthor.includes(cleanAuthor) || cleanAuthor.includes(aAuthor)) ? 1 : 0
+      const bMatch = bAuthor && (bAuthor.includes(cleanAuthor) || cleanAuthor.includes(bAuthor)) ? 1 : 0
+      if (aMatch !== bMatch) return bMatch - aMatch
+    }
+
+    // 3. 章节总数多的优先
+    return (b.chapterCount || 0) - (a.chapterCount || 0)
+  }
+
   useEffect(() => {
     if (isOpen && book) {
       const initBlocked = Array.isArray(book.blockedSources) ? book.blockedSources : []
@@ -50,7 +74,8 @@ export function SourceSwitcherModal({ isOpen, onClose, book, currentChapterTitle
           const key = `${newSource.sourceId}_${newSource.novelUrl}`
           const exists = prev.some(s => `${s.sourceId}_${s.novelUrl}` === key)
           if (exists) return prev
-          return [...prev, newSource]
+          const nextList = [...prev, newSource]
+          return nextList.sort(compareSources)
         })
       })
 
@@ -96,7 +121,7 @@ export function SourceSwitcherModal({ isOpen, onClose, book, currentChapterTitle
             const k = `${s.sourceId}_${s.novelUrl}`
             if (!map.has(k) && !isSourceBlocked(s, currentBlocked)) map.set(k, s)
           })
-          return Array.from(map.values())
+          return Array.from(map.values()).sort(compareSources)
         })
       } else {
         setSearchError(res.error || '检索可用书源失败')

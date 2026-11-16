@@ -106,6 +106,7 @@ const api = {
   novelGetSources: () => ipcRenderer.invoke('novel-get-sources'),
   novelGetSourcesDetail: () => ipcRenderer.invoke('novel-get-sources-detail'),
   novelToggleSource: (id, enabled) => ipcRenderer.invoke('novel-toggle-source', id, enabled),
+  novelBatchToggleSources: (ids, enabled) => ipcRenderer.invoke('novel-batch-toggle-sources', ids, enabled),
   novelSaveSource: (ruleObj) => ipcRenderer.invoke('novel-save-source', ruleObj),
   novelDeleteSource: (id) => ipcRenderer.invoke('novel-delete-source', id),
   novelClearAllSources: () => ipcRenderer.invoke('novel-clear-all-sources'),

@@ -21,7 +21,7 @@ import { extractMobiMeta, extractMobiContent } from './parsers/mobi'
 import { extractTxtMeta, readTxtFile } from './parsers/txt'
 import {
   searchNovels, getNovelChapters, getChapterContent, getAllSourcesInfo, getAllSourcesDetail,
-  saveOrUpdateSource, deleteSource, clearAllSources, resetDefaultSources, testSingleSource, toggleSourceEnabled, exportSourcesJson,
+  saveOrUpdateSource, deleteSource, clearAllSources, resetDefaultSources, testSingleSource, toggleSourceEnabled, batchToggleSources, exportSourcesJson,
   importCustomSource, importSourceFromUrl, cancelSearch, autoSniffNovelSource
 } from './novel/sourceManager'
 import {
@@ -556,6 +556,7 @@ export function setupIpcHandlers() {
   ipcMain.handle('novel-get-sources', () => getAllSourcesInfo())
   ipcMain.handle('novel-get-sources-detail', () => getAllSourcesDetail())
   ipcMain.handle('novel-toggle-source', (_, id, enabled) => toggleSourceEnabled(id, enabled))
+  ipcMain.handle('novel-batch-toggle-sources', (_, ids, enabled) => batchToggleSources(ids, enabled))
   ipcMain.handle('novel-save-source', (_, ruleObj) => saveOrUpdateSource(ruleObj))
   ipcMain.handle('novel-delete-source', (_, id) => deleteSource(id))
   ipcMain.handle('novel-clear-all-sources', () => clearAllSources())

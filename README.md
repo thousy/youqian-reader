@@ -1,10 +1,20 @@
-# YouQian书籍阅读器 📚 (V2.2.29)
+# YouQian书籍阅读器 📚 (V2.2.30)
 
-[![Version](https://img.shields.io/badge/version-2.2.29-blue.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-2.2.30-blue.svg)](package.json)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](package.json)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](package.json)
 
 **YouQian书籍阅读器 (YouQian Reader)** 是一款专为极致阅读体验打造的跨时代桌面电子书阅读器。它完美支持 **EPUB, MOBI, AZW3, PDF, TXT** 等主流格式，配备如实体纸质书般优雅的双栏流式排版，拥有毫秒级瞬开响应与极速翻页交互。
+
+---
+
+## 🚀 V2.2.30 换源平滑流式排序、死站持久化与长篇下载自愈 (Release Notes)
+* **换源弹窗流式即时平滑排序**：在多源并发增量召回过程中，即时按作者吻合度与章节完整度有序定位插入，彻底消除检索完毕瞬间列表剧烈跳动重排；
+* **死站健康度与停用状态本地持久化**：将书源健康度评价与已禁用书源名单持久化落盘至本地存储，应用重启后自动继承，让已知失效源初始即沉底，换源首屏可用源秒级召回；
+* **同站详情跨请求复用**：增加 60 秒同 URL 目录短时弱缓存，多镜像并发或频繁打开换源时免除重复网络请求；
+* **超长篇离线下载断点自愈与防丢章**：在长篇小说导出前增加偶发网络丢包章节的自动化补全重试通道，并支持任务完整度审计；
+* **超长篇 TXT 流式写入**：将千万字大文本导出优化为分块流式写入，消除大长篇一次性拼接导致的 Node.js 内存激增；
+* **书源管理支持一键停用失效源与状态筛选**：新增“一键停用所有失效书源”与状态筛选胶囊栏，一键净化书源生态，日常搜书换源更极速。
 
 ---
 

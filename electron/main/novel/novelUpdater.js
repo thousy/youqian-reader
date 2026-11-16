@@ -652,8 +652,45 @@ export function cancelOfflineBatchCache(bookId) {
 const verifiedChaptersCache = new Map()
 const VERIFIED_TOC_TTL_MS = 15 * 60 * 1000
 
+// 跨次换源同 URL 短时目录弱缓存（TTL 60 秒），减轻目标站并发探活压力
+const recentTocCache = new Map()
+const RECENT_TOC_TTL_MS = 60 * 1000
+
 // 书源运行期健康度与响应延迟缓存（key: sourceId -> { okCount, failCount, avgLatencyMs, lastUpdatedAt }）
 const sourceHealthMap = new Map()
+
+function getSourceHealthFilePath() {
+  return join(getPortableDataDir(), 'source_health.json')
+}
+
+function loadSourceHealthFromDisk() {
+  try {
+    const p = getSourceHealthFilePath()
+    if (existsSync(p)) {
+      const data = JSON.parse(readFileSync(p, 'utf-8'))
+      if (typeof data === 'object' && data !== null) {
+        for (const [k, v] of Object.entries(data)) {
+          sourceHealthMap.set(k, v)
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+// 初始化时从本地存储恢复书源健康度与死站记录
+loadSourceHealthFromDisk()
+
+let saveHealthTimer = null
+function scheduleSaveSourceHealth() {
+  if (saveHealthTimer) return
+  saveHealthTimer = setTimeout(() => {
+    saveHealthTimer = null
+    try {
+      const obj = Object.fromEntries(sourceHealthMap.entries())
+      writeFileSync(getSourceHealthFilePath(), JSON.stringify(obj, null, 2), 'utf-8')
+    } catch (_) {}
+  }, 2500)
+}
 
 function recordSourceHealth(sourceId, isSuccess, latencyMs = 2000) {
   if (!sourceId) return
@@ -676,6 +713,7 @@ function recordSourceHealth(sourceId, isSuccess, latencyMs = 2000) {
       lastUpdatedAt: Date.now()
     })
   }
+  scheduleSaveSourceHealth()
 }
 
 /**
@@ -879,19 +917,35 @@ export async function searchAlternativeSources(title, author, currentChapterTitl
             if (seen.has(key)) continue
             seen.add(key)
 
-            // 关键：实时探活预检，验证真实目录是否可用以及最新章节信息
+            // 关键：实时探活预检，验证真实目录是否可用以及最新章节信息（优先命中跨次短时弱缓存）
             try {
               const normUrlKey = novelUrl.replace(/^https?:\/\//i, '').replace(/\/+$/, '')
-              let tocPromise = inFlightTocByUrl.get(normUrlKey)
-              if (!tocPromise) {
-                const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 5000))
-                tocPromise = Promise.race([
-                  getNovelChapters(novelUrl, item.source || src.id),
-                  verifyTimeout
-                ]).then(raw => normalizeChapterList(raw))
-                inFlightTocByUrl.set(normUrlKey, tocPromise)
+              let norm = null
+              const cachedRecent = recentTocCache.get(normUrlKey)
+              if (cachedRecent && (Date.now() - cachedRecent.timestamp < RECENT_TOC_TTL_MS)) {
+                norm = cachedRecent.chapters
+              } else {
+                let tocPromise = inFlightTocByUrl.get(normUrlKey)
+                if (!tocPromise) {
+                  const verifyTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('verify timeout')), 5000))
+                  tocPromise = Promise.race([
+                    getNovelChapters(novelUrl, item.source || src.id),
+                    verifyTimeout
+                  ]).then(raw => {
+                    const list = normalizeChapterList(raw)
+                    if (list && list.length > 0) {
+                      recentTocCache.set(normUrlKey, { chapters: list, timestamp: Date.now() })
+                      if (recentTocCache.size > 120) {
+                        const oldest = recentTocCache.keys().next().value
+                        if (oldest) recentTocCache.delete(oldest)
+                      }
+                    }
+                    return list
+                  })
+                  inFlightTocByUrl.set(normUrlKey, tocPromise)
+                }
+                norm = await tocPromise
               }
-              const norm = await tocPromise
               if (norm && norm.length > 0) {
                 // 缓存已探活验证的目录列表（有效期 15 分钟），供点击“切换”时零网络延迟秒切
                 if (verifiedChaptersCache.size >= 80) {

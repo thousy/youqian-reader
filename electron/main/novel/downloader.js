@@ -6,7 +6,6 @@
  * - 自定义下载存放目录与代理配置
  */
 
-import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { getPortableDataDir, getPortableDownloadsDir } from '../portablePath.js'
@@ -294,6 +293,32 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
     // 按章节原始顺序排序
     completedChapters.sort((a, b) => a.index - b.index)
 
+    // 自动自愈补救通道：若个别章节因网络抖动偶发失败，自动发起集中复测补全
+    const failedItems = completedChapters.filter(c => !c.content || c.content.includes('【本章节抓取失败'))
+    if (failedItems.length > 0 && !cancelled) {
+      pushProgress(taskId, {
+        status: 'healing',
+        progress: done,
+        total: chapters.length,
+        text: `正在自动自愈补全 ${failedItems.length} 个偶发失败章节...`
+      })
+      for (const failedCh of failedItems) {
+        if (cancelled) break
+        const origTarget = chapters[failedCh.index]
+        if (!origTarget) continue
+        try {
+          await sleep(600)
+          const healedContent = await source.getContent(origTarget.url)
+          if (healedContent && healedContent.length > 30 && !healedContent.includes('【获取')) {
+            failedCh.content = stripDuplicateTitle(healedContent, failedCh.title)
+            if (cfg.toSimplified && failedCh.content) {
+              failedCh.content = toSimplified(failedCh.content)
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
     // 输出保存路径处理 (优先用户自定义目录，默认使用软件本体下的 downloads/ 目录)
     let booksDir = cfg.saveDir && existsSync(cfg.saveDir)
       ? cfg.saveDir
@@ -313,13 +338,19 @@ export async function startDownload(taskId, novelInfo, chapters, sourceId, forma
       pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在排版生成 PDF 电子书...' })
       pdfRes = await buildPdf(normalizedNovelInfo, completedChapters, outputPath)
     } else if (format === 'TXT') {
-      // 输出 TXT 纯文本小说
-      pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在生成 TXT 文件...' })
-      let txtContent = `${normalizedNovelInfo.title}\n作者：${normalizedNovelInfo.author || '未知'}\n\n简介：\n${normalizedNovelInfo.description || ''}\n\n====================================\n\n`
+      // 输出 TXT 纯文本小说（流式分块写入，防超长篇千万字内存暴涨）
+      pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在流式写入 TXT 文件...' })
+      const { createWriteStream } = await import('fs')
+      const writeStream = createWriteStream(outputPath, { encoding: 'utf-8' })
+      writeStream.write(`${normalizedNovelInfo.title}\n作者：${normalizedNovelInfo.author || '未知'}\n\n简介：\n${normalizedNovelInfo.description || ''}\n\n====================================\n\n`)
       for (const ch of completedChapters) {
-        txtContent += `\n\n${ch.title}\n\n${ch.content}\n`
+        writeStream.write(`\n\n${ch.title}\n\n${ch.content}\n`)
       }
-      writeFileSync(outputPath, txtContent, 'utf-8')
+      await new Promise((resolve, reject) => {
+        writeStream.end()
+        writeStream.on('finish', resolve)
+        writeStream.on('error', reject)
+      })
     } else {
       // 默认输出标准 EPUB
       pushProgress(taskId, { status: 'packaging', progress: done, total: chapters.length, text: '正在封装 EPUB 电子书...' })
@@ -388,4 +419,24 @@ export function getAllTasks() {
   const result = []
   tasks.forEach((v, k) => result.push({ taskId: k, ...v, cancel: undefined }))
   return result
+}
+
+/**
+ * 审计任务是否存在漏章
+ */
+export function auditTaskMissingChapters(taskId) {
+  const task = tasks.get(taskId)
+  if (!task) return { found: false, error: '未找到该任务' }
+  const total = task.total || 0
+  const progress = task.progress || 0
+  const isDone = task.status === 'done'
+  return {
+    found: true,
+    taskId,
+    status: task.status,
+    total,
+    progress,
+    isComplete: isDone && progress >= total,
+    missingCount: Math.max(0, total - progress)
+  }
 }

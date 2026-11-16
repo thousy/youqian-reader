@@ -19,12 +19,13 @@ export function SourceEditorView() {
   // 书源列表状态
   const [sources, setSources] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterMode, setFilterMode] = useState('all') // 'all' | 'enabled' | 'disabled' | 'invalid'
   const [loading, setLoading] = useState(false)
   const [displayLimit, setDisplayLimit] = useState(100) // 分批渐进式秒开渲染，彻底消除卡顿
 
   useEffect(() => {
     setDisplayLimit(100)
-  }, [searchQuery])
+  }, [searchQuery, filterMode])
 
   // 弹窗状态：查看 JSON / 编辑
   const [viewDetailModal, setViewDetailModal] = useState(null) // source item
@@ -593,8 +594,35 @@ export function SourceEditorView() {
     reloadSources()
   }
 
-  // 多维度、不区分大小写的书源搜索过滤逻辑（剔除内部时间戳ID匹配，精准搜名称与网址）
+  // 一键停用所有检测失效的书源（保留规则配置但不再参与并发搜书）
+  const handleDisableAllInvalid = async () => {
+    if (invalidIds.size === 0) {
+      showToast('当前没有检测出失效书源，请先点击【检测书源】', 'info')
+      return
+    }
+    const count = invalidIds.size
+    const ok = await showConfirm('一键停用失效书源', `确定要一键停用当前检测出的 ${count} 个失效书源吗？\n\n停用后，搜书和换源时将不再向这些书源发起无效网络请求，极大提升检索速度。\n您后续随时可以在列表中重新启用它们。`)
+    if (!ok) return
+    try {
+      const idList = Array.from(invalidIds)
+      const res = await window.api?.novelBatchToggleSources?.(idList, false)
+      if (res?.success) {
+        setSources(prev => prev.map(s => invalidIds.has(s.id) ? { ...s, enabled: false } : s))
+        showToast(`已成功停用 ${res.count || count} 个失效书源！`, 'success')
+      } else {
+        showToast('批量停用失败: ' + (res?.error || '未知错误'), 'error')
+      }
+    } catch (err) {
+      showToast('操作异常: ' + err.message, 'error')
+    }
+  }
+
+  // 多维度、不区分大小写的书源搜索过滤逻辑（支持按启用/停用/失效状态筛选）
   const filteredSources = sources.filter(s => {
+    if (filterMode === 'enabled' && !s.enabled) return false
+    if (filterMode === 'disabled' && s.enabled) return false
+    if (filterMode === 'invalid' && !invalidIds.has(s.id)) return false
+
     if (!searchQuery || !searchQuery.trim()) return true
     const q = searchQuery.trim().toLowerCase()
     const nameMatch = (s.name || '').toLowerCase().includes(q)
@@ -797,6 +825,24 @@ export function SourceEditorView() {
               )}
             </button>
 
+            {/* ⏸️ 一键停用所有检测失效书源按钮 */}
+            <button
+              onClick={handleDisableAllInvalid}
+              disabled={invalidIds.size === 0 || batchDeleting || batchTesting}
+              style={{
+                padding: '8px 14px', borderRadius: '8px',
+                border: invalidIds.size > 0 ? '1px solid #f59e0b' : '1px solid var(--border)',
+                background: invalidIds.size > 0 ? 'rgba(245, 158, 11, 0.15)' : 'var(--bg-layer1)',
+                color: invalidIds.size > 0 ? '#f59e0b' : 'var(--text-muted)',
+                cursor: (invalidIds.size === 0 || batchDeleting || batchTesting) ? 'not-allowed' : 'pointer',
+                fontSize: '13px', fontWeight: invalidIds.size > 0 ? 600 : 400,
+                display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s'
+              }}
+              title="一键停用所有检测失效的书源（不删除配置，日常搜书换源自动跳过）"
+            >
+              ⏸️ 停用失效 ({invalidIds.size})
+            </button>
+
             <button
               onClick={handleImportFile}
               disabled={batchDeleting || batchTesting}
@@ -882,6 +928,35 @@ export function SourceEditorView() {
               </div>
             </div>
           )}
+
+          {/* 书源状态分类过滤胶囊栏 */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>视图筛选:</span>
+            {[
+              { id: 'all', label: `全部 (${sources.length})` },
+              { id: 'enabled', label: `已启用 (${sources.filter(s => s.enabled).length})` },
+              { id: 'disabled', label: `已停用 (${sources.filter(s => !s.enabled).length})` },
+              { id: 'invalid', label: `检测失效 (${invalidIds.size})`, badgeColor: invalidIds.size > 0 ? '#f87171' : undefined }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterMode(tab.id)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '16px',
+                  border: filterMode === tab.id ? '1px solid var(--accent)' : '1px solid var(--border-subtle)',
+                  background: filterMode === tab.id ? 'var(--accent)' : 'var(--bg-layer1)',
+                  color: filterMode === tab.id ? '#fff' : (tab.badgeColor || 'var(--text-secondary)'),
+                  fontSize: '12px',
+                  fontWeight: filterMode === tab.id ? 600 : 400,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
           {/* 复选框快捷操作条 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', fontSize: '12px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>

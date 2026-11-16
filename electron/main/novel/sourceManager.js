@@ -22,6 +22,32 @@ let RULE_SOURCES = []
 let CUSTOM_SOURCES = []
 let disabledSourceIds = new Set()
 
+function getDisabledSourcesFilePath() {
+  return join(getPortableDataDir(), 'disabled_sources.json')
+}
+
+function loadDisabledSourcesFromDisk() {
+  try {
+    const p = getDisabledSourcesFilePath()
+    if (existsSync(p)) {
+      const arr = JSON.parse(readFileSync(p, 'utf-8'))
+      if (Array.isArray(arr)) {
+        disabledSourceIds = new Set(arr)
+      }
+    }
+  } catch (_) {}
+}
+
+function saveDisabledSourcesToDisk() {
+  try {
+    const arr = Array.from(disabledSourceIds)
+    writeFileSync(getDisabledSourcesFilePath(), JSON.stringify(arr, null, 2), 'utf-8')
+  } catch (_) {}
+}
+
+// 初始化时从本地存储加载已停用书源 ID 集合
+loadDisabledSourcesFromDisk()
+
 // 用户自定义书源目录 (软件本体/data/custom_rules)
 function getCustomRulesDir() {
   const dir = join(getPortableDataDir(), 'custom_rules')
@@ -563,12 +589,42 @@ export function getAllSourcesDetail() {
 }
 
 /**
- * 切换书源启用状态
+ * 切换书源启用状态（自动同步本地持久化存储）
  */
 export function toggleSourceEnabled(id, enabled) {
   const target = getSourceById(id)
-  if (target) target.enabled = enabled
+  if (target) {
+    target.enabled = enabled
+    if (enabled) {
+      disabledSourceIds.delete(id)
+    } else {
+      disabledSourceIds.add(id)
+    }
+    saveDisabledSourcesToDisk()
+  }
   return true
+}
+
+/**
+ * 批量切换书源启用状态（自动同步本地持久化存储）
+ */
+export function batchToggleSources(ids, enabled) {
+  if (!Array.isArray(ids) || ids.length === 0) return { success: true, count: 0 }
+  let count = 0
+  for (const id of ids) {
+    const target = getSourceById(id)
+    if (target) {
+      target.enabled = enabled
+      if (enabled) {
+        disabledSourceIds.delete(id)
+      } else {
+        disabledSourceIds.add(id)
+      }
+      count++
+    }
+  }
+  saveDisabledSourcesToDisk()
+  return { success: true, count }
 }
 
 /**
